@@ -93,8 +93,8 @@ android {
         applicationId = "com.temmc.metmcosv10"
         minSdk = 28  // Android 9+ (modern root tools, Camera2 stable)
         targetSdk = 35
-        versionCode = 10
-        versionName = "10.0.0-alpha"
+        versionCode = 11
+        versionName = "10.1.1-alpha"
 
         ndk {
             abiFilters += listOf("arm64-v8a")
