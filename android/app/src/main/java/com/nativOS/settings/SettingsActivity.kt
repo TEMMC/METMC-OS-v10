@@ -1,6 +1,14 @@
 package com.nativOS.settings
 
 import android.app.Activity
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.BatteryManager
+import android.os.Build
+import android.content.IntentFilter
+import android.net.Uri
+import android.widget.SeekBar
+import android.widget.Toast
 import android.content.Intent
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -18,6 +26,13 @@ class SettingsActivity : Activity() {
     private lateinit var desktopCheck: TextView
     private lateinit var homeCheck: TextView
     private lateinit var deGoogleStatus: TextView
+    private lateinit var batteryStatus: TextView
+    private lateinit var brightnessStatus: TextView
+    private lateinit var brightnessSeekBar: SeekBar
+
+    companion object {
+        private const val REQUEST_HARDWARE_PERMISSIONS = 1202
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -88,6 +103,68 @@ class SettingsActivity : Activity() {
             ) {
                 startActivity(Intent(this@SettingsActivity, SystemAppRemoverActivity::class.java))
             })
+        }, PremiumUi.matchWidth())
+
+        content.addView(PremiumUi.verticalSpace(this, 26))
+        content.addView(PremiumUi.sectionLabel(this, "Hardware & power"))
+        content.addView(group().apply {
+            batteryStatus = PremiumUi.text(this@SettingsActivity, "Checking battery…", 13f, PremiumUi.muted)
+            addView(row(
+                title = "Battery & charging",
+                subtitleView = batteryStatus,
+                trailingText = "↻"
+            ) { updateHardwareState() })
+            addView(PremiumUi.separator(this@SettingsActivity))
+            brightnessStatus = PremiumUi.text(this@SettingsActivity, "", 13f, PremiumUi.muted)
+            addView(row(
+                title = "Screen brightness permission",
+                subtitleView = brightnessStatus,
+                trailingText = if (Settings.System.canWrite(this@SettingsActivity)) "Allowed" else "Allow"
+            ) { requestBrightnessPermission() })
+            addView(LinearLayout(this@SettingsActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(16), dp(2), dp(16), dp(12))
+                brightnessSeekBar = SeekBar(this@SettingsActivity).apply {
+                    max = 255
+                    progress = readBrightness()
+                    isEnabled = Settings.System.canWrite(this@SettingsActivity)
+                    setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                        override fun onStartTrackingTouch(seekBar: SeekBar) = Unit
+                        override fun onStopTrackingTouch(seekBar: SeekBar) = Unit
+                        override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                            if (fromUser && Settings.System.canWrite(this@SettingsActivity)) {
+                                val saved = Settings.System.putInt(
+                                    contentResolver, Settings.System.SCREEN_BRIGHTNESS, progress
+                                )
+                                if (saved) brightnessStatus.text = "Brightness: ${progress * 100 / 255}% · Android permission allowed"
+                            }
+                        }
+                    })
+                }
+                addView(PremiumUi.text(this@SettingsActivity, "Brightness", 13f, PremiumUi.muted))
+                addView(brightnessSeekBar, LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                ))
+            })
+            addView(PremiumUi.separator(this@SettingsActivity))
+            addView(switchRow(
+                "Keep screen awake",
+                "Prevent the display from sleeping while METMC OS is active",
+                NativOSPreferences.keepScreenOn(this@SettingsActivity)
+            ) { checked ->
+                NativOSPreferences.setKeepScreenOn(this@SettingsActivity, checked)
+                Toast.makeText(
+                    this@SettingsActivity,
+                    if (checked) "Screen will stay awake in METMC OS" else "Android may sleep the screen normally",
+                    Toast.LENGTH_SHORT
+                ).show()
+            })
+            addView(PremiumUi.separator(this@SettingsActivity))
+            addView(row(
+                title = "Request hardware permissions",
+                subtitle = "Camera, microphone, location, Bluetooth and notifications",
+                trailingText = "Review"
+            ) { requestHardwarePermissions() })
         }, PremiumUi.matchWidth())
 
         content.addView(PremiumUi.verticalSpace(this, 26))
@@ -162,6 +239,7 @@ class SettingsActivity : Activity() {
     override fun onResume() {
         super.onResume()
         updateState()
+        updateHardwareState()
     }
 
     private fun group() = LinearLayout(this).apply {
@@ -241,6 +319,95 @@ class SettingsActivity : Activity() {
             isChecked = checked
             setOnCheckedChangeListener { _, value -> onChanged(value) }
         })
+    }
+
+    private fun readBrightness(): Int = runCatching {
+        Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS, 128).coerceIn(0, 255)
+    }.getOrDefault(128)
+
+    private fun updateHardwareState() {
+        if (!::batteryStatus.isInitialized) return
+        val battery = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val level = battery?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = battery?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
+        val status = battery?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val plugged = battery?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0
+        val percent = if (level >= 0 && scale > 0) level * 100 / scale else -1
+        val state = when (status) {
+            BatteryManager.BATTERY_STATUS_CHARGING -> "Charging"
+            BatteryManager.BATTERY_STATUS_FULL -> "Fully charged"
+            BatteryManager.BATTERY_STATUS_DISCHARGING -> "Discharging"
+            BatteryManager.BATTERY_STATUS_NOT_CHARGING -> "Not charging"
+            else -> "Status unavailable"
+        }
+        val source = when (plugged) {
+            BatteryManager.BATTERY_PLUGGED_USB -> "USB"
+            BatteryManager.BATTERY_PLUGGED_AC -> "AC power"
+            BatteryManager.BATTERY_PLUGGED_WIRELESS -> "Wireless"
+            else -> "Battery"
+        }
+        batteryStatus.text = if (percent >= 0) "${percent}% · $state · $source" else state
+        val canWrite = Settings.System.canWrite(this)
+        brightnessStatus.text = if (canWrite) {
+            "Allowed · Current brightness ${readBrightness() * 100 / 255}%"
+        } else {
+            "Not allowed yet · Tap to open Android's permission screen"
+        }
+        brightnessSeekBar.progress = readBrightness()
+        brightnessSeekBar.isEnabled = canWrite
+    }
+
+    private fun requestBrightnessPermission() {
+        if (Settings.System.canWrite(this)) {
+            updateHardwareState()
+            return
+        }
+        try {
+            startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:$packageName")))
+        } catch (_: Exception) {
+            startActivity(Intent(Settings.ACTION_SETTINGS))
+        }
+    }
+
+    private fun requestHardwarePermissions() {
+        val requested = mutableListOf(
+            Manifest.permission.CAMERA,
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            requested += Manifest.permission.BLUETOOTH_CONNECT
+            requested += Manifest.permission.BLUETOOTH_SCAN
+        }
+        if (Build.VERSION.SDK_INT >= 33) {
+            requested += Manifest.permission.POST_NOTIFICATIONS
+        }
+        val missing = requested.distinct().filter {
+            checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isEmpty()) {
+            Toast.makeText(this, "All requested hardware permissions are already granted", Toast.LENGTH_SHORT).show()
+        } else {
+            requestPermissions(missing.toTypedArray(), REQUEST_HARDWARE_PERMISSIONS)
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_HARDWARE_PERMISSIONS) {
+            val granted = grantResults.count { it == PackageManager.PERMISSION_GRANTED }
+            val denied = grantResults.size - granted
+            Toast.makeText(
+                this,
+                if (denied == 0) "Hardware permissions granted" else "$granted granted · $denied denied; you can change them in Android Settings",
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     private fun scanGoogleComponents() {
