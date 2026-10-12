@@ -93,8 +93,8 @@ android {
         applicationId = "com.temmc.metmcosv10"
         minSdk = 28  // Android 9+ (modern root tools, Camera2 stable)
         targetSdk = 35
-        versionCode = 12
-        versionName = "10.2.0-alpha" // System diagnostics export
+        versionCode = 13
+        versionName = "10.3.0-alpha" // Guarded Linux package manager
 
         ndk {
             abiFilters += listOf("arm64-v8a")
