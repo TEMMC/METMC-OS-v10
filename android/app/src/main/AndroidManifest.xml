@@ -143,6 +143,12 @@
             android:theme="@style/Theme.METMCOSv10.Settings" />
 
         <activity
+            android:name=".settings.PackageManagerActivity"
+            android:exported="false"
+            android:label="Linux packages"
+            android:theme="@style/Theme.METMCOSv10.Settings" />
+
+        <activity
             android:name=".settings.SystemAppRemoverActivity"
             android:exported="false"
             android:label="System App Remover"
