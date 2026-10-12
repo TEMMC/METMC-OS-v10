@@ -1439,7 +1439,10 @@ PHOCEOF
 echo $$ > /tmp/phosh_loop.pid
 while true; do
     dbus-run-session -- phoc -C /etc/nativOS/phoc.ini -E "bash -c '
-        export LD_PRELOAD=${'
+        export LD_PRELOAD="$(printenv NATIVOS_APP_LD_PRELOAD 2>/dev/null)"
+        gsettings set org.gnome.desktop.interface enable-animations false >/dev/null 2>&1 || true
+        [ -x /usr/libexec/xdg-desktop-portal-gtk ] && /usr/libexec/xdg-desktop-portal-gtk >/tmp/xdg-desktop-portal-gtk.log 2>&1 &
+        [ -x /usr/libexec/xdg-desktop-portal ] && /usr/libexec/xdg-desktop-portal >/tmp/xdg-desktop-portal.log 2>&1 &
     '"
     echo "NativOS: Phoc exited, restarting..."
     sleep 0.5
