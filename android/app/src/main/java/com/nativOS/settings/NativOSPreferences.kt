@@ -9,6 +9,7 @@ object NativOSPreferences {
     private const val HIDE_SYSTEM_BARS = "hide_system_bars"
     private const val SHOW_ANDROID_APPS = "show_android_apps"
     private const val OPERATING_MODE = "operating_mode"
+    private const val KEEP_SCREEN_ON = "keep_screen_on"
 
     fun hideSystemBars(context: Context): Boolean =
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -39,6 +40,15 @@ object NativOSPreferences {
     fun setOperatingMode(context: Context, mode: OperatingMode) {
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
             .edit().putString(OPERATING_MODE, mode.name).apply()
+    }
+
+    fun keepScreenOn(context: Context): Boolean =
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getBoolean(KEEP_SCREEN_ON, true)
+
+    fun setKeepScreenOn(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEEP_SCREEN_ON, enabled).apply()
     }
 
 }
