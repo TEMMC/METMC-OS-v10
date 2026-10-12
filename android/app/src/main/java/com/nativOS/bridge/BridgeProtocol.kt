@@ -110,12 +110,15 @@ object BridgeProtocol {
     // ── System Actions ──
     const val ACTION_SET_BRIGHTNESS = "set_brightness"
     const val ACTION_GET_BATTERY = "get_battery"
+    const val ACTION_GET_CLIPBOARD = "get_clipboard"
+    const val ACTION_SET_CLIPBOARD = "set_clipboard"
     const val ACTION_TORCH_ON = "torch_on"
     const val ACTION_TORCH_OFF = "torch_off"
     const val ACTION_GET_SIGNAL = "get_signal"
 
     // ── System Events ──
     const val EVENT_BATTERY_CHANGED = "battery_changed"
+    const val EVENT_CLIPBOARD_CHANGED = "clipboard_changed"
     const val EVENT_SIGNAL_CHANGED = "signal_changed"
 
     // ── Socket Paths ──
