@@ -35,14 +35,30 @@ jobs:
         with:
           packages: 'platform-tools'
 
-      # Keep the same debug signing key between builds so subsequent APKs can
-      # update the same METMC package. If this cache is evicted, Android may
-      # reject an update because the signing key will have changed.
-      - name: Restore persistent debug signing key
-        uses: actions/cache@v4
-        with:
-          path: ~/.android/debug.keystore
-          key: metmc-os-v10-debug-signing-v1
+      # Use the persistent METMC release key. Never store the keystore in git.
+      - name: Restore METMC release signing key
+        shell: bash
+        env:
+          METMC_KEYSTORE_BASE64: ${{ secrets.METMC_KEYSTORE_BASE64 }}
+          METMC_STORE_PASSWORD: ${{ secrets.METMC_STORE_PASSWORD || secrets.METMC_KEYSTORE_PASSWORD }}
+          METMC_KEY_ALIAS: ${{ secrets.METMC_KEY_ALIAS }}
+          METMC_KEY_PASSWORD: ${{ secrets.METMC_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$METMC_KEYSTORE_BASE64" || -z "$METMC_STORE_PASSWORD" || -z "$METMC_KEY_ALIAS" || -z "$METMC_KEY_PASSWORD" ]]; then
+            echo "::error::Missing METMC signing secrets. Configure METMC_KEYSTORE_BASE64, METMC_STORE_PASSWORD (or METMC_KEYSTORE_PASSWORD), METMC_KEY_ALIAS, and METMC_KEY_PASSWORD in repository Actions secrets."
+            exit 1
+          fi
+          mkdir -p android/signing
+          printf '%s' "$METMC_KEYSTORE_BASE64" | base64 --decode > android/signing/metmc-release.keystore
+          test -s android/signing/metmc-release.keystore
+          cat > android/signing/keystore.properties <<EOF
+          storeFile=signing/metmc-release.keystore
+          storePassword=$METMC_STORE_PASSWORD
+          keyAlias=$METMC_KEY_ALIAS
+          keyPassword=$METMC_KEY_PASSWORD
+          EOF
+          chmod 600 android/signing/metmc-release.keystore android/signing/keystore.properties
 
       - name: Install Android SDK packages
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
@@ -65,29 +81,30 @@ jobs:
         working-directory: android
         run: |
           chmod +x ./gradlew
-          ./gradlew --no-daemon :app:assembleDebug
+          ./gradlew --no-daemon :app:assembleRelease
 
       - name: Verify package and APK
         shell: bash
         run: |
           set -euo pipefail
-          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          APK="android/app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -E "package: name='com.temmc.metmcosv10'|application-label:'METMC OS version 10'"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
           sha256sum "$APK" > "$APK.sha256"
 
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:
-          name: METMC-OS-v10-Android-APK
+          name: METMC-OS-v10-Signed-Android-APK
           path: |
-            android/app/build/outputs/apk/debug/app-debug.apk
-            android/app/build/outputs/apk/debug/app-debug.apk.sha256
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/apk/release/app-release.apk.sha256
           if-no-files-found: error
           retention-days: 30
 
   publish-release:
-    if: github.event_name == 'push' && contains(github.event.head_commit.message, 'Publish METMC OS v10 v10.1.0-alpha')
+    if: github.event_name == 'push' && contains(github.event.head_commit.message, 'Publish METMC OS v10 v10.1.1-alpha')
     needs: build
     runs-on: ubuntu-22.04
     permissions:
@@ -97,7 +114,7 @@ jobs:
       - name: Download verified APK artifact
         uses: actions/download-artifact@v4
         with:
-          name: METMC-OS-v10-Android-APK
+          name: METMC-OS-v10-Signed-Android-APK
           path: release-assets
 
       - name: Prepare release files
@@ -105,24 +122,24 @@ jobs:
         run: |
           set -euo pipefail
           find release-assets -type f -maxdepth 4 -print
-          APK="$(find release-assets -type f -name 'app-debug.apk' -print -quit)"
-          CHECKSUM="$(find release-assets -type f -name 'app-debug.apk.sha256' -print -quit)"
+          APK="$(find release-assets -type f -name 'app-release.apk' -print -quit)"
+          CHECKSUM="$(find release-assets -type f -name 'app-release.apk.sha256' -print -quit)"
           test -n "$APK"
           test -n "$CHECKSUM"
-          cp "$APK" METMC-OS-v10.1.0-alpha-arm64.apk
+          cp "$APK" METMC-OS-v10.1.1-alpha-arm64.apk
           (cd "$(dirname "$CHECKSUM")" && sha256sum "$(basename "$CHECKSUM")" >/dev/null)
-          sha256sum METMC-OS-v10.1.0-alpha-arm64.apk > METMC-OS-v10.1.0-alpha-arm64.apk.sha256
+          sha256sum METMC-OS-v10.1.1-alpha-arm64.apk > METMC-OS-v10.1.1-alpha-arm64.apk.sha256
           echo "Release APK prepared and checksum generated."
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v10.1.0-alpha
-          name: METMC OS v10.1.0-alpha
+          tag_name: v10.1.1-alpha
+          name: METMC OS v10.1.1-alpha
           prerelease: true
           generate_release_notes: true
           body: |
-            METMC OS v10.1 alpha update for Android ARM64, built from the latest verified source.
+            METMC OS v10.1.1 alpha update for Android ARM64, signed with the persistent METMC release key.
 
             - Package ID: `com.temmc.metmcosv10`
             - App label: `METMC OS version 10`
@@ -133,9 +150,9 @@ jobs:
             - CPU/RAM usage information in Settings.
             - Includes compact Phoc display scaling and a Phosh animation-disable tweak.
             - This is an alpha build. Touch responsiveness and hardware acceleration may vary by device.
-            - APK is debug-signed, not Play Store production-signed.
+            - APK is signed with the persistent METMC release key; this is not Play Store certification.
           files: |
-            METMC-OS-v10.1.0-alpha-arm64.apk
-            METMC-OS-v10.1.0-alpha-arm64.apk.sha256
+            METMC-OS-v10.1.1-alpha-arm64.apk
+            METMC-OS-v10.1.1-alpha-arm64.apk.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
