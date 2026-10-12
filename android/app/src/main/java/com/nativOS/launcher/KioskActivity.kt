@@ -3,6 +3,7 @@ package com.nativOS.launcher
 import android.Manifest
 import android.app.Activity
 import android.content.ComponentName
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
@@ -90,6 +91,15 @@ class KioskActivity : Activity() {
     private var x11ServiceClient: X11ServiceClient? = null
     private var x11InputController: X11InputController? = null
     private val volumeUpTimestamps = mutableListOf<Long>()
+    private var clipboardManager: ClipboardManager? = null
+    private var clipboardListenerRegistered = false
+    private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
+        runCatching {
+            val clip = clipboardManager?.primaryClip
+            val text = if (clip != null && clip.itemCount > 0) clip.getItemAt(0).coerceToText(this)?.toString().orEmpty() else ""
+            BridgeService.publishClipboardText(text)
+        }.onFailure { Log.d(TAG, "Clipboard sync unavailable: ${it.message}") }
+    }
 
     // Error flag — set by lambda callbacks to halt the boot sequence
     @Volatile private var bootFailed = false
@@ -903,6 +913,7 @@ class KioskActivity : Activity() {
         super.onResume()
         enterImmersiveMode()
         applyScreenAwakePreference()
+        registerClipboardSync()
         AndroidAppIntegration.sync(this)
         if (waitingForRoot) retryAfterRootGrant()
 
@@ -928,6 +939,23 @@ class KioskActivity : Activity() {
                 }
             }, 400)
         }
+    }
+
+    private fun registerClipboardSync() {
+        if (clipboardListenerRegistered) return
+        clipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        runCatching {
+            clipboardManager?.addPrimaryClipChangedListener(clipboardListener)
+            clipboardListenerRegistered = true
+        }.onFailure { Log.w(TAG, "Could not register clipboard sync listener", it) }
+    }
+
+    override fun onPause() {
+        if (clipboardListenerRegistered) {
+            runCatching { clipboardManager?.removePrimaryClipChangedListener(clipboardListener) }
+            clipboardListenerRegistered = false
+        }
+        super.onPause()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
