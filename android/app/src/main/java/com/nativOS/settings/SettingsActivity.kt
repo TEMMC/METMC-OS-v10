@@ -252,6 +252,10 @@ class SettingsActivity : Activity() {
                 startActivity(Intent(this@SettingsActivity, PackageManagerActivity::class.java))
             })
             addView(PremiumUi.separator(this@SettingsActivity))
+            addView(row("System monitor, files & recovery", "Live CPU/RAM/battery, shared folder, software center, updates and config backup", trailingText = "›") {
+                startActivity(Intent(this@SettingsActivity, SystemToolsActivity::class.java))
+            })
+            addView(PremiumUi.separator(this@SettingsActivity))
             addView(row("Android settings", "Open the underlying system settings", trailingText = "›") {
                 startActivity(Intent(Settings.ACTION_SETTINGS))
             })
@@ -271,9 +275,9 @@ class SettingsActivity : Activity() {
         content.addView(PremiumUi.sectionLabel(this, "About"))
         content.addView(group().apply {
             addView(row(
-                title = "METMC OS version 10",
-                subtitle = "Created and maintained by Tinotenda Enock Mapfumo (Dr TEMMC)",
-                trailingText = "v10"
+                title = "METMC OS V10",
+                subtitle = "Created by Tinotenda Enock Mapfumo (Dr TEMMC); based on NativOS",
+                trailingText = "v10.5"
             ))
             addView(PremiumUi.separator(this@SettingsActivity))
             addView(row(
