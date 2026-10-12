@@ -104,7 +104,7 @@
         android:roundIcon="@mipmap/ic_launcher"
         android:label="METMC OS version 10"
         android:supportsRtl="true"
-        android:theme="@style/Theme.NativOS"
+        android:theme="@style/Theme.METMCOSv10"
         android:usesCleartextTraffic="true"
         tools:targetApi="35">
 
@@ -141,21 +141,21 @@
         <activity
             android:name=".settings.SettingsActivity"
             android:exported="true"
-            android:label="NativOS Settings"
-            android:theme="@style/Theme.NativOS.Settings" />
+            android:label="METMC OS v10 Settings"
+            android:theme="@style/Theme.METMCOSv10.Settings" />
 
         <activity
             android:name=".settings.SystemAppRemoverActivity"
             android:exported="false"
             android:label="System App Remover"
-            android:theme="@style/Theme.NativOS.Settings" />
+            android:theme="@style/Theme.METMCOSv10.Settings" />
 
         <!-- Optional tile users can add to Android's Quick Settings panel. -->
         <service
             android:name=".settings.SettingsTileService"
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
-            android:label="NativOS Settings"
+            android:label="METMC OS v10 Settings"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
