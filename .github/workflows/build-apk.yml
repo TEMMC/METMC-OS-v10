@@ -97,7 +97,7 @@ jobs:
       - name: Download verified APK artifact
         uses: actions/download-artifact@v4
         with:
-          name: METMC-OS-v10-Signed-Android-APK
+          name: METMC-OS-v10-Android-APK
           path: release-assets
 
       - name: Prepare release files
@@ -105,8 +105,8 @@ jobs:
         run: |
           set -euo pipefail
           find release-assets -type f -maxdepth 4 -print
-          APK="$(find release-assets -type f -name 'app-release.apk' -print -quit)"
-          CHECKSUM="$(find release-assets -type f -name 'app-release.apk.sha256' -print -quit)"
+          APK="$(find release-assets -type f -name 'app-debug.apk' -print -quit)"
+          CHECKSUM="$(find release-assets -type f -name 'app-debug.apk.sha256' -print -quit)"
           test -n "$APK"
           test -n "$CHECKSUM"
           cp "$APK" METMC-OS-v10.1.1-alpha-arm64.apk
