@@ -133,6 +133,11 @@ class SettingsActivity : Activity() {
                         override fun onStopTrackingTouch(seekBar: SeekBar) = Unit
                         override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
                             if (fromUser && Settings.System.canWrite(this@SettingsActivity)) {
+                                Settings.System.putInt(
+                                    contentResolver,
+                                    Settings.System.SCREEN_BRIGHTNESS_MODE,
+                                    Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
+                                )
                                 val saved = Settings.System.putInt(
                                     contentResolver, Settings.System.SCREEN_BRIGHTNESS, progress
                                 )
