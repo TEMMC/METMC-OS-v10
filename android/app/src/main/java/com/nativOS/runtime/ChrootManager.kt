@@ -1182,11 +1182,13 @@ class ChrootManager(private val context: Context) {
 
         val hardwareGpu = prepareHardwareGpu()
         // Keep the UI scale stable when width and height swap on rotation.
-        // Very-high-density panels need scale 3; normal phone panels use 2.
+        // On 720x1600-class phones, scale 2 makes Phosh controls oversized
+        // and increases the work done by the software compositor. A fractional
+        // scale gives a denser layout while reducing rendered UI area.
         val displayScale = when {
-            context.resources.displayMetrics.densityDpi >= 500 -> 3
-            context.resources.displayMetrics.densityDpi >= 280 -> 2
-            else -> 1
+            context.resources.displayMetrics.densityDpi >= 500 -> 1.5
+            context.resources.displayMetrics.densityDpi >= 280 -> 1.25
+            else -> 1.0
         }
         val gpuEnvironment = if (hardwareGpu) {
             """
