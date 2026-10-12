@@ -11,7 +11,7 @@
     </queries>
 
     <!-- ═══════════════════════════════════════════════════════════════
-         NativOS Permissions
+         METMC OS v10 permissions
          All permissions required to bridge Android APIs into the
          Linux chroot environment.
          ═══════════════════════════════════════════════════════════════ -->
@@ -102,7 +102,7 @@
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
-        android:label="NativOS"
+        android:label="METMC OS version 10"
         android:supportsRtl="true"
         android:theme="@style/Theme.NativOS"
         android:usesCleartextTraffic="true"
@@ -125,7 +125,7 @@
             android:exported="true"
             android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
-            android:theme="@style/Theme.NativOS.Fullscreen">
+            android:theme="@style/Theme.METMCOSv10.Fullscreen">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
