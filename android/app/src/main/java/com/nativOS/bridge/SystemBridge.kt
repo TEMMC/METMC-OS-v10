@@ -30,6 +30,7 @@ class SystemBridge(private val service: BridgeService) {
         return when (request.action) {
             BridgeProtocol.ACTION_SET_BRIGHTNESS -> handleSetBrightness(request)
             BridgeProtocol.ACTION_GET_BATTERY -> handleGetBattery(request)
+            "get_brightness" -> handleGetBrightness(request)
             BridgeProtocol.ACTION_TORCH_ON -> handleTorch(request, true)
             BridgeProtocol.ACTION_TORCH_OFF -> handleTorch(request, false)
             BridgeProtocol.ACTION_GET_SIGNAL -> handleGetSignal(request)
@@ -43,50 +44,49 @@ class SystemBridge(private val service: BridgeService) {
 
     private fun handleSetBrightness(request: BridgeRequest): String {
         val level = request.params.optInt("level", -1) // 0-255
-
-        if (level < 0 || level > 255) {
+        if (level !in 0..255) {
             return BridgeProtocol.response(request.id, BridgeProtocol.STATUS_ERROR,
                 JSONObject().put("message", "Brightness must be 0-255"))
         }
-
+        if (!Settings.System.canWrite(service)) {
+            return BridgeProtocol.response(request.id, BridgeProtocol.STATUS_ERROR,
+                JSONObject().put("message", "Allow METMC OS to modify system settings in Android Settings to control brightness"))
+        }
         return try {
-            // Try sysfs first (works on most rooted devices without WRITE_SETTINGS)
-            val sysfsPaths = listOf(
-                "/sys/class/backlight/panel0-backlight/brightness",
-                "/sys/class/leds/lcd-backlight/brightness",
-                "/sys/class/backlight/panel/brightness",
+            val changed = Settings.System.putInt(
+                service.contentResolver,
+                Settings.System.SCREEN_BRIGHTNESS,
+                level
             )
-
-            var set = false
-            for (path in sysfsPaths) {
-                if (java.io.File(path).exists()) {
-                    // Scale 0-255 to device range
-                    val maxPath = path.replace("brightness", "max_brightness")
-                    val maxBrightness = try {
-                        java.io.File(maxPath).readText().trim().toInt()
-                    } catch (_: Exception) { 255 }
-
-                    val scaled = (level * maxBrightness / 255).coerceIn(0, maxBrightness)
-                    java.io.File(path).writeText(scaled.toString())
-                    set = true
-                    break
-                }
-            }
-
-            if (!set) {
-                // Fallback to Android Settings API
-                Settings.System.putInt(
-                    service.contentResolver,
-                    Settings.System.SCREEN_BRIGHTNESS,
-                    level
-                )
-            }
-
+            if (!changed) throw IllegalStateException("Android rejected the brightness change")
             BridgeProtocol.response(request.id, BridgeProtocol.STATUS_OK,
                 JSONObject().put("brightness", level))
         } catch (e: Exception) {
             BridgeProtocol.response(request.id, BridgeProtocol.STATUS_ERROR,
                 JSONObject().put("message", "Failed to set brightness: ${e.message}"))
+        }
+    }
+
+    private fun handleGetBrightness(request: BridgeRequest): String {
+        return try {
+            val level = Settings.System.getInt(
+                service.contentResolver,
+                Settings.System.SCREEN_BRIGHTNESS,
+                128
+            ).coerceIn(0, 255)
+            val automatic = Settings.System.getInt(
+                service.contentResolver,
+                Settings.System.SCREEN_BRIGHTNESS_MODE,
+                Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
+            ) == Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC
+            BridgeProtocol.response(request.id, BridgeProtocol.STATUS_OK, JSONObject().apply {
+                put("brightness", level)
+                put("can_write_settings", Settings.System.canWrite(service))
+                put("automatic", automatic)
+            })
+        } catch (e: Exception) {
+            BridgeProtocol.response(request.id, BridgeProtocol.STATUS_ERROR,
+                JSONObject().put("message", "Could not read brightness: ${e.message}"))
         }
     }
 
