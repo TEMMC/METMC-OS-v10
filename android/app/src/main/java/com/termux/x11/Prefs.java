@@ -29,8 +29,8 @@ public class Prefs {
     public Pref<Boolean> ignoreGamepadEvents = new Pref<>(false);
     public Pref<String> displayResolutionMode = new Pref<>("native");
     public Pref<Integer> displayScale = new Pref<>(100);
-    public Pref<String> displayResolutionExact = new Pref<>("1080x1920");
-    public Pref<String> displayResolutionCustom = new Pref<>("1080x1920");
+    public Pref<String> displayResolutionExact = new Pref<>("720x1600");
+    public Pref<String> displayResolutionCustom = new Pref<>("720x1600");
     public Pref<Boolean> adjustResolution = new Pref<>(true);
     public Pref<Boolean> displayStretch = new Pref<>(true);
     public Pref<String> displayFilteringMode = new Pref<>("nearest");
