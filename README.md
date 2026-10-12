@@ -38,3 +38,5 @@ Follow the upstream build instructions in the source README and `PRODUCTION_READ
 ## License
 
 NativOS is distributed under GPL-3.0, with bundled components retaining their own licenses. See the upstream `LICENSE`, `NOTICE.md`, and `THIRD_PARTY_NOTICES.md` files imported into this repository.
+
+> Upstream source imported from [orailnoor/NativOS](https://github.com/orailnoor/NativOS). Review upstream notices and licenses before redistribution.
