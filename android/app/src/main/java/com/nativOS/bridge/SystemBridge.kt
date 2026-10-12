@@ -53,6 +53,11 @@ class SystemBridge(private val service: BridgeService) {
                 JSONObject().put("message", "Allow METMC OS to modify system settings in Android Settings to control brightness"))
         }
         return try {
+            Settings.System.putInt(
+                service.contentResolver,
+                Settings.System.SCREEN_BRIGHTNESS_MODE,
+                Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
+            )
             val changed = Settings.System.putInt(
                 service.contentResolver,
                 Settings.System.SCREEN_BRIGHTNESS,
