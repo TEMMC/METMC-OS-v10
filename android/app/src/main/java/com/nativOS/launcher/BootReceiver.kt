@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.nativOS.settings.HomeRoleManager
+import com.nativOS.launcher.KioskActivity
 import com.nativOS.settings.NativOSPreferences
 
 /**
@@ -34,9 +35,16 @@ class BootReceiver : BroadcastReceiver() {
                 val isHome = HomeRoleManager.isDefaultHome(context)
                 Log.i(TAG, "Boot mode=$mode, defaultHome=$isHome")
 
-                // Android itself launches KioskActivity when NativOS owns the
-                // Home role. In desktop-app mode we intentionally do nothing.
-                // This keeps Linux opt-in and avoids starting it over Android.
+                // Android resolves the selected HOME activity at boot. This is a
+                // guarded fallback after normal BOOT_COMPLETED only; never force it
+                // in desktop-app mode or before credential-protected files unlock.
+                if (action == Intent.ACTION_BOOT_COMPLETED && mode == NativOSPreferences.OperatingMode.HOME_LAUNCHER && isHome) {
+                    runCatching {
+                        context.startActivity(Intent(context, KioskActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        })
+                    }.onFailure { Log.w(TAG, "Home launch fallback failed; Android should resolve HOME normally", it) }
+                }
             }
         }
     }
