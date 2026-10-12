@@ -1,6 +1,8 @@
 package com.nativOS.settings
 
 import android.app.Activity
+import android.app.ActivityManager
+import android.media.AudioManager
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.BatteryManager
@@ -29,6 +31,10 @@ class SettingsActivity : Activity() {
     private lateinit var batteryStatus: TextView
     private lateinit var brightnessStatus: TextView
     private lateinit var brightnessSeekBar: SeekBar
+    private lateinit var volumeStatus: TextView
+    private lateinit var volumeSeekBar: SeekBar
+    private lateinit var systemUsageStatus: TextView
+    private var lastCpuCounters: Pair<Long, Long>? = null
 
     companion object {
         private const val REQUEST_HARDWARE_PERMISSIONS = 1202
@@ -170,6 +176,44 @@ class SettingsActivity : Activity() {
                 subtitle = "Camera, microphone, location, Bluetooth and notifications",
                 trailingText = "Review"
             ) { requestHardwarePermissions() })
+            addView(PremiumUi.separator(this@SettingsActivity))
+            volumeStatus = PremiumUi.text(this@SettingsActivity, "Media volume", 13f, PremiumUi.muted)
+            addView(LinearLayout(this@SettingsActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(16), dp(10), dp(16), dp(12))
+                addView(PremiumUi.text(this@SettingsActivity, "Audio & volume buttons", 16f))
+                addView(volumeStatus)
+                volumeSeekBar = SeekBar(this@SettingsActivity).apply {
+                    max = (getSystemService(AUDIO_SERVICE) as AudioManager).getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                    progress = (getSystemService(AUDIO_SERVICE) as AudioManager).getStreamVolume(AudioManager.STREAM_MUSIC)
+                    setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                        override fun onStartTrackingTouch(seekBar: SeekBar) = Unit
+                        override fun onStopTrackingTouch(seekBar: SeekBar) = Unit
+                        override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                            if (fromUser) {
+                                (getSystemService(AUDIO_SERVICE) as AudioManager).setStreamVolume(AudioManager.STREAM_MUSIC, progress, 0)
+                                updateVolumeState()
+                            }
+                        }
+                    })
+                }
+                addView(volumeSeekBar, LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                ))
+            })
+            addView(PremiumUi.separator(this@SettingsActivity))
+            systemUsageStatus = PremiumUi.text(this@SettingsActivity, "Checking system usage…", 13f, PremiumUi.muted)
+            addView(row(
+                title = "CPU & memory",
+                subtitleView = systemUsageStatus,
+                trailingText = "↻"
+            ) { updateSystemUsage() })
+            addView(PremiumUi.separator(this@SettingsActivity))
+            addView(row(
+                title = "Copy & paste bridge",
+                subtitle = "Clipboard get/set actions are available to Linux bridge clients; Android restricts background clipboard reads",
+                trailingText = "Enabled"
+            ))
         }, PremiumUi.matchWidth())
 
         content.addView(PremiumUi.verticalSpace(this, 26))
@@ -245,6 +289,8 @@ class SettingsActivity : Activity() {
         super.onResume()
         updateState()
         updateHardwareState()
+        updateVolumeState()
+        updateSystemUsage()
     }
 
     private fun group() = LinearLayout(this).apply {
@@ -360,6 +406,47 @@ class SettingsActivity : Activity() {
         }
         brightnessSeekBar.progress = readBrightness()
         brightnessSeekBar.isEnabled = canWrite
+    }
+
+    private fun updateVolumeState() {
+        if (!::volumeStatus.isInitialized || !::volumeSeekBar.isInitialized) return
+        val audio = getSystemService(AUDIO_SERVICE) as AudioManager
+        val current = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+        val maximum = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+        volumeStatus.text = "Media volume: ${current * 100 / maximum}% · ${current}/${maximum}"
+        if (volumeSeekBar.max != maximum) volumeSeekBar.max = maximum
+        if (volumeSeekBar.progress != current) volumeSeekBar.progress = current
+    }
+
+    private fun updateSystemUsage() {
+        if (!::systemUsageStatus.isInitialized) return
+        val manager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
+        val memory = ActivityManager.MemoryInfo()
+        manager.getMemoryInfo(memory)
+        val totalMb = memory.totalMem / (1024L * 1024L)
+        val availableMb = memory.availMem / (1024L * 1024L)
+        val usedMb = (totalMb - availableMb).coerceAtLeast(0)
+        val cpu = readCpuUsagePercent()
+        val cpuText = cpu?.let { "CPU: ${it}%" } ?: "CPU: unavailable"
+        systemUsageStatus.text = "${cpuText} · RAM: ${usedMb} MB / ${totalMb} MB (${if (totalMb > 0) usedMb * 100 / totalMb else 0}%)"
+    }
+
+    private fun readCpuUsagePercent(): Int? {
+        return try {
+            val fields = java.io.File("/proc/stat").bufferedReader().use { it.readLine().trim().split(Regex("\\s+")) }
+            if (fields.firstOrNull() != "cpu" || fields.size < 5) return null
+            val values = fields.drop(1).map { it.toLong() }
+            val idle = values[3] + (values.getOrNull(4) ?: 0L)
+            val total = values.sum()
+            val previous = lastCpuCounters
+            lastCpuCounters = idle to total
+            if (previous == null) return null
+            val idleDelta = idle - previous.first
+            val totalDelta = total - previous.second
+            if (totalDelta <= 0L) null else (((totalDelta - idleDelta).toDouble() / totalDelta) * 100).toInt().coerceIn(0, 100)
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun requestBrightnessPermission() {
