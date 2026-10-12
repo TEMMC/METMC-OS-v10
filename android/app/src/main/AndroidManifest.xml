@@ -100,7 +100,7 @@
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
-        android:label="METMC OS version 10"
+        android:label="METMC OS V10"
         android:supportsRtl="true"
         android:theme="@style/Theme.METMCOSv10"
         android:usesCleartextTraffic="true"
@@ -140,6 +140,12 @@
             android:name=".settings.SettingsActivity"
             android:exported="true"
             android:label="METMC OS v10 Settings"
+            android:theme="@style/Theme.METMCOSv10.Settings" />
+
+        <activity
+            android:name=".settings.SystemToolsActivity"
+            android:exported="false"
+            android:label="METMC OS V10 Tools"
             android:theme="@style/Theme.METMCOSv10.Settings" />
 
         <activity
