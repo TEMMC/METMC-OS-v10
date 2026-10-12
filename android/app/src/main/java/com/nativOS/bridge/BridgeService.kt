@@ -42,6 +42,15 @@ class BridgeService : Service() {
         private const val NOTIFICATION_CHANNEL = "nativOS_bridge"
         private const val NOTIFICATION_ID = 1001
         const val ACTION_REFRESH_NOTIFICATION = "com.nativOS.action.REFRESH_NOTIFICATION"
+        @Volatile private var activeService: BridgeService? = null
+
+        fun publishClipboardText(text: String) {
+            activeService?.broadcastEvent(
+                BridgeProtocol.TYPE_SYSTEM,
+                BridgeProtocol.EVENT_CLIPBOARD_CHANGED,
+                JSONObject().put("text", text.take(1000000))
+            )
+        }
     }
 
     private var serverSocket: LocalServerSocket? = null
@@ -103,6 +112,7 @@ class BridgeService : Service() {
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
 
+        activeService = this
         initBridges()
         registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         batteryReceiverRegistered = true
@@ -155,6 +165,7 @@ class BridgeService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         running = false
+        if (activeService === this) activeService = null
         if (batteryReceiverRegistered) {
             runCatching { unregisterReceiver(batteryReceiver) }
             batteryReceiverRegistered = false
