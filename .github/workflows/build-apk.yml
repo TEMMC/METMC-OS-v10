@@ -89,7 +89,7 @@ jobs:
           retention-days: 30
 
   publish-release:
-    if: github.event_name == 'push' && contains(github.event.head_commit.message, 'Publish METMC OS v10 v10.2.0-alpha')
+    if: github.event_name == 'push' && contains(github.event.head_commit.message, 'Publish METMC OS v10 v10.3.0-alpha')
     needs: build
     runs-on: ubuntu-22.04
     permissions:
@@ -111,35 +111,37 @@ jobs:
           CHECKSUM="$(find release-assets -type f -name 'app-debug.apk.sha256' -print -quit)"
           test -n "$APK"
           test -n "$CHECKSUM"
-          cp "$APK" METMC-OS-v10.2.0-alpha-arm64.apk
+          cp "$APK" METMC-OS-v10.3.0-alpha-arm64.apk
           (cd "$(dirname "$CHECKSUM")" && sha256sum "$(basename "$CHECKSUM")" >/dev/null)
-          sha256sum METMC-OS-v10.2.0-alpha-arm64.apk > METMC-OS-v10.2.0-alpha-arm64.apk.sha256
+          sha256sum METMC-OS-v10.3.0-alpha-arm64.apk > METMC-OS-v10.3.0-alpha-arm64.apk.sha256
           echo "Release APK prepared and checksum generated."
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v10.2.0-alpha
-          name: METMC OS v10.2.0-alpha
+          tag_name: v10.3.0-alpha
+          name: METMC OS v10.3.0-alpha
           prerelease: true
           generate_release_notes: true
           body: |
-            METMC OS v10.1.1 alpha update for Android ARM64, signed with the persistent METMC release key.
+            METMC OS v10.3.0-alpha development update for Android ARM64. This alpha is signed with the cached Android debug key, not a permanent production key.
 
             - Package ID: `com.temmc.metmcosv10`
             - App label: `METMC OS version 10`
             - Based on the upstream NativOS project; upstream credits are retained.
             - METMC OS branding and updated launcher icon.
             - Hardware bridge improvements for battery/charging status, brightness controls, volume controls, and screen sleep/wake preferences.
-            - Added opt-in system diagnostics export for device/build, display, RAM, storage, battery level, and selected permission status. The user chooses where to save the report; it excludes account names, Android ID, contacts, messages, and file contents.
-            - Added opt-in system diagnostics export for device/build, display, RAM, storage, battery level, and selected permission status. The user chooses where to save the report; it excludes account names, Android ID, contacts, messages, and file contents.
+            - Added opt-in system diagnostics export; the user chooses where to save the report, and private account/contact/message contents are excluded.
+            - Added a guarded Linux package manager to refresh package lists, inspect available upgrades, explicitly confirm package upgrades, and install a single validated package name.
+            - Package commands run inside the Linux root filesystem only; they do not update Android's host packages. Package upgrades are not automatically reversible.
             - Clipboard bridge hooks and improved touch-focus handling.
             - CPU/RAM usage information in Settings.
             - Includes compact Phoc display scaling and a Phosh animation-disable tweak.
             - This is an alpha build. Touch responsiveness and hardware acceleration may vary by device.
             - APK is signed with a cached Android debug key; this is not a permanent production signing key or Play Store certification.
+            - Package operations require root access, a provisioned Linux rootfs, and an internet connection. Review the operation log and close the Linux desktop before upgrades.
           files: |
-            METMC-OS-v10.2.0-alpha-arm64.apk
-            METMC-OS-v10.2.0-alpha-arm64.apk.sha256
+            METMC-OS-v10.3.0-alpha-arm64.apk
+            METMC-OS-v10.3.0-alpha-arm64.apk.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
