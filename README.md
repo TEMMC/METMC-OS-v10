@@ -11,7 +11,7 @@ It is based on the open-source [NativOS project](https://github.com/orailnoor/Na
 - **Source repository:** https://github.com/TEMMC/METMC-OS-v10
 - **Upstream project:** https://github.com/orailnoor/NativOS
 - **Android application ID:** `com.temmc.metmcosv10`
-- **Current development version:** 10.0.0-alpha
+- **Current development version:** 10.2.0-alpha
 
 ## Goals
 
@@ -23,7 +23,7 @@ It is based on the open-source [NativOS project](https://github.com/orailnoor/Na
 
 ## Current status
 
-The NativOS source has been imported and the Android app identity, display name, project metadata, and About screen have been updated for METMC OS v10. **A new APK has not yet been built or tested.** No A04e-specific performance fix is claimed yet.
+The NativOS source has been imported and rebranded as METMC OS v10. The app includes Android hardware controls, CPU/RAM status, and an opt-in system diagnostics export that the user saves through Android’s file picker. v10.2.0-alpha is a development build; device-specific touch smoothness and hardware acceleration still require on-device testing.
 
 This project runs a Linux desktop within an Android-rooted environment. It is **not** a native Linux ROM and does not replace the Android kernel.
 
