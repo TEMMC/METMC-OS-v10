@@ -113,7 +113,7 @@ jobs:
           test -n "$CHECKSUM"
           cp "$APK" METMC-OS-V10.5.0-arm64.apk
           (cd "$(dirname "$CHECKSUM")" && sha256sum "$(basename "$CHECKSUM")" >/dev/null)
-          sha256sum METMC-OS-v10.3.0-alpha-arm64.apk > METMC-OS-v10.3.0-alpha-arm64.apk.sha256
+          sha256sum METMC-OS-V10.5.0-arm64.apk > METMC-OS-V10.5.0-arm64.apk.sha256
           echo "Release APK prepared and checksum generated."
 
       - name: Publish GitHub release
@@ -145,7 +145,7 @@ jobs:
             - APK is signed with a cached Android debug key; this is not a permanent production signing key or Play Store certification.
             - Package operations require root access, a provisioned Linux rootfs, and an internet connection. Review the operation log and close the Linux desktop before upgrades.
           files: |
-            METMC-OS-v10.3.0-alpha-arm64.apk
-            METMC-OS-v10.3.0-alpha-arm64.apk.sha256
+            METMC-OS-V10.5.0-arm64.apk
+            METMC-OS-V10.5.0-arm64.apk.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
