@@ -1233,7 +1233,9 @@ class ChrootManager(private val context: Context) {
             export TMPDIR=/tmp
             export HOME=/root
             export XDG_RUNTIME_DIR=/tmp/runtime-root
-            export XDG_SESSION_TYPE=x11
+            # Phoc is running a Wayland session on the nested X11 backend. Report the
+            # client session as Wayland so Phosh activates Wayland text-input/OSK support.
+            export XDG_SESSION_TYPE=wayland
             export XDG_CURRENT_DESKTOP=Phosh
             export XDG_SESSION_DESKTOP=phosh
             export DESKTOP_SESSION=phosh
@@ -1441,6 +1443,12 @@ while true; do
         [ -x /usr/libexec/xdg-desktop-portal-gtk ] && /usr/libexec/xdg-desktop-portal-gtk >/tmp/xdg-desktop-portal-gtk.log 2>&1 &
         [ -x /usr/libexec/xdg-desktop-portal ] && /usr/libexec/xdg-desktop-portal >/tmp/xdg-desktop-portal.log 2>&1 &
         gsettings set org.gnome.desktop.interface enable-animations false >/dev/null 2>&1 || true
+        # Enable the mobile on-screen keyboard and start Squeekboard explicitly.
+        # This rootfs has no systemd user session to launch its autostart service.
+        gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled true >/dev/null 2>&1 || true
+        if command -v squeekboard >/dev/null 2>&1; then
+            (squeekboard >/tmp/squeekboard.log 2>&1 &)
+        fi
         exec /usr/libexec/phosh -U
     '"
     echo "NativOS: Phoc exited, restarting..."
