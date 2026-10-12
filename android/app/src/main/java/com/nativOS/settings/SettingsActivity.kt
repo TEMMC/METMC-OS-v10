@@ -35,9 +35,11 @@ class SettingsActivity : Activity() {
     private lateinit var volumeSeekBar: SeekBar
     private lateinit var systemUsageStatus: TextView
     private var lastCpuCounters: Pair<Long, Long>? = null
+    private var pendingDiagnosticReport: String? = null
 
     companion object {
         private const val REQUEST_HARDWARE_PERMISSIONS = 1202
+        private const val REQUEST_EXPORT_DIAGNOSTICS = 1203
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -210,6 +212,12 @@ class SettingsActivity : Activity() {
             ) { updateSystemUsage() })
             addView(PremiumUi.separator(this@SettingsActivity))
             addView(row(
+                title = "Export system diagnostics",
+                subtitle = "Save device, memory, storage and permission details to a text file",
+                trailingText = "Export"
+            ) { exportDiagnostics() })
+            addView(PremiumUi.separator(this@SettingsActivity))
+            addView(row(
                 title = "Copy & paste bridge",
                 subtitle = "Clipboard get/set actions are available to Linux bridge clients; Android restricts background clipboard reads",
                 trailingText = "Enabled"
@@ -291,6 +299,102 @@ class SettingsActivity : Activity() {
         updateHardwareState()
         updateVolumeState()
         updateSystemUsage()
+    }
+
+
+    private fun exportDiagnostics() {
+        pendingDiagnosticReport = buildDiagnosticReport()
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TITLE, "METMC-OS-system-diagnostics.txt")
+        }
+        try {
+            startActivityForResult(intent, REQUEST_EXPORT_DIAGNOSTICS)
+        } catch (_: Exception) {
+            pendingDiagnosticReport = null
+            Toast.makeText(this, "Could not open file picker", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun buildDiagnosticReport(): String {
+        val memory = ActivityManager.MemoryInfo()
+        (getSystemService(ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(memory)
+        val data = android.os.StatFs(android.os.Environment.getDataDirectory().absolutePath)
+        val display = resources.displayMetrics
+        val battery = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val level = battery?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = battery?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
+        val batteryPercent = if (level >= 0 && scale > 0) "${level * 100 / scale}%" else "Unavailable"
+        val packageInfo = packageManager.getPackageInfo(packageName, 0)
+        @Suppress("DEPRECATION")
+        val versionCode = if (Build.VERSION.SDK_INT >= 28) packageInfo.longVersionCode else packageInfo.versionCode.toLong()
+        val versionName = packageInfo.versionName ?: "unknown"
+        val permissions = listOf(
+            Manifest.permission.CAMERA,
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ).joinToString("\n") { permission ->
+            "$permission: ${if (checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) "granted" else "not granted"}"
+        }
+        fun mb(bytes: Long) = bytes / (1024L * 1024L)
+        return buildString {
+            appendLine("METMC OS v10 — System diagnostics")
+            appendLine("Generated: ${java.time.Instant.now()}")
+            appendLine()
+            appendLine("[App]")
+            appendLine("Package: $packageName")
+            appendLine("Version: $versionName ($versionCode)")
+            appendLine()
+            appendLine("[Device]")
+            appendLine("Manufacturer: ${Build.MANUFACTURER}")
+            appendLine("Model: ${Build.MODEL}")
+            appendLine("Device: ${Build.DEVICE}")
+            appendLine("Android: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
+            appendLine("Build ID: ${Build.DISPLAY}")
+            appendLine("Screen: ${display.widthPixels} x ${display.heightPixels} pixels")
+            appendLine("Density: ${display.densityDpi} dpi")
+            appendLine()
+            appendLine("[Memory]")
+            appendLine("RAM total: ${mb(memory.totalMem)} MB")
+            appendLine("RAM available: ${mb(memory.availMem)} MB")
+            appendLine("Low-memory state: ${memory.lowMemory}")
+            appendLine()
+            appendLine("[Internal storage]")
+            appendLine("Total: ${mb(data.totalBytes)} MB")
+            appendLine("Available: ${mb(data.availableBytes)} MB")
+            appendLine()
+            appendLine("[Battery]")
+            appendLine("Level: $batteryPercent")
+            appendLine()
+            appendLine("[Permissions]")
+            appendLine(permissions)
+            appendLine()
+            appendLine("Privacy: this report excludes contacts, messages, account names, Android ID, and file contents.")
+            appendLine("Review the report before sharing it. Device/build details may still identify your device model.")
+        }
+    }
+
+    @Deprecated("Deprecated in Android API")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_EXPORT_DIAGNOSTICS) return
+        val report = pendingDiagnosticReport
+        pendingDiagnosticReport = null
+        if (resultCode != Activity.RESULT_OK || data?.data == null || report == null) {
+            Toast.makeText(this, "Diagnostic export cancelled", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val saved = runCatching {
+            contentResolver.openOutputStream(data.data!!)?.bufferedWriter()?.use { it.write(report) }
+                ?: error("Unable to open selected file")
+        }
+        Toast.makeText(
+            this,
+            if (saved.isSuccess) "Diagnostics exported" else "Export failed: ${saved.exceptionOrNull()?.message ?: "unknown error"}",
+            Toast.LENGTH_LONG
+        ).show()
     }
 
     private fun group() = LinearLayout(this).apply {
