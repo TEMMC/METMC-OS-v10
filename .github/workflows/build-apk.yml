@@ -1,5 +1,7 @@
 name: Build METMC OS v10 APK
 
+# This workflow keeps the v10 package installable over previous alpha builds.
+
 on:
   workflow_dispatch:
   push:
