@@ -94,7 +94,7 @@ android {
         minSdk = 28  // Android 9+ (modern root tools, Camera2 stable)
         targetSdk = 35
         versionCode = 11
-        versionName = "10.1.1-alpha"
+        versionName = "10.1.1-alpha" // Persistent METMC release-key build
 
         ndk {
             abiFilters += listOf("arm64-v8a")
