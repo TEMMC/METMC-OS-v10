@@ -113,14 +113,14 @@ jobs:
           test -n "$CHECKSUM"
           cp "$APK" METMC-OS-v10.2.0-alpha-arm64.apk
           (cd "$(dirname "$CHECKSUM")" && sha256sum "$(basename "$CHECKSUM")" >/dev/null)
-          sha256sum METMC-OS-v10.2.0-alpha-arm64.apk > METMC-OS-v10.1.1-alpha-arm64.apk.sha256
+          sha256sum METMC-OS-v10.2.0-alpha-arm64.apk > METMC-OS-v10.2.0-alpha-arm64.apk.sha256
           echo "Release APK prepared and checksum generated."
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v10.1.1-alpha
-          name: METMC OS v10.1.1-alpha
+          tag_name: v10.2.0-alpha
+          name: METMC OS v10.2.0-alpha
           prerelease: true
           generate_release_notes: true
           body: |
@@ -132,13 +132,14 @@ jobs:
             - METMC OS branding and updated launcher icon.
             - Hardware bridge improvements for battery/charging status, brightness controls, volume controls, and screen sleep/wake preferences.
             - Added opt-in system diagnostics export for device/build, display, RAM, storage, battery level, and selected permission status. The user chooses where to save the report; it excludes account names, Android ID, contacts, messages, and file contents.
+            - Added opt-in system diagnostics export for device/build, display, RAM, storage, battery level, and selected permission status. The user chooses where to save the report; it excludes account names, Android ID, contacts, messages, and file contents.
             - Clipboard bridge hooks and improved touch-focus handling.
             - CPU/RAM usage information in Settings.
             - Includes compact Phoc display scaling and a Phosh animation-disable tweak.
             - This is an alpha build. Touch responsiveness and hardware acceleration may vary by device.
             - APK is signed with a cached Android debug key; this is not a permanent production signing key or Play Store certification.
           files: |
-            METMC-OS-v10.1.1-alpha-arm64.apk
-            METMC-OS-v10.1.1-alpha-arm64.apk.sha256
+            METMC-OS-v10.2.0-alpha-arm64.apk
+            METMC-OS-v10.2.0-alpha-arm64.apk.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
