@@ -111,7 +111,7 @@ jobs:
           test -n "$CHECKSUM"
           cp "$APK" METMC-OS-v10.1.0-alpha-arm64.apk
           (cd "$(dirname "$CHECKSUM")" && sha256sum "$(basename "$CHECKSUM")" >/dev/null)
-          sha256sum METMC-OS-v10.0.0-alpha-arm64.apk > METMC-OS-v10.1.0-alpha-arm64.apk.sha256
+          sha256sum METMC-OS-v10.1.0-alpha-arm64.apk > METMC-OS-v10.1.0-alpha-arm64.apk.sha256
           echo "Release APK prepared and checksum generated."
 
       - name: Publish GitHub release
@@ -135,7 +135,7 @@ jobs:
             - This is an alpha build. Touch responsiveness and hardware acceleration may vary by device.
             - APK is debug-signed, not Play Store production-signed.
           files: |
-            METMC-OS-v10.0.0-alpha-arm64.apk
-            METMC-OS-v10.0.0-alpha-arm64.apk.sha256
+            METMC-OS-v10.1.0-alpha-arm64.apk
+            METMC-OS-v10.1.0-alpha-arm64.apk.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
