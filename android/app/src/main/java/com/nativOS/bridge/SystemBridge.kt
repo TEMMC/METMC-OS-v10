@@ -1,6 +1,8 @@
 package com.nativOS.bridge
 
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.IntentFilter
 import android.hardware.camera2.CameraManager
@@ -31,6 +33,8 @@ class SystemBridge(private val service: BridgeService) {
             BridgeProtocol.ACTION_SET_BRIGHTNESS -> handleSetBrightness(request)
             BridgeProtocol.ACTION_GET_BATTERY -> handleGetBattery(request)
             "get_brightness" -> handleGetBrightness(request)
+            "get_clipboard" -> handleGetClipboard(request)
+            "set_clipboard" -> handleSetClipboard(request)
             BridgeProtocol.ACTION_TORCH_ON -> handleTorch(request, true)
             BridgeProtocol.ACTION_TORCH_OFF -> handleTorch(request, false)
             BridgeProtocol.ACTION_GET_SIGNAL -> handleGetSignal(request)
@@ -39,6 +43,40 @@ class SystemBridge(private val service: BridgeService) {
                 request.id, BridgeProtocol.STATUS_ERROR,
                 JSONObject().put("message", "Unknown system action: ${request.action}")
             )
+        }
+    }
+
+    private fun handleGetClipboard(request: BridgeRequest): String {
+        return try {
+            val clipboard = service.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = clipboard.primaryClip
+            val text = if (clip != null && clip.itemCount > 0) {
+                clip.getItemAt(0).coerceToText(service)?.toString().orEmpty()
+            } else ""
+            BridgeProtocol.response(request.id, BridgeProtocol.STATUS_OK, JSONObject().apply {
+                put("text", text)
+                put("has_text", text.isNotEmpty())
+            })
+        } catch (e: Exception) {
+            BridgeProtocol.response(request.id, BridgeProtocol.STATUS_ERROR,
+                JSONObject().put("message", "Clipboard read failed; Android only allows clipboard reads while METMC OS is in the foreground: ${e.message}"))
+        }
+    }
+
+    private fun handleSetClipboard(request: BridgeRequest): String {
+        val text = request.params.optString("text", "")
+        if (text.length > 1000000) {
+            return BridgeProtocol.response(request.id, BridgeProtocol.STATUS_ERROR,
+                JSONObject().put("message", "Clipboard text is limited to 1 MB"))
+        }
+        return try {
+            val clipboard = service.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText("METMC OS", text))
+            BridgeProtocol.response(request.id, BridgeProtocol.STATUS_OK,
+                JSONObject().put("copied", true).put("length", text.length))
+        } catch (e: Exception) {
+            BridgeProtocol.response(request.id, BridgeProtocol.STATUS_ERROR,
+                JSONObject().put("message", "Clipboard write failed: ${e.message}"))
         }
     }
 
