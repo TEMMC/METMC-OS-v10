@@ -20,7 +20,7 @@ echo ""
 # ── Install Python dependencies ──
 echo "[1/4] Installing Python 3..."
 export DEBIAN_FRONTEND=noninteractive
-apt-get install -y --no-install-recommends python3 python3-pip python3-dbus 2>/dev/null || true
+apt-get install -y --no-install-recommends python3 python3-pip python3-dbus wl-clipboard 2>/dev/null || true
 
 # ── Copy bridge daemon ──
 echo "[2/4] Installing bridge daemon..."
