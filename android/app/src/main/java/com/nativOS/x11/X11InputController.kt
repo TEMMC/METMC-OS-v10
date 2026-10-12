@@ -30,6 +30,12 @@ class X11InputController(private val lorieView: LorieView) {
         lorieView.setOnGenericMotionListener(::handleMotionEvent)
     }
 
-    private fun handleMotionEvent(view: View, event: MotionEvent): Boolean =
-        inputHandler.handleTouchEvent(lorieView, view, event)
+    private fun handleMotionEvent(view: View, event: MotionEvent): Boolean {
+        // Reclaim focus on the first tap after Android overlays or a screen
+        // wake-up so that touch and keyboard input reach the Linux session.
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && !lorieView.hasFocus()) {
+            lorieView.requestFocus()
+        }
+        return inputHandler.handleTouchEvent(lorieView, view, event)
+    }
 }
