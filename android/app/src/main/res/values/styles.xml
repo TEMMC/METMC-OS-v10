@@ -6,7 +6,7 @@
         <item name="colorAccent">#FF6C63FF</item>
     </style>
 
-    <style name="Theme.METMCOSv10.Fullscreen" parent="Theme.NativOS">
+    <style name="Theme.METMCOSv10.Fullscreen" parent="Theme.METMCOSv10">
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowActionBar">false</item>
         <item name="android:windowFullscreen">true</item>
