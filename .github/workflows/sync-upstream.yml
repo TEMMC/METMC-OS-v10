@@ -1,18 +1,13 @@
-name: Bootstrap from NativOS upstream
+name: Sync from NativOS upstream
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
-  schedule:
-    - cron: '*/5 * * * *'
 
 permissions:
   contents: write
 
 jobs:
-  import-source:
-    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}
+  sync-source:
     runs-on: ubuntu-latest
     steps:
       - name: Check out METMC OS
@@ -20,7 +15,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Import upstream source while preserving METMC README
+      - name: Sync upstream source and preserve METMC branding
         shell: bash
         run: |
           set -euo pipefail
@@ -32,13 +27,6 @@ jobs:
           rsync -a --exclude='.git/' --exclude='.github/workflows/sync-upstream.yml' "$UPSTREAM_DIR/NativOS/" ./
           cp "$UPSTREAM_DIR/METMC_README.md" README.md
           printf '\n\n> Upstream source imported from [orailnoor/NativOS](https://github.com/orailnoor/NativOS). Review upstream notices and licenses before redistribution.\n' >> README.md
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('.github/workflows/sync-upstream.yml')
-          s = p.read_text()
-          s = s.replace("  schedule:\n    - cron: '*/5 * * * *'\n", '')
-          p.write_text(s)
-          PY
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
@@ -46,5 +34,5 @@ jobs:
             echo 'No upstream changes to import.'
             exit 0
           fi
-          git commit -m 'Import upstream NativOS source [skip ci]'
+          git commit -m 'Sync upstream NativOS source [skip ci]'
           git push origin HEAD:main
