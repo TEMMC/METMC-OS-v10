@@ -5,6 +5,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
+import android.os.BatteryManager
 import android.content.Context
 import android.content.Intent
 import android.net.LocalServerSocket
@@ -43,6 +45,37 @@ class BridgeService : Service() {
 
     private var serverSocket: LocalServerSocket? = null
     private var running = false
+    private var batteryReceiverRegistered = false
+
+    private val batteryReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != Intent.ACTION_BATTERY_CHANGED) return
+            val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+            val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
+            val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+            val plugged = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0)
+            val percentage = if (scale > 0 && level >= 0) level * 100 / scale else -1
+            val charging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                status == BatteryManager.BATTERY_STATUS_FULL
+            broadcastEvent(BridgeProtocol.TYPE_SYSTEM, BridgeProtocol.EVENT_BATTERY_CHANGED, JSONObject().apply {
+                put("percentage", percentage)
+                put("charging", charging)
+                put("status", when (status) {
+                    BatteryManager.BATTERY_STATUS_CHARGING -> "charging"
+                    BatteryManager.BATTERY_STATUS_DISCHARGING -> "discharging"
+                    BatteryManager.BATTERY_STATUS_FULL -> "full"
+                    BatteryManager.BATTERY_STATUS_NOT_CHARGING -> "not_charging"
+                    else -> "unknown"
+                })
+                put("plugged", when (plugged) {
+                    BatteryManager.BATTERY_PLUGGED_AC -> "ac"
+                    BatteryManager.BATTERY_PLUGGED_USB -> "usb"
+                    BatteryManager.BATTERY_PLUGGED_WIRELESS -> "wireless"
+                    else -> "none"
+                })
+            })
+        }
+    }
 
     // Bridge handlers — one per API category
     private lateinit var telephonyBridge: TelephonyBridge
@@ -70,6 +103,8 @@ class BridgeService : Service() {
         startForeground(NOTIFICATION_ID, buildNotification())
 
         initBridges()
+        registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        batteryReceiverRegistered = true
         startSocketServer()
         startAndroidAppLaunchPipe()
     }
@@ -119,6 +154,10 @@ class BridgeService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         running = false
+        if (batteryReceiverRegistered) {
+            runCatching { unregisterReceiver(batteryReceiver) }
+            batteryReceiverRegistered = false
+        }
         serverSocket?.close()
         cleanupBridges()
         Log.i(TAG, "Bridge service destroyed")
