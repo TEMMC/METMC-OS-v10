@@ -31,7 +31,9 @@ jobs:
           java-version: "17"
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
 
       # Keep the same debug signing key between builds so subsequent APKs can
       # update the same METMC package. If this cache is evicted, Android may
