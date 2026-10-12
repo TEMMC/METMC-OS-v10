@@ -9,6 +9,7 @@ import android.content.BroadcastReceiver
 import android.os.BatteryManager
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.LocalServerSocket
 import android.net.LocalSocket
 import android.os.IBinder
