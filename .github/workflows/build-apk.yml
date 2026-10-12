@@ -1,0 +1,85 @@
+name: Build METMC OS v10 APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "android/**"
+      - "linux/config/phoc.ini"
+      - ".github/workflows/build-apk.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: metmc-os-v10-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      # Keep the same debug signing key between builds so subsequent APKs can
+      # update the same METMC package. If this cache is evicted, Android may
+      # reject an update because the signing key will have changed.
+      - name: Restore persistent debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: metmc-os-v10-debug-signing-v1
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Download upstream rootfs from official NativOS APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_URL="https://github.com/orailnoor/NativOS/releases/download/v0.1.0-alpha/NativOS-v0.1.0-alpha-arm64.apk"
+          curl --fail --location --retry 3 --output /tmp/nativos-upstream.apk "$APK_URL"
+          unzip -l /tmp/nativos-upstream.apk | grep -F "assets/rootfs/nativos-rootfs-arm64.tgz"
+          mkdir -p android/app/src/main/assets/rootfs
+          unzip -p /tmp/nativos-upstream.apk assets/rootfs/nativos-rootfs-arm64.tgz > android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz
+          test "$(stat -c %s android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz)" -gt 104857600
+          cd android/app/src/main/assets/rootfs
+          sha256sum nativos-rootfs-arm64.tgz > nativos-rootfs-arm64.tgz.sha256
+          sha256sum --check nativos-rootfs-arm64.tgz.sha256
+
+      - name: Build and verify APK
+        working-directory: android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon :app:assembleDebug
+
+      - name: Verify package and APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -E "package: name='com.temmc.metmcosv10'|application-label:'METMC OS version 10'"
+          sha256sum "$APK" > "$APK.sha256"
+
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: METMC-OS-v10-Android-APK
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/debug/app-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 30
