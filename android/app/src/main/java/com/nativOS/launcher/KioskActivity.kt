@@ -36,6 +36,7 @@ import com.nativOS.runtime.RootfsManager
 import com.nativOS.storage.SharedFolderSync
 import com.nativOS.settings.NativOSPreferences
 import com.nativOS.settings.SettingsActivity
+import com.nativOS.settings.SystemToolsActivity
 import com.nativOS.x11.X11ServiceClient
 import com.nativOS.x11.X11InputController
 import com.nativOS.x11.X11ServerService
@@ -243,7 +244,7 @@ class KioskActivity : Activity() {
             setPadding(60, 60, 60, 60)
         }
         val titleText = TextView(this).apply {
-            text = "NativOS"
+            text = "METMC OS V10"
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 32f)
             typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
@@ -269,6 +270,13 @@ class KioskActivity : Activity() {
             gravity = Gravity.CENTER
         }
         overlayLayout!!.addView(titleText)
+        overlayLayout!!.addView(TextView(this).apply {
+            text = "Powered by NativOS"
+            setTextColor(Color.parseColor("#8D9AA8"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, 12)
+        })
         overlayLayout!!.addView(statusText)
         overlayLayout!!.addView(progressBar)
         overlayLayout!!.addView(detailText)
@@ -323,6 +331,9 @@ class KioskActivity : Activity() {
             addAssistiveAction("□", "Maximize") { maximizeLinuxWindow() }
             addAssistiveAction("⌨", "Keyboard") {
                 MainActivity.toggleKeyboardVisibility(this@KioskActivity)
+            }
+            addAssistiveAction("▤", "Tools") {
+                startActivity(Intent(this@KioskActivity, SystemToolsActivity::class.java))
             }
             addAssistiveAction("⚙", "Settings") {
                 startActivity(Intent(this@KioskActivity, SettingsActivity::class.java))
