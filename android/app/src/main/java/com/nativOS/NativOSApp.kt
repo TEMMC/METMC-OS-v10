@@ -4,7 +4,7 @@ import android.app.Application
 import android.util.Log
 
 /**
- * NativOS Application class.
+ * METMC OS version 10 application class.
  *
  * Initializes the bridge service infrastructure and chroot runtime
  * at application startup.
@@ -12,7 +12,7 @@ import android.util.Log
 class NativOSApp : Application() {
 
     companion object {
-        const val TAG = "NativOS"
+        const val TAG = "METMCOSv10"
 
         @Volatile
         lateinit var instance: NativOSApp
@@ -22,6 +22,6 @@ class NativOSApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
-        Log.i(TAG, "NativOS application initialized")
+        Log.i(TAG, "METMC OS version 10 application initialized")
     }
 }
