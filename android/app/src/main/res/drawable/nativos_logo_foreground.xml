@@ -1,6 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item
-        android:drawable="@drawable/nativos_logo"
-        android:gravity="fill" />
-</layer-list>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- METMC OS: geometric M monogram, designed for Android adaptive-icon safe area. -->
+    <path
+        android:fillColor="#F5F7FF"
+        android:pathData="M20,79 L20,32 C20,27.6 23.6,24 28,24 L35,24 L54,48 L73,24 L80,24 C84.4,24 88,27.6 88,32 L88,79 L75,79 L75,44 L54,69 L33,44 L33,79 Z" />
+    <path
+        android:fillColor="#42D3A2"
+        android:pathData="M68,24 L88,24 L88,43 Z" />
+    <path
+        android:fillColor="#756BFF"
+        android:pathData="M20,84 L88,84 L88,88 L20,88 Z" />
+</vector>
