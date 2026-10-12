@@ -24,6 +24,8 @@ import logging
 import os
 import signal
 import socket
+import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -178,6 +180,9 @@ class NativOSBridge:
     def __init__(self, socket_path: str):
         self.client = BridgeClient(socket_path)
         self.running = False
+        self._last_android_clipboard: str | None = None
+        self._last_linux_clipboard: str | None = None
+        self._clipboard_thread: threading.Thread | None = None
 
     def start(self):
         """Start the bridge daemon with auto-reconnect."""
@@ -221,6 +226,13 @@ class NativOSBridge:
             "min_distance_m": 10
         })
 
+        # Keep text clipboard synchronized between Android and the Wayland desktop.
+        if self._clipboard_thread is None or not self._clipboard_thread.is_alive():
+            self._clipboard_thread = threading.Thread(
+                target=self._clipboard_sync_loop, name="clipboard-sync", daemon=True
+            )
+            self._clipboard_thread.start()
+
         # Get device info
         info = self.client.request("system", "get_device_info")
         if info.get("status") == "ok":
@@ -241,6 +253,7 @@ class NativOSBridge:
         self.client.on_event("location.location_update", self._on_location)
         self.client.on_event("bluetooth.bt_state", self._on_bt_state)
         self.client.on_event("system.battery_changed", self._on_battery)
+        self.client.on_event("system.clipboard_changed", self._on_clipboard_changed)
 
     # ── Event Handlers ──
 
@@ -282,6 +295,53 @@ class NativOSBridge:
     def _on_bt_state(self, data: dict):
         state = data.get("state", "unknown")
         logger.info(f"🔵 Bluetooth: {state}")
+
+    def _on_clipboard_changed(self, data: dict):
+        """Copy Android clipboard text into the Linux Wayland clipboard."""
+        text = str(data.get("text", ""))
+        if text == self._last_android_clipboard:
+            return
+        self._last_android_clipboard = text
+        if shutil.which("wl-copy"):
+            try:
+                subprocess.run(
+                    ["wl-copy", "--type", "text/plain;charset=utf-8"],
+                    input=text, text=True, check=True, timeout=3,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+                self._last_linux_clipboard = text
+                logger.debug("Android clipboard copied to Linux (%d characters)", len(text))
+            except (OSError, subprocess.SubprocessError) as exc:
+                logger.debug("Could not update Linux clipboard: %s", exc)
+
+    def _clipboard_sync_loop(self):
+        """Poll Wayland clipboard and forward Linux-originated text to Android."""
+        if not shutil.which("wl-paste") or not shutil.which("wl-copy"):
+            logger.info("Clipboard sync tools unavailable; install wl-clipboard in the Linux rootfs")
+            return
+        while self.running and self.client.connected:
+            try:
+                result = subprocess.run(
+                    ["wl-paste", "--no-newline", "--type", "text"],
+                    capture_output=True, text=True, timeout=2,
+                )
+                if result.returncode == 0:
+                    linux_text = result.stdout
+                    if self._last_linux_clipboard is None:
+                        self._last_linux_clipboard = linux_text
+                    elif (linux_text != self._last_linux_clipboard and
+                          linux_text != self._last_android_clipboard):
+                        response = self.client.request(
+                            "system", "set_clipboard", {"text": linux_text}
+                        )
+                        if response.get("status") == "ok":
+                            self._last_linux_clipboard = linux_text
+                            self._last_android_clipboard = linux_text
+                            logger.debug("Linux clipboard copied to Android (%d characters)", len(linux_text))
+                time.sleep(1.2)
+            except (OSError, subprocess.SubprocessError) as exc:
+                logger.debug("Clipboard polling failed: %s", exc)
+                time.sleep(2)
 
     def _on_battery(self, data: dict):
         pct = data.get("percentage", -1)
