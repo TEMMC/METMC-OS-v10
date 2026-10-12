@@ -36,12 +36,12 @@ class SettingsActivity : Activity() {
         content.addView(summary)
         content.addView(PremiumUi.verticalSpace(this, 28))
 
-        content.addView(PremiumUi.sectionLabel(this, "NativOS mode"))
+        content.addView(PremiumUi.sectionLabel(this, "METMC OS v10 mode"))
         content.addView(group().apply {
             desktopCheck = PremiumUi.text(this@SettingsActivity, "", 20f, PremiumUi.primary)
             addView(row(
                 title = "Linux desktop",
-                subtitle = "Open NativOS like a normal app",
+                subtitle = "Open METMC OS v10 like a normal app",
                 trailing = desktopCheck
             ) {
                 NativOSPreferences.setOperatingMode(this@SettingsActivity, NativOSPreferences.OperatingMode.DESKTOP_APP)
@@ -54,7 +54,7 @@ class SettingsActivity : Activity() {
             homeCheck = PremiumUi.text(this@SettingsActivity, "", 20f, PremiumUi.primary)
             addView(row(
                 title = "Home launcher",
-                subtitle = "Use NativOS as your phone's Home screen",
+                subtitle = "Use METMC OS v10 as your phone's Home screen",
                 trailing = homeCheck
             ) {
                 NativOSPreferences.setOperatingMode(this@SettingsActivity, NativOSPreferences.OperatingMode.HOME_LAUNCHER)
@@ -126,6 +126,24 @@ class SettingsActivity : Activity() {
                     addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 })
                 finish()
+            })
+        }, PremiumUi.matchWidth())
+
+        content.addView(PremiumUi.verticalSpace(this, 26))
+        content.addView(PremiumUi.sectionLabel(this, "About"))
+        content.addView(group().apply {
+            addView(row(
+                title = "METMC OS version 10",
+                subtitle = "Created and maintained by Tinotenda Enock Mapfumo (Dr TEMMC)",
+                trailingText = "v10"
+            ))
+            addView(PremiumUi.separator(this@SettingsActivity))
+            addView(row(
+                title = "Project source",
+                subtitle = "github.com/TEMMC/METMC-OS-v10",
+                trailingText = "↗"
+            ) {
+                startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/TEMMC/METMC-OS-v10")))
             })
         }, PremiumUi.matchWidth())
 
@@ -235,7 +253,7 @@ class SettingsActivity : Activity() {
                     onFailure = { "Scan failed" }
                 )
             }
-        }, "nativOS-degoogle-scan").start()
+        }, "metmc-degoogle-scan").start()
     }
 
     private fun updateState() {
@@ -245,9 +263,9 @@ class SettingsActivity : Activity() {
         homeCheck.text = if (mode == NativOSPreferences.OperatingMode.HOME_LAUNCHER) "✓" else ""
         summary.text = when {
             mode == NativOSPreferences.OperatingMode.HOME_LAUNCHER && HomeRoleManager.isDefaultHome(this) ->
-                "NativOS is your Home launcher"
+                "METMC OS v10 is your Home launcher"
             mode == NativOSPreferences.OperatingMode.HOME_LAUNCHER ->
-                "Home launcher selected · Android approval needed"
+                "METMC OS v10 selected · Android approval needed"
             else -> "Linux desktop with Android underneath"
         }
     }
