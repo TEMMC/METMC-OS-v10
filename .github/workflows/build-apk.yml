@@ -87,7 +87,7 @@ jobs:
           retention-days: 30
 
   publish-release:
-    if: github.event_name == 'push' && contains(github.event.head_commit.message, 'Publish METMC OS v10 v10.0.0-alpha')
+    if: github.event_name == 'push' && contains(github.event.head_commit.message, 'Publish METMC OS v10 v10.1.0-alpha')
     needs: build
     runs-on: ubuntu-22.04
     permissions:
@@ -109,24 +109,28 @@ jobs:
           CHECKSUM="$(find release-assets -type f -name 'app-debug.apk.sha256' -print -quit)"
           test -n "$APK"
           test -n "$CHECKSUM"
-          cp "$APK" METMC-OS-v10.0.0-alpha-arm64.apk
+          cp "$APK" METMC-OS-v10.1.0-alpha-arm64.apk
           (cd "$(dirname "$CHECKSUM")" && sha256sum "$(basename "$CHECKSUM")" >/dev/null)
-          sha256sum METMC-OS-v10.0.0-alpha-arm64.apk > METMC-OS-v10.0.0-alpha-arm64.apk.sha256
+          sha256sum METMC-OS-v10.0.0-alpha-arm64.apk > METMC-OS-v10.1.0-alpha-arm64.apk.sha256
           echo "Release APK prepared and checksum generated."
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v10.0.0-alpha
-          name: METMC OS v10.0.0-alpha
+          tag_name: v10.1.0-alpha
+          name: METMC OS v10.1.0-alpha
           prerelease: true
           generate_release_notes: true
           body: |
-            First alpha release of METMC OS version 10 for Android ARM64.
+            METMC OS v10.1 alpha update for Android ARM64, built from the latest verified source.
 
             - Package ID: `com.temmc.metmcosv10`
             - App label: `METMC OS version 10`
             - Based on the upstream NativOS project; upstream credits are retained.
+            - METMC OS branding and updated launcher icon.
+            - Hardware bridge improvements for battery/charging status, brightness controls, volume controls, and screen sleep/wake preferences.
+            - Clipboard bridge hooks and improved touch-focus handling.
+            - CPU/RAM usage information in Settings.
             - Includes compact Phoc display scaling and a Phosh animation-disable tweak.
             - This is an alpha build. Touch responsiveness and hardware acceleration may vary by device.
             - APK is debug-signed, not Play Store production-signed.
