@@ -86,15 +86,15 @@ val verifyBundledRootfs by tasks.registering {
 }
 
 android {
-    namespace = "com.nativOS"
+    namespace = "com.nativOS" // Keep upstream Kotlin namespace to preserve source references.
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.nativOS"
+        applicationId = "com.temmc.metmcosv10"
         minSdk = 28  // Android 9+ (modern root tools, Camera2 stable)
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-alpha"
+        versionCode = 10
+        versionName = "10.0.0-alpha"
 
         ndk {
             abiFilters += listOf("arm64-v8a")
