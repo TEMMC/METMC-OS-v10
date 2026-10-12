@@ -248,6 +248,10 @@ class SettingsActivity : Activity() {
                 HomeRoleManager.requestDefaultHome(this@SettingsActivity)
             })
             addView(PremiumUi.separator(this@SettingsActivity))
+            addView(row("Linux package manager", "Check and install updates inside the Linux root filesystem", trailingText = "›") {
+                startActivity(Intent(this@SettingsActivity, PackageManagerActivity::class.java))
+            })
+            addView(PremiumUi.separator(this@SettingsActivity))
             addView(row("Android settings", "Open the underlying system settings", trailingText = "›") {
                 startActivity(Intent(Settings.ACTION_SETTINGS))
             })
