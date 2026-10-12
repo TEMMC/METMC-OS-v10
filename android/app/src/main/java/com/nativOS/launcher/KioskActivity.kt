@@ -209,9 +209,9 @@ class KioskActivity : Activity() {
         window.addFlags(
             WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
             WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
         )
+        applyScreenAwakePreference()
 
         rootLayout = FrameLayout(this).apply {
             // Safe-area margins intentionally expose this background around the
@@ -902,6 +902,7 @@ class KioskActivity : Activity() {
     override fun onResume() {
         super.onResume()
         enterImmersiveMode()
+        applyScreenAwakePreference()
         AndroidAppIntegration.sync(this)
         if (waitingForRoot) retryAfterRootGrant()
 
@@ -988,6 +989,14 @@ class KioskActivity : Activity() {
             }
         }
         return super.onKeyDown(keyCode, event)
+    }
+
+    private fun applyScreenAwakePreference() {
+        if (NativOSPreferences.keepScreenOn(this)) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
     }
 
     private fun enterImmersiveMode() {
