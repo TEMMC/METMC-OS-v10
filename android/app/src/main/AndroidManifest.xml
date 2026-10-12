@@ -81,8 +81,6 @@
     <!-- System settings (brightness, etc.) -->
     <uses-permission android:name="android.permission.WRITE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
-    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"
-        tools:ignore="ProtectedPermissions" />
 
     <!-- Storage (for rootfs and bind mounts) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
