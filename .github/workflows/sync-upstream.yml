@@ -24,7 +24,22 @@ jobs:
           cp README.md "$UPSTREAM_DIR/METMC_README.md"
           mkdir -p docs
           cp "$UPSTREAM_DIR/NativOS/README.md" docs/UPSTREAM_README.md
-          rsync -a --exclude='.git/' --exclude='.github/workflows/sync-upstream.yml' "$UPSTREAM_DIR/NativOS/" ./
+          rsync -a \
+            --exclude='.git/' \
+            --exclude='.github/workflows/sync-upstream.yml' \
+            --exclude='README.md' \
+            --exclude='NOTICE.md' \
+            --exclude='PRODUCTION_READINESS.md' \
+            --exclude='THIRD_PARTY_NOTICES.md' \
+            --exclude='android/settings.gradle.kts' \
+            --exclude='android/app/build.gradle.kts' \
+            --exclude='android/app/src/main/AndroidManifest.xml' \
+            --exclude='android/app/src/main/res/values/styles.xml' \
+            --exclude='android/app/src/main/java/com/nativOS/NativOSApp.kt' \
+            --exclude='android/app/src/main/java/com/nativOS/settings/SettingsActivity.kt' \
+            --exclude='android/app/src/main/assets/rootfs/README.md' \
+            --exclude='android/app/src/main/assets/gpu/README.md' \
+            "$UPSTREAM_DIR/NativOS/" ./
           cp "$UPSTREAM_DIR/METMC_README.md" README.md
           printf '\n\n> Upstream source imported from [orailnoor/NativOS](https://github.com/orailnoor/NativOS). Review upstream notices and licenses before redistribution.\n' >> README.md
           git config user.name 'github-actions[bot]'
