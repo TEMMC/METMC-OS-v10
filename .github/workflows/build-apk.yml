@@ -37,25 +37,20 @@ jobs:
         with:
           packages: 'platform-tools'
 
-      # Reuse the same Android debug keystore across builds, matching v10.1.0-alpha.
-      # This preserves update compatibility while avoiding missing repository secrets.
-      - name: Restore persistent debug signing key
-        uses: actions/cache@v4
-        with:
-          path: ~/.android/debug.keystore
-          key: metmc-os-v10-debug-signing-v1
-
-      - name: Require the existing signing key
+      - name: Restore METMC OS release signing key
         shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.METMC_SIGNING_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
-          KEY="$HOME/.android/debug.keystore"
-          if [[ ! -s "$KEY" ]]; then
-            echo "::error::The persistent METMC OS signing keystore was not restored. Refusing to generate a new key because it would break APK update compatibility."
+          if [[ -z "${KEYSTORE_BASE64}" ]]; then
+            echo "::error::Add the METMC_SIGNING_KEYSTORE_BASE64 repository secret before running this build."
             exit 1
           fi
-          keytool -list -keystore "$KEY" -storepass android -alias androiddebugkey >/dev/null
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" --version
+          mkdir -p "$HOME/.android"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/metmc-os-v10-release.keystore"
+          test -s "$HOME/.android/metmc-os-v10-release.keystore"
+          chmod 600 "$HOME/.android/metmc-os-v10-release.keystore"
 
       - name: Install Android SDK packages
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
@@ -81,12 +76,26 @@ jobs:
           chmod +x ./gradlew
           ./gradlew --no-daemon :app:assembleDebug
 
-      - name: Verify package and APK
+      - name: Sign APK with METMC OS release key
         shell: bash
+        env:
+          STORE_PASSWORD: ${{ secrets.METMC_SIGNING_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.METMC_SIGNING_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.METMC_SIGNING_KEY_ALIAS }}
         run: |
           set -euo pipefail
           APK="android/app/build/outputs/apk/debug/app-debug.apk"
-          test -s "$APK"
+          KEY="$HOME/.android/metmc-os-v10-release.keystore"
+          if [[ -z "$STORE_PASSWORD" || -z "$KEY_PASSWORD" || -z "$KEY_ALIAS" ]]; then
+            echo "::error::Add METMC_SIGNING_STORE_PASSWORD, METMC_SIGNING_KEY_PASSWORD, and METMC_SIGNING_KEY_ALIAS repository secrets."
+            exit 1
+          fi
+          keytool -list -keystore "$KEY" -storetype PKCS12 -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign \
+            --ks "$KEY" --ks-type PKCS12 --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:STORE_PASSWORD --key-pass env:KEY_PASSWORD \
+            --out "$APK.signed" "$APK"
+          mv "$APK.signed" "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -E "package: name='com.temmc.metmcosv10'|application-label:'METMC OS V10'"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
           sha256sum "$APK" > "$APK.sha256"
@@ -137,7 +146,7 @@ jobs:
           prerelease: true
           generate_release_notes: true
           body: |
-            METMC OS V10 10.5.0 development release for Android ARM64. This alpha is signed with the cached Android debug key, not a permanent production key.
+            METMC OS V10 10.5.0 development release for Android ARM64. This alpha is signed with the METMC OS V10 release keystore.
 
             - Package ID: `com.temmc.metmcosv10`
             - App label: `METMC OS V10`
@@ -155,7 +164,7 @@ jobs:
             - Terminal keyboard assist opens the keyboard when tapping near the lower input line; X11 applications may vary.
             - Includes compact Phoc display scaling and a Phosh animation-disable tweak.
             - This is an alpha build. Touch responsiveness and hardware acceleration may vary by device.
-            - APK is signed with a cached Android debug key; this is not a permanent production signing key or Play Store certification.
+            - APK is signed with the METMC OS V10 release keystore; this does not imply Play Store certification.
             - Package operations require root access, a provisioned Linux rootfs, and an internet connection. Review the operation log and close the Linux desktop before upgrades.
           files: |
             METMC-OS-V10.5.0-arm64.apk
