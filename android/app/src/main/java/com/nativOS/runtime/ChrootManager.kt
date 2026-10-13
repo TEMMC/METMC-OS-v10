@@ -1151,6 +1151,53 @@ class ChrootManager(private val context: Context) {
         }
     }
 
+
+    /**
+     * Provision a regular Linux user for interactive terminals. Android still
+     * uses its root bridge to manage mounts and the private chroot, but terminal
+     * shells default to metmc; privileged commands go through sudo.
+     *
+     * This is idempotent so existing installations are migrated without
+     * deleting or re-extracting the user's Linux filesystem.
+     */
+    private fun ensureDefaultLinuxUser() {
+        val result = execChroot(
+            """
+                set -eu
+                if ! id -u metmc >/dev/null 2>&1; then
+                    useradd --create-home --shell /bin/bash metmc
+                fi
+                if ! command -v sudo >/dev/null 2>&1; then
+                    apt-get update
+                    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends sudo
+                fi
+                usermod -aG sudo metmc
+                install -d -m 0755 /etc/sudoers.d
+                printf '%s\\n' 'Defaults !requiretty' 'metmc ALL=(ALL:ALL) NOPASSWD: ALL' > /etc/sudoers.d/metmc
+                chmod 0440 /etc/sudoers.d/metmc
+                if command -v visudo >/dev/null 2>&1; then visudo -cf /etc/sudoers.d/metmc; fi
+                # Disable password-based root login; the Android-side root bridge
+                # remains responsible for chroot administration.
+                passwd -l root >/dev/null 2>&1 || true
+                if ! grep -q 'METMC_DEFAULT_TERMINAL_USER' /etc/bash.bashrc 2>/dev/null; then
+                    cat >> /etc/bash.bashrc <<'METMC_DEFAULT_TERMINAL_USER'
+# METMC_DEFAULT_TERMINAL_USER: use a regular account for interactive root terminals.
+if [[ $- == *i* && ${EUID:-1} -eq 0 && -z "${SUDO_USER:-}" ]] && id metmc >/dev/null 2>&1; then
+    exec su - metmc
+fi
+METMC_DEFAULT_TERMINAL_USER
+                fi
+                chown -R metmc:metmc /home/metmc
+                chmod 0750 /home/metmc
+            """.trimIndent()
+        )
+        if (result == 0) {
+            Log.i(TAG, "Default Linux terminal user is metmc; root password login is locked")
+        } else {
+            Log.w(TAG, "Could not fully provision metmc default Linux user (exit $result)")
+        }
+    }
+
     // ── Session management ──
 
     /**
@@ -1175,6 +1222,7 @@ class ChrootManager(private val context: Context) {
         killRootfsProcesses()
 
         ensureMounts()
+        ensureDefaultLinuxUser()
         bindX11Socket()
         prepareCloseRangeCompatibility()
         prepareDisplayResizeHelper()
