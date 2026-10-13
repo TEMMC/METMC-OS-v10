@@ -18,6 +18,7 @@ import java.io.File
  * A deliberately limited package manager for the Linux chroot.
  * All apt/dpkg commands are executed inside filesDir/rootfs, never on Android.
  */
+// METMC OS V10 10.5.0: selectable package-operation logs.
 class PackageManagerActivity : Activity() {
     private lateinit var output: TextView
     private lateinit var scroll: ScrollView
