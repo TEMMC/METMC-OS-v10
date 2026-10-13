@@ -1182,7 +1182,7 @@ class ChrootManager(private val context: Context) {
                 if ! grep -q 'METMC_DEFAULT_TERMINAL_USER' /etc/bash.bashrc 2>/dev/null; then
                     cat >> /etc/bash.bashrc <<'METMC_DEFAULT_TERMINAL_USER'
 # METMC_DEFAULT_TERMINAL_USER: use a regular account for interactive root terminals.
-if [[ ${' >/dev/null 2>&1; then
+if [[ ${'$'}- == *i* && ${'$'}{EUID:-1} -eq 0 && -z "${'$'}{SUDO_USER:-}" ]] && id metmc >/dev/null 2>&1; then
     exec su - metmc
 fi
 METMC_DEFAULT_TERMINAL_USER
