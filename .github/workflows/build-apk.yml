@@ -45,6 +45,18 @@ jobs:
           path: ~/.android/debug.keystore
           key: metmc-os-v10-debug-signing-v1
 
+      - name: Require the existing signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEY="$HOME/.android/debug.keystore"
+          if [[ ! -s "$KEY" ]]; then
+            echo "::error::The persistent METMC OS signing keystore was not restored. Refusing to generate a new key because it would break APK update compatibility."
+            exit 1
+          fi
+          keytool -list -keystore "$KEY" -storepass android -alias androiddebugkey >/dev/null
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" --version
+
       - name: Install Android SDK packages
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
@@ -64,7 +76,13 @@ jobs:
 
       - name: Build and verify APK
         working-directory: android
+        env:
+          ANDROID_SIGNING_KEYSTORE: ${{ runner.temp }}/metmc-signing/debug.keystore
         run: |
+          set -euo pipefail
+          mkdir -p "$(dirname "$ANDROID_SIGNING_KEYSTORE")"
+          cp "$HOME/.android/debug.keystore" "$ANDROID_SIGNING_KEYSTORE"
+          chmod 600 "$ANDROID_SIGNING_KEYSTORE"
           chmod +x ./gradlew
           ./gradlew --no-daemon :app:assembleDebug
 
