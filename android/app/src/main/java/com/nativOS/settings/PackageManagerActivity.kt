@@ -98,7 +98,7 @@ class PackageManagerActivity : Activity() {
                 cornerRadius = dp(12).toFloat()
                 setColor(PremiumUi.surface)
             }
-            isTextSelectable = true
+            setTextIsSelectable(true)
         }
         scroll = ScrollView(this).apply {
             isFillViewport = false
