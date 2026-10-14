@@ -152,19 +152,7 @@ class RootfsManager(private val context: Context) {
         val console = File(rootfsDir, "usr/bin/kgx")
         val legacyXterm = File(rootfsDir, "usr/bin/xterm")
         val legacyGnomeTerminal = File(rootfsDir, "usr/bin/gnome-terminal")
-        if (console.exists() && !legacyXterm.exists() && !legacyGnomeTerminal.exists()) {
-            chrootManager.execChroot(
-                """
-                    for desktop in /usr/share/applications/org.gnome.Console.desktop; do
-                        if [ -f "${' ]; then
-                            sed -i 's|^Exec=.*|Exec=kgx -- /usr/local/bin/metmc-terminal|' "$desktop"
-                        fi
-                    done
-                    update-desktop-database /usr/share/applications 2>/dev/null || true
-                """.trimIndent()
-            )
-            return true
-        }
+        if (console.exists() && !legacyXterm.exists() && !legacyGnomeTerminal.exists()) return true
 
         val result = chrootManager.execChroot(
             """
