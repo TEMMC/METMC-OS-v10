@@ -1351,8 +1351,8 @@ class ChrootManager(private val context: Context) {
             configure_cobalt_wayland() {
                 app_id="${'$'}1"
                 flags_name="${'$'}2"
-                [ -d "/home/metmc/.local/share/flatpak/app/${'
-                flags_dir="/home/metmc/.var/app/${'
+                [ -d "/root/.local/share/flatpak/app/${'$'}app_id" ] || return 0
+                flags_dir="/root/.var/app/${'$'}app_id/config"
                 flags_file="${'$'}flags_dir/${'$'}flags_name-flags.conf"
                 mkdir -p "${'$'}flags_dir"
                 touch "${'$'}flags_file"
