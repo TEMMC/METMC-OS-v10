@@ -165,6 +165,9 @@ class ChrootManager(private val context: Context) {
         }
         execChroot("mkdir -p /mnt/android && ln -snf /mnt/android /root/Shared")
 
+        // Share internal storage and mounted SD/USB volumes with Linux.
+        exposeAndroidStorage()
+
         // Refresh DNS
         try {
             File(rootfsDir, "etc/resolv.conf").writeText("nameserver 8.8.8.8\nnameserver 1.1.1.1\n")
@@ -173,6 +176,39 @@ class ChrootManager(private val context: Context) {
         }
 
         Log.i(TAG, "All mounts ready")
+    }
+
+    /** Expose Android shared storage and mounted removable volumes to Linux. */
+    private fun exposeAndroidStorage() {
+        val internal = "/storage/emulated/0"
+        val linuxRoot = File(rootfsDir, "mnt/android-storage").absolutePath
+        val command = """
+            mkdir -p '$linuxRoot/internal' '$linuxRoot/removable'
+            if [ -d '$internal' ]; then mount --bind '$internal' '$linuxRoot/internal' 2>/dev/null; fi
+            for source in /storage/*; do
+                [ -d "$source" ] || continue
+                name=${source##*/}
+                case "$name" in emulated|self) continue ;; esac
+                if mount | grep -F " on $source " >/dev/null 2>&1; then
+                    target='$linuxRoot/removable/'$name
+                    mkdir -p "$target"
+                    if ! mount | grep -F " on $target " >/dev/null 2>&1; then
+                        mount --bind "$source" "$target" 2>/dev/null
+                    fi
+                fi
+            done
+            chmod 755 '$linuxRoot' '$linuxRoot/internal' '$linuxRoot/removable' 2>/dev/null
+            echo METMC_ANDROID_STORAGE_READY
+        """.trimIndent()
+        runCatching {
+            val result = rootShell.exec(command)
+            if (result.contains("METMC_ANDROID_STORAGE_READY")) {
+                execChroot("mkdir -p /mnt/android-storage /root && ln -snf /mnt/android-storage /root/AndroidStorage")
+                Log.i(TAG, "Exposed Android internal and mounted removable storage to Linux")
+            } else {
+                Log.w(TAG, "Android storage exposure returned: ${result.take(500)}")
+            }
+        }.onFailure { Log.w(TAG, "Could not expose Android storage to Linux", it) }
     }
 
     /** Bind-mount the host X11 socket directory into the chroot. */
