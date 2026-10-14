@@ -271,7 +271,7 @@ class KioskActivity : Activity() {
         }
         overlayLayout!!.addView(titleText)
         overlayLayout!!.addView(TextView(this).apply {
-            text = "Powered by NativOS"
+            text = "Tinotenda Enock Mapfumo • Dr TEMMC"
             setTextColor(Color.parseColor("#8D9AA8"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
             gravity = Gravity.CENTER
@@ -738,7 +738,7 @@ class KioskActivity : Activity() {
                 updateOverlay(
                     -1.0,
                     "Desktop repair failed",
-                    "Connect to the internet and reopen NativOS"
+                    "Connect to the internet and reopen METMC OS V10"
                 )
                 return
             }
@@ -1014,6 +1014,27 @@ class KioskActivity : Activity() {
             "Configuration changed: orientation=${newConfig.orientation}, " +
                 "surface=${rootLayout?.width}x${rootLayout?.height}"
         )
+    }
+
+    /**
+     * Keep the kiosk activity alive after boot. Finishing this Activity on Back
+     * recreates the boot overlay and repeats the mount sequence, which makes
+     * the user land on the mounting screen instead of the Linux home screen.
+     */
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        val view = desktopView
+        if (view != null && view.isAttachedToWindow && view.connected()) {
+            showLinuxHome()
+            return
+        }
+        // During boot, never finish the activity: doing so would restart the
+        // boot/mount screen when the HOME launcher recreates it.
+        if (bootSequenceRunning || waitingForRoot) return
+        // If the desktop has not started yet, keep the activity alive and let
+        // the existing boot sequence report/recover from its current state.
+        if (view == null) return
+        super.onBackPressed()
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
