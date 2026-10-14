@@ -64,7 +64,7 @@ class PackageManagerActivity : Activity() {
         checkButton = button("Check available updates") {
             runPackageCommand(
                 "Check available updates",
-                "apt-get update && apt list --upgradable 2>/dev/null"
+                "apt-get update && apt-get -s upgrade --with-new-pkgs 2>&1 | sed -n '/^The following packages will be upgraded:/,/^[0-9].* upgraded,/p; /^0 upgraded,/p; /^Inst /p; /^Conf /p; /^E:/p; /^W:/p'"
             )
         }
         page.addView(checkButton, PremiumUi.matchWidth(dp(8)))
