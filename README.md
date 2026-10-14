@@ -13,6 +13,14 @@ It is based on the open-source [NativOS project](https://github.com/orailnoor/Na
 - **Android application ID:** `com.temmc.metmcosv10`
 - **Current development version:** 10.5.0
 
+## 🔐 Default Linux root password
+
+> **DEFAULT ROOT PASSWORD: `metmc`**
+
+The Linux chroot sets the **root** account password to **`metmc`**. This is the Linux password inside METMC OS, not your Android lock-screen password. Change it after setup if you need stronger local security. The Android-side root bridge manages the chroot independently of this password.
+
+**Terminal troubleshooting:** the previous global Bash startup redirect to `su - metmc` could replace the interactive shell and leave a blank terminal if the handoff failed. The app now removes that legacy redirect instead of injecting it into `/etc/bash.bashrc`. This makes the shell-handoff regression a stronger explanation for the black terminal than the root password itself; the password change alone is not evidence that the terminal is fixed.
+
 ## Goals
 
 - Establish an independently branded and reproducible build.
