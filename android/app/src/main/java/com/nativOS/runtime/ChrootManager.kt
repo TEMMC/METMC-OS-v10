@@ -184,7 +184,7 @@ class ChrootManager(private val context: Context) {
         val linuxRoot = File(rootfsDir, "mnt/android-storage").absolutePath
         val command = """
             mkdir -p '$linuxRoot/internal' '$linuxRoot/removable'
-            if [ -d '$internal' ]; then mount --bind '$internal' '$linuxRoot/internal' 2>/dev/null; fi
+            if [ -d '$internal' ] && ! mount | grep -F " on $linuxRoot/internal " >/dev/null 2>&1; then mount --bind '$internal' '$linuxRoot/internal' 2>/dev/null; fi
             for source in /storage/*; do
                 [ -d "${'source" ] || continue
                 name=§{source##*/}
