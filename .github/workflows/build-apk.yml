@@ -147,6 +147,7 @@ jobs:
           tag_name: v10.5.0
           name: METMC OS V10 10.5.0
           prerelease: true
+          overwrite_files: true
           generate_release_notes: true
           body: |
             METMC OS V10 10.5.0 development release for Android ARM64. This alpha is signed with the METMC OS V10 release keystore.
@@ -164,7 +165,9 @@ jobs:
             - Linux rootfs validation and update-center link; Linux software center uses guarded apt/dpkg.
             - Quick-access Tools menu, shorter METMC OS V10 app name, NativOS upstream attribution retained.
             - Default Home mode is configured to launch METMC OS V10 at boot.
-            - Terminal keyboard assist opens the keyboard when tapping near the lower input line; X11 applications may vary.
+            - Keyboard no longer opens on ordinary taps near the bottom of the desktop; use a three-finger tap to toggle it.
+            - Improved Android/Linux clipboard text synchronization, including mixed plain-text and HTML clipboard items.
+            - Removed the legacy root-shell redirect that could interfere with opening the terminal; Linux root password defaults to `metmc`.
             - Includes compact Phoc display scaling and a Phosh animation-disable tweak.
             - This is an alpha build. Touch responsiveness and hardware acceleration may vary by device.
             - APK is signed with the METMC OS V10 release keystore; this does not imply Play Store certification.
