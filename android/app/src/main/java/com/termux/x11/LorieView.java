@@ -893,11 +893,14 @@ public class LorieView extends SurfaceView implements InputStub {
             return;
         }
 
-        CharSequence clip = clipboard.getText();
-        if (clip != null) {
-            String text = String.valueOf(clipboard.getText());
-            sendClipboardEvent(mNativeContext, text.getBytes(UTF_8));
-            Log.d("CLIP", "sending clipboard contents: " + text);
+        ClipData clip = clipboard.getPrimaryClip();
+        if (clip != null && clip.getItemCount() > 0) {
+            CharSequence textValue = clip.getItemAt(0).coerceToText(getContext());
+            if (textValue != null) {
+                String text = textValue.toString();
+                sendClipboardEvent(mNativeContext, text.getBytes(UTF_8));
+                Log.d("CLIP", "sending clipboard contents: " + text);
+            }
         }
     }
 
@@ -909,7 +912,6 @@ public class LorieView extends SurfaceView implements InputStub {
         ClipDescription desc = clipboard.getPrimaryClipDescription();
         if (clipboardSyncEnabled && desc != null &&
                 lastClipboardTimestamp < desc.getTimestamp() &&
-                desc.getMimeTypeCount() == 1 &&
                 (desc.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) ||
                         desc.hasMimeType(ClipDescription.MIMETYPE_TEXT_HTML))) {
             lastClipboardTimestamp = desc.getTimestamp();
