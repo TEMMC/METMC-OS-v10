@@ -1351,7 +1351,1791 @@ class ChrootManager(private val context: Context) {
             configure_cobalt_wayland() {
                 app_id="${'$'}1"
                 flags_name="${'$'}2"
-                [ -d "/root/.local/share/flatpak/app/${'$'}app_id" ] || return 0
+                [ -d "/home/metmc/.local/share/flatpak/app/${'
+                flags_dir="/home/metmc/.var/app/${'
+                flags_file="${'$'}flags_dir/${'$'}flags_name-flags.conf"
+                mkdir -p "${'$'}flags_dir"
+                touch "${'$'}flags_file"
+                grep -qxF -- '--ozone-platform=wayland' "${'$'}flags_file" || \
+                    printf '%s\n' '--ozone-platform=wayland' >> "${'$'}flags_file"
+            }
+            (
+                while true; do
+                    configure_cobalt_wayland com.google.Chrome chrome
+                    configure_cobalt_wayland com.microsoft.Edge edge
+                    configure_cobalt_wayland com.brave.Browser brave
+                    configure_cobalt_wayland com.vivaldi.Vivaldi vivaldi
+                    configure_cobalt_wayland com.opera.Opera opera
+                    sleep 5
+                done
+            ) &
+
+            mkdir -p /etc/dbus-1
+            cat > /etc/dbus-1/session-local.conf << 'DBUSEOF'
+<busconfig>
+  <policy context="default">
+    <allow user="$flatpakUid"/>
+  </policy>
+</busconfig>
+DBUSEOF
+
+            # Ensure runtime dir exists with correct permissions
+            mkdir -p /tmp/runtime-root
+            chown root:root /tmp/runtime-root
+            chmod 0700 /tmp/runtime-root
+
+            # GNOME Software and PackageKit require a system bus. There is no
+            # systemd in this chroot, so start D-Bus and polkit explicitly.
+            mkdir -p /run/dbus
+            rm -f /run/dbus/pid /run/dbus/system_bus_socket
+            dbus-uuidgen --ensure
+            if dbus-daemon --system --fork --nopidfile; then
+                echo "NativOS: System D-Bus started"
+                if [ -x /usr/lib/polkit-1/polkitd ]; then
+                    /usr/lib/polkit-1/polkitd --no-debug &
+                    echo "NativOS: polkit started"
+                fi
+            else
+                echo "NativOS: WARNING — system D-Bus failed to start"
+            fi
+
+            # Run OpenSSH when it is present in the rootfs. Use a high port so
+            # the chroot does not compete with Android services, and never
+            # expose the built-in desktop password over the network. Users can
+            # authorize access by adding a public key to
+            # /root/.ssh/authorized_keys.
+            if [ -x /usr/sbin/sshd ]; then
+                mkdir -p /run/sshd /root/.ssh /etc/ssh/sshd_config.d
+                chmod 0700 /root/.ssh
+                cat > /etc/ssh/sshd_config.d/nativos.conf << 'SSHEOF'
+Port 8022
+ListenAddress 0.0.0.0
+PermitRootLogin prohibit-password
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+UsePAM no
+SSHEOF
+                ssh-keygen -A
+                pkill -x sshd 2>/dev/null || true
+                if /usr/sbin/sshd -t && /usr/sbin/sshd -E /tmp/sshd.log; then
+                    echo "NativOS: SSH ready on port 8022 (key only)"
+                else
+                    echo "NativOS: WARNING — SSH failed to start"
+                fi
+            fi
+
+            # Set root password to 1234 so lockscreen can be unlocked
+            echo 'root:1234' | chpasswd
+
+            # We compiled a glibc-compatible libsocket_hook.so directly in the chroot
+            # at /usr/local/lib/libsocket_hook.so
+            # This library intercepts connect() and translates filesystem socket paths
+            # to abstract sockets, preserving SCM_RIGHTS fd-passing (critical for MIT-SHM)
+
+            # Start the NativOS bridge client daemon
+            if [ -f /usr/local/bin/nativOS-bridge ]; then
+                /usr/local/bin/nativOS-bridge &
+                echo "NativOS: Bridge client started"
+            fi
+            
+            # Clean up any lingering Wayland sockets and loops
+            if [ -f /tmp/phosh_loop.pid ]; then kill -9 $(cat /tmp/phosh_loop.pid) 2>/dev/null || true; rm /tmp/phosh_loop.pid; fi
+            rm -rf /tmp/runtime-root/wayland-* 2>/dev/null || true
+
+            # Generate phoc.ini with device-specific resolution
+            mkdir -p /etc/nativOS
+            cat > /etc/nativOS/phoc.ini << PHOCEOF
+[core]
+xwayland=false
+
+[output:X11-1]
+mode=${screenWidth}x${screenHeight}
+scale=$displayScale
+PHOCEOF
+            
+            echo "NativOS: Display configured: ${screenWidth}x${screenHeight} @ scale $displayScale"
+            echo "NativOS: Starting Wayland session..."
+            if command -v phoc >/dev/null 2>&1; then
+                echo "NativOS: Launching phoc (X11 backend)..."
+                
+                # Configure wlroots X11 backend
+                export WLR_BACKENDS=x11
+                export WLR_X11_OUTPUTS=1
+                export DISPLAY=:0
+                
+                # The X11 backend never owns Android's physical DRM display.
+                export WLR_DRM_NO_ATOMIC=1
+                export WLR_DRM_DEVICES=""
+                
+                # CRITICAL: Set TMPDIR to match the Android app's TMPDIR
+                # libsocket_hook.so uses TMPDIR to construct the abstract socket path
+                # The bundled X11 server (libXlorie.so) creates abstract socket at: @<TMPDIR>/.X11-unix/X0
+                # Both sides MUST use the same TMPDIR value for the abstract socket path to match
+                export TMPDIR=${tmpDir.absolutePath}
+                
+                # LD_PRELOAD: Only load libraries that actually exist on this device
+                # libsocket_hook.so translates filesystem connect() to abstract socket
+                # libnodri3.so makes wlroots use X11 shared-memory presentation.
+                # libandroid-shmem.so provides shared memory on Android kernels
+                PRELOAD=""
+                for lib in $preloadLibraries; do
+                    if [ -f "${'$'}lib" ]; then
+                        if [ -z "${'$'}PRELOAD" ]; then
+                            PRELOAD="${'$'}lib"
+                        else
+                            PRELOAD="${'$'}PRELOAD:${'$'}lib"
+                        fi
+                    fi
+                done
+                if [ -n "${'$'}PRELOAD" ]; then
+                    export LD_PRELOAD=${'$'}PRELOAD
+                    echo "NativOS: LD_PRELOAD=${'$'}LD_PRELOAD"
+                else
+                    echo "NativOS: No LD_PRELOAD libraries found (fresh install)"
+                fi
+
+                # Phoc needs libnodri3, but hardware-accelerated applications do
+                # not. Phosh replaces LD_PRELOAD before launching the app session.
+                APP_PRELOAD=""
+                for lib in $appPreloadLibraries; do
+                    if [ -f "${'$'}lib" ]; then
+                        if [ -z "${'$'}APP_PRELOAD" ]; then
+                            APP_PRELOAD="${'$'}lib"
+                        else
+                            APP_PRELOAD="${'$'}APP_PRELOAD:${'$'}lib"
+                        fi
+                    fi
+                done
+                export NATIVOS_APP_LD_PRELOAD="${'$'}APP_PRELOAD"
+                
+                echo "NativOS: TMPDIR=${'$'}TMPDIR"
+                echo "NativOS: DISPLAY=${'$'}DISPLAY"
+                echo "NativOS: GPU=${'$'}NATIVOS_GPU"
+                
+                cat > /tmp/start_phosh.sh << 'PHOSHEOF'
+#!/bin/bash
+echo $$ > /tmp/phosh_loop.pid
+while true; do
+    dbus-run-session -- phoc -C /etc/nativOS/phoc.ini -E "bash -c '
+        export LD_PRELOAD=${'$'}NATIVOS_APP_LD_PRELOAD
+        [ -x /usr/libexec/xdg-desktop-portal-gtk ] && /usr/libexec/xdg-desktop-portal-gtk >/tmp/xdg-desktop-portal-gtk.log 2>&1 &
+        [ -x /usr/libexec/xdg-desktop-portal ] && /usr/libexec/xdg-desktop-portal >/tmp/xdg-desktop-portal.log 2>&1 &
+        gsettings set org.gnome.desktop.interface enable-animations false >/dev/null 2>&1 || true
+        # Enable the mobile on-screen keyboard and start Squeekboard explicitly.
+        # This rootfs has no systemd user session to launch its autostart service.
+        gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled true >/dev/null 2>&1 || true
+        if command -v squeekboard >/dev/null 2>&1; then
+            (squeekboard >/tmp/squeekboard.log 2>&1 &)
+        fi
+        exec /usr/libexec/phosh -U
+    '"
+    echo "NativOS: Phoc exited, restarting..."
+    sleep 0.5
+done
+PHOSHEOF
+                chmod +x /tmp/start_phosh.sh
+                exec /tmp/start_phosh.sh
+            elif command -v kgx >/dev/null 2>&1; then
+                echo "NativOS: Fallback — launching GNOME Console"
+                exec kgx
+            else
+                echo "NativOS: ERROR — no compositor or terminal found"
+                sleep 999
+            fi
+        """.trimIndent()
+
+        Log.i(TAG, "Starting Phosh session")
+
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/bash -c ${shellQuote(runScript)}"
+        val startedSession = ProcessBuilder(su, "-c", fullCommand)
+            .redirectErrorStream(true)
+            .start()
+        sessionProcess = startedSession
+
+        // Log output from the session
+        Thread {
+            try {
+                val reader = startedSession.inputStream.bufferedReader()
+                val buffer = CharArray(1024)
+                var charsRead: Int
+                while (reader.read(buffer).also { charsRead = it } != -1) {
+                    Log.d(TAG, "SESSION: " + String(buffer, 0, charsRead))
+                }
+            } catch (error: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Wait until both the Wayland socket and Phosh process exist. */
+    fun awaitDesktopReady(timeoutMs: Long = 20_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            if (execChroot(
+                    "test -S /tmp/runtime-root/wayland-0 && " +
+                        "(pgrep -x phosh >/dev/null 2>&1 || pidof phosh >/dev/null 2>&1)"
+                ) == 0
+            ) {
+                Log.i(TAG, "Desktop readiness check passed")
+                // The process and socket appear just before Phosh commits its first
+                // frame. Keep the splash visible through that short final gap.
+                Thread.sleep(500)
+                return true
+            }
+            try {
+                Thread.sleep(250)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Desktop did not become ready within ${timeoutMs}ms")
+        return false
+    }
+
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()
+                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
+
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '$root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '$root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        val targets = listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks GPG/Flatpak temporary dirs.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"
+    }
+}
+}app_id" ] || [ -d "/var/lib/flatpak/app/${'
+                flags_dir="/root/.var/app/${'$'}app_id/config"
+                flags_file="${'$'}flags_dir/${'$'}flags_name-flags.conf"
+                mkdir -p "${'$'}flags_dir"
+                touch "${'$'}flags_file"
+                grep -qxF -- '--ozone-platform=wayland' "${'$'}flags_file" || \
+                    printf '%s\n' '--ozone-platform=wayland' >> "${'$'}flags_file"
+            }
+            (
+                while true; do
+                    configure_cobalt_wayland com.google.Chrome chrome
+                    configure_cobalt_wayland com.microsoft.Edge edge
+                    configure_cobalt_wayland com.brave.Browser brave
+                    configure_cobalt_wayland com.vivaldi.Vivaldi vivaldi
+                    configure_cobalt_wayland com.opera.Opera opera
+                    sleep 5
+                done
+            ) &
+
+            mkdir -p /etc/dbus-1
+            cat > /etc/dbus-1/session-local.conf << 'DBUSEOF'
+<busconfig>
+  <policy context="default">
+    <allow user="$flatpakUid"/>
+  </policy>
+</busconfig>
+DBUSEOF
+
+            # Ensure runtime dir exists with correct permissions
+            mkdir -p /tmp/runtime-root
+            chown root:root /tmp/runtime-root
+            chmod 0700 /tmp/runtime-root
+
+            # GNOME Software and PackageKit require a system bus. There is no
+            # systemd in this chroot, so start D-Bus and polkit explicitly.
+            mkdir -p /run/dbus
+            rm -f /run/dbus/pid /run/dbus/system_bus_socket
+            dbus-uuidgen --ensure
+            if dbus-daemon --system --fork --nopidfile; then
+                echo "NativOS: System D-Bus started"
+                if [ -x /usr/lib/polkit-1/polkitd ]; then
+                    /usr/lib/polkit-1/polkitd --no-debug &
+                    echo "NativOS: polkit started"
+                fi
+            else
+                echo "NativOS: WARNING — system D-Bus failed to start"
+            fi
+
+            # Run OpenSSH when it is present in the rootfs. Use a high port so
+            # the chroot does not compete with Android services, and never
+            # expose the built-in desktop password over the network. Users can
+            # authorize access by adding a public key to
+            # /root/.ssh/authorized_keys.
+            if [ -x /usr/sbin/sshd ]; then
+                mkdir -p /run/sshd /root/.ssh /etc/ssh/sshd_config.d
+                chmod 0700 /root/.ssh
+                cat > /etc/ssh/sshd_config.d/nativos.conf << 'SSHEOF'
+Port 8022
+ListenAddress 0.0.0.0
+PermitRootLogin prohibit-password
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+UsePAM no
+SSHEOF
+                ssh-keygen -A
+                pkill -x sshd 2>/dev/null || true
+                if /usr/sbin/sshd -t && /usr/sbin/sshd -E /tmp/sshd.log; then
+                    echo "NativOS: SSH ready on port 8022 (key only)"
+                else
+                    echo "NativOS: WARNING — SSH failed to start"
+                fi
+            fi
+
+            # Set root password to 1234 so lockscreen can be unlocked
+            echo 'root:1234' | chpasswd
+
+            # We compiled a glibc-compatible libsocket_hook.so directly in the chroot
+            # at /usr/local/lib/libsocket_hook.so
+            # This library intercepts connect() and translates filesystem socket paths
+            # to abstract sockets, preserving SCM_RIGHTS fd-passing (critical for MIT-SHM)
+
+            # Start the NativOS bridge client daemon
+            if [ -f /usr/local/bin/nativOS-bridge ]; then
+                /usr/local/bin/nativOS-bridge &
+                echo "NativOS: Bridge client started"
+            fi
+            
+            # Clean up any lingering Wayland sockets and loops
+            if [ -f /tmp/phosh_loop.pid ]; then kill -9 $(cat /tmp/phosh_loop.pid) 2>/dev/null || true; rm /tmp/phosh_loop.pid; fi
+            rm -rf /tmp/runtime-root/wayland-* 2>/dev/null || true
+
+            # Generate phoc.ini with device-specific resolution
+            mkdir -p /etc/nativOS
+            cat > /etc/nativOS/phoc.ini << PHOCEOF
+[core]
+xwayland=false
+
+[output:X11-1]
+mode=${screenWidth}x${screenHeight}
+scale=$displayScale
+PHOCEOF
+            
+            echo "NativOS: Display configured: ${screenWidth}x${screenHeight} @ scale $displayScale"
+            echo "NativOS: Starting Wayland session..."
+            if command -v phoc >/dev/null 2>&1; then
+                echo "NativOS: Launching phoc (X11 backend)..."
+                
+                # Configure wlroots X11 backend
+                export WLR_BACKENDS=x11
+                export WLR_X11_OUTPUTS=1
+                export DISPLAY=:0
+                
+                # The X11 backend never owns Android's physical DRM display.
+                export WLR_DRM_NO_ATOMIC=1
+                export WLR_DRM_DEVICES=""
+                
+                # CRITICAL: Set TMPDIR to match the Android app's TMPDIR
+                # libsocket_hook.so uses TMPDIR to construct the abstract socket path
+                # The bundled X11 server (libXlorie.so) creates abstract socket at: @<TMPDIR>/.X11-unix/X0
+                # Both sides MUST use the same TMPDIR value for the abstract socket path to match
+                export TMPDIR=${tmpDir.absolutePath}
+                
+                # LD_PRELOAD: Only load libraries that actually exist on this device
+                # libsocket_hook.so translates filesystem connect() to abstract socket
+                # libnodri3.so makes wlroots use X11 shared-memory presentation.
+                # libandroid-shmem.so provides shared memory on Android kernels
+                PRELOAD=""
+                for lib in $preloadLibraries; do
+                    if [ -f "${'$'}lib" ]; then
+                        if [ -z "${'$'}PRELOAD" ]; then
+                            PRELOAD="${'$'}lib"
+                        else
+                            PRELOAD="${'$'}PRELOAD:${'$'}lib"
+                        fi
+                    fi
+                done
+                if [ -n "${'$'}PRELOAD" ]; then
+                    export LD_PRELOAD=${'$'}PRELOAD
+                    echo "NativOS: LD_PRELOAD=${'$'}LD_PRELOAD"
+                else
+                    echo "NativOS: No LD_PRELOAD libraries found (fresh install)"
+                fi
+
+                # Phoc needs libnodri3, but hardware-accelerated applications do
+                # not. Phosh replaces LD_PRELOAD before launching the app session.
+                APP_PRELOAD=""
+                for lib in $appPreloadLibraries; do
+                    if [ -f "${'$'}lib" ]; then
+                        if [ -z "${'$'}APP_PRELOAD" ]; then
+                            APP_PRELOAD="${'$'}lib"
+                        else
+                            APP_PRELOAD="${'$'}APP_PRELOAD:${'$'}lib"
+                        fi
+                    fi
+                done
+                export NATIVOS_APP_LD_PRELOAD="${'$'}APP_PRELOAD"
+                
+                echo "NativOS: TMPDIR=${'$'}TMPDIR"
+                echo "NativOS: DISPLAY=${'$'}DISPLAY"
+                echo "NativOS: GPU=${'$'}NATIVOS_GPU"
+                
+                cat > /tmp/start_phosh.sh << 'PHOSHEOF'
+#!/bin/bash
+echo $$ > /tmp/phosh_loop.pid
+while true; do
+    dbus-run-session -- phoc -C /etc/nativOS/phoc.ini -E "bash -c '
+        export LD_PRELOAD=${'$'}NATIVOS_APP_LD_PRELOAD
+        [ -x /usr/libexec/xdg-desktop-portal-gtk ] && /usr/libexec/xdg-desktop-portal-gtk >/tmp/xdg-desktop-portal-gtk.log 2>&1 &
+        [ -x /usr/libexec/xdg-desktop-portal ] && /usr/libexec/xdg-desktop-portal >/tmp/xdg-desktop-portal.log 2>&1 &
+        gsettings set org.gnome.desktop.interface enable-animations false >/dev/null 2>&1 || true
+        # Enable the mobile on-screen keyboard and start Squeekboard explicitly.
+        # This rootfs has no systemd user session to launch its autostart service.
+        gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled true >/dev/null 2>&1 || true
+        if command -v squeekboard >/dev/null 2>&1; then
+            (squeekboard >/tmp/squeekboard.log 2>&1 &)
+        fi
+        exec /usr/libexec/phosh -U
+    '"
+    echo "NativOS: Phoc exited, restarting..."
+    sleep 0.5
+done
+PHOSHEOF
+                chmod +x /tmp/start_phosh.sh
+                exec /tmp/start_phosh.sh
+            elif command -v kgx >/dev/null 2>&1; then
+                echo "NativOS: Fallback — launching GNOME Console"
+                exec kgx
+            else
+                echo "NativOS: ERROR — no compositor or terminal found"
+                sleep 999
+            fi
+        """.trimIndent()
+
+        Log.i(TAG, "Starting Phosh session")
+
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/bash -c ${shellQuote(runScript)}"
+        val startedSession = ProcessBuilder(su, "-c", fullCommand)
+            .redirectErrorStream(true)
+            .start()
+        sessionProcess = startedSession
+
+        // Log output from the session
+        Thread {
+            try {
+                val reader = startedSession.inputStream.bufferedReader()
+                val buffer = CharArray(1024)
+                var charsRead: Int
+                while (reader.read(buffer).also { charsRead = it } != -1) {
+                    Log.d(TAG, "SESSION: " + String(buffer, 0, charsRead))
+                }
+            } catch (error: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Wait until both the Wayland socket and Phosh process exist. */
+    fun awaitDesktopReady(timeoutMs: Long = 20_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            if (execChroot(
+                    "test -S /tmp/runtime-root/wayland-0 && " +
+                        "(pgrep -x phosh >/dev/null 2>&1 || pidof phosh >/dev/null 2>&1)"
+                ) == 0
+            ) {
+                Log.i(TAG, "Desktop readiness check passed")
+                // The process and socket appear just before Phosh commits its first
+                // frame. Keep the splash visible through that short final gap.
+                Thread.sleep(500)
+                return true
+            }
+            try {
+                Thread.sleep(250)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Desktop did not become ready within ${timeoutMs}ms")
+        return false
+    }
+
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()
+                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
+
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '$root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '$root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        val targets = listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks GPG/Flatpak temporary dirs.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"
+    }
+}
+}app_id" ] || return 0
+                flags_dir="/root/.var/app/${'$'}app_id/config"
+                flags_file="${'$'}flags_dir/${'$'}flags_name-flags.conf"
+                mkdir -p "${'$'}flags_dir"
+                touch "${'$'}flags_file"
+                grep -qxF -- '--ozone-platform=wayland' "${'$'}flags_file" || \
+                    printf '%s\n' '--ozone-platform=wayland' >> "${'$'}flags_file"
+            }
+            (
+                while true; do
+                    configure_cobalt_wayland com.google.Chrome chrome
+                    configure_cobalt_wayland com.microsoft.Edge edge
+                    configure_cobalt_wayland com.brave.Browser brave
+                    configure_cobalt_wayland com.vivaldi.Vivaldi vivaldi
+                    configure_cobalt_wayland com.opera.Opera opera
+                    sleep 5
+                done
+            ) &
+
+            mkdir -p /etc/dbus-1
+            cat > /etc/dbus-1/session-local.conf << 'DBUSEOF'
+<busconfig>
+  <policy context="default">
+    <allow user="$flatpakUid"/>
+  </policy>
+</busconfig>
+DBUSEOF
+
+            # Ensure runtime dir exists with correct permissions
+            mkdir -p /tmp/runtime-root
+            chown root:root /tmp/runtime-root
+            chmod 0700 /tmp/runtime-root
+
+            # GNOME Software and PackageKit require a system bus. There is no
+            # systemd in this chroot, so start D-Bus and polkit explicitly.
+            mkdir -p /run/dbus
+            rm -f /run/dbus/pid /run/dbus/system_bus_socket
+            dbus-uuidgen --ensure
+            if dbus-daemon --system --fork --nopidfile; then
+                echo "NativOS: System D-Bus started"
+                if [ -x /usr/lib/polkit-1/polkitd ]; then
+                    /usr/lib/polkit-1/polkitd --no-debug &
+                    echo "NativOS: polkit started"
+                fi
+            else
+                echo "NativOS: WARNING — system D-Bus failed to start"
+            fi
+
+            # Run OpenSSH when it is present in the rootfs. Use a high port so
+            # the chroot does not compete with Android services, and never
+            # expose the built-in desktop password over the network. Users can
+            # authorize access by adding a public key to
+            # /root/.ssh/authorized_keys.
+            if [ -x /usr/sbin/sshd ]; then
+                mkdir -p /run/sshd /root/.ssh /etc/ssh/sshd_config.d
+                chmod 0700 /root/.ssh
+                cat > /etc/ssh/sshd_config.d/nativos.conf << 'SSHEOF'
+Port 8022
+ListenAddress 0.0.0.0
+PermitRootLogin prohibit-password
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+UsePAM no
+SSHEOF
+                ssh-keygen -A
+                pkill -x sshd 2>/dev/null || true
+                if /usr/sbin/sshd -t && /usr/sbin/sshd -E /tmp/sshd.log; then
+                    echo "NativOS: SSH ready on port 8022 (key only)"
+                else
+                    echo "NativOS: WARNING — SSH failed to start"
+                fi
+            fi
+
+            # Set root password to 1234 so lockscreen can be unlocked
+            echo 'root:1234' | chpasswd
+
+            # We compiled a glibc-compatible libsocket_hook.so directly in the chroot
+            # at /usr/local/lib/libsocket_hook.so
+            # This library intercepts connect() and translates filesystem socket paths
+            # to abstract sockets, preserving SCM_RIGHTS fd-passing (critical for MIT-SHM)
+
+            # Start the NativOS bridge client daemon
+            if [ -f /usr/local/bin/nativOS-bridge ]; then
+                /usr/local/bin/nativOS-bridge &
+                echo "NativOS: Bridge client started"
+            fi
+            
+            # Clean up any lingering Wayland sockets and loops
+            if [ -f /tmp/phosh_loop.pid ]; then kill -9 $(cat /tmp/phosh_loop.pid) 2>/dev/null || true; rm /tmp/phosh_loop.pid; fi
+            rm -rf /tmp/runtime-root/wayland-* 2>/dev/null || true
+
+            # Generate phoc.ini with device-specific resolution
+            mkdir -p /etc/nativOS
+            cat > /etc/nativOS/phoc.ini << PHOCEOF
+[core]
+xwayland=false
+
+[output:X11-1]
+mode=${screenWidth}x${screenHeight}
+scale=$displayScale
+PHOCEOF
+            
+            echo "NativOS: Display configured: ${screenWidth}x${screenHeight} @ scale $displayScale"
+            echo "NativOS: Starting Wayland session..."
+            if command -v phoc >/dev/null 2>&1; then
+                echo "NativOS: Launching phoc (X11 backend)..."
+                
+                # Configure wlroots X11 backend
+                export WLR_BACKENDS=x11
+                export WLR_X11_OUTPUTS=1
+                export DISPLAY=:0
+                
+                # The X11 backend never owns Android's physical DRM display.
+                export WLR_DRM_NO_ATOMIC=1
+                export WLR_DRM_DEVICES=""
+                
+                # CRITICAL: Set TMPDIR to match the Android app's TMPDIR
+                # libsocket_hook.so uses TMPDIR to construct the abstract socket path
+                # The bundled X11 server (libXlorie.so) creates abstract socket at: @<TMPDIR>/.X11-unix/X0
+                # Both sides MUST use the same TMPDIR value for the abstract socket path to match
+                export TMPDIR=${tmpDir.absolutePath}
+                
+                # LD_PRELOAD: Only load libraries that actually exist on this device
+                # libsocket_hook.so translates filesystem connect() to abstract socket
+                # libnodri3.so makes wlroots use X11 shared-memory presentation.
+                # libandroid-shmem.so provides shared memory on Android kernels
+                PRELOAD=""
+                for lib in $preloadLibraries; do
+                    if [ -f "${'$'}lib" ]; then
+                        if [ -z "${'$'}PRELOAD" ]; then
+                            PRELOAD="${'$'}lib"
+                        else
+                            PRELOAD="${'$'}PRELOAD:${'$'}lib"
+                        fi
+                    fi
+                done
+                if [ -n "${'$'}PRELOAD" ]; then
+                    export LD_PRELOAD=${'$'}PRELOAD
+                    echo "NativOS: LD_PRELOAD=${'$'}LD_PRELOAD"
+                else
+                    echo "NativOS: No LD_PRELOAD libraries found (fresh install)"
+                fi
+
+                # Phoc needs libnodri3, but hardware-accelerated applications do
+                # not. Phosh replaces LD_PRELOAD before launching the app session.
+                APP_PRELOAD=""
+                for lib in $appPreloadLibraries; do
+                    if [ -f "${'$'}lib" ]; then
+                        if [ -z "${'$'}APP_PRELOAD" ]; then
+                            APP_PRELOAD="${'$'}lib"
+                        else
+                            APP_PRELOAD="${'$'}APP_PRELOAD:${'$'}lib"
+                        fi
+                    fi
+                done
+                export NATIVOS_APP_LD_PRELOAD="${'$'}APP_PRELOAD"
+                
+                echo "NativOS: TMPDIR=${'$'}TMPDIR"
+                echo "NativOS: DISPLAY=${'$'}DISPLAY"
+                echo "NativOS: GPU=${'$'}NATIVOS_GPU"
+                
+                cat > /tmp/start_phosh.sh << 'PHOSHEOF'
+#!/bin/bash
+echo $$ > /tmp/phosh_loop.pid
+while true; do
+    dbus-run-session -- phoc -C /etc/nativOS/phoc.ini -E "bash -c '
+        export LD_PRELOAD=${'$'}NATIVOS_APP_LD_PRELOAD
+        [ -x /usr/libexec/xdg-desktop-portal-gtk ] && /usr/libexec/xdg-desktop-portal-gtk >/tmp/xdg-desktop-portal-gtk.log 2>&1 &
+        [ -x /usr/libexec/xdg-desktop-portal ] && /usr/libexec/xdg-desktop-portal >/tmp/xdg-desktop-portal.log 2>&1 &
+        gsettings set org.gnome.desktop.interface enable-animations false >/dev/null 2>&1 || true
+        # Enable the mobile on-screen keyboard and start Squeekboard explicitly.
+        # This rootfs has no systemd user session to launch its autostart service.
+        gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled true >/dev/null 2>&1 || true
+        if command -v squeekboard >/dev/null 2>&1; then
+            (squeekboard >/tmp/squeekboard.log 2>&1 &)
+        fi
+        exec /usr/libexec/phosh -U
+    '"
+    echo "NativOS: Phoc exited, restarting..."
+    sleep 0.5
+done
+PHOSHEOF
+                chmod +x /tmp/start_phosh.sh
+                exec /tmp/start_phosh.sh
+            elif command -v kgx >/dev/null 2>&1; then
+                echo "NativOS: Fallback — launching GNOME Console"
+                exec kgx
+            else
+                echo "NativOS: ERROR — no compositor or terminal found"
+                sleep 999
+            fi
+        """.trimIndent()
+
+        Log.i(TAG, "Starting Phosh session")
+
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/bash -c ${shellQuote(runScript)}"
+        val startedSession = ProcessBuilder(su, "-c", fullCommand)
+            .redirectErrorStream(true)
+            .start()
+        sessionProcess = startedSession
+
+        // Log output from the session
+        Thread {
+            try {
+                val reader = startedSession.inputStream.bufferedReader()
+                val buffer = CharArray(1024)
+                var charsRead: Int
+                while (reader.read(buffer).also { charsRead = it } != -1) {
+                    Log.d(TAG, "SESSION: " + String(buffer, 0, charsRead))
+                }
+            } catch (error: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Wait until both the Wayland socket and Phosh process exist. */
+    fun awaitDesktopReady(timeoutMs: Long = 20_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            if (execChroot(
+                    "test -S /tmp/runtime-root/wayland-0 && " +
+                        "(pgrep -x phosh >/dev/null 2>&1 || pidof phosh >/dev/null 2>&1)"
+                ) == 0
+            ) {
+                Log.i(TAG, "Desktop readiness check passed")
+                // The process and socket appear just before Phosh commits its first
+                // frame. Keep the splash visible through that short final gap.
+                Thread.sleep(500)
+                return true
+            }
+            try {
+                Thread.sleep(250)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Desktop did not become ready within ${timeoutMs}ms")
+        return false
+    }
+
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()
+                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
+
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '$root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '$root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        val targets = listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks GPG/Flatpak temporary dirs.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"
+    }
+}
+}app_id/config"
+                flags_file="${'$'}flags_dir/${'$'}flags_name-flags.conf"
+                mkdir -p "${'$'}flags_dir"
+                touch "${'$'}flags_file"
+                grep -qxF -- '--ozone-platform=wayland' "${'$'}flags_file" || \
+                    printf '%s\n' '--ozone-platform=wayland' >> "${'$'}flags_file"
+            }
+            (
+                while true; do
+                    configure_cobalt_wayland com.google.Chrome chrome
+                    configure_cobalt_wayland com.microsoft.Edge edge
+                    configure_cobalt_wayland com.brave.Browser brave
+                    configure_cobalt_wayland com.vivaldi.Vivaldi vivaldi
+                    configure_cobalt_wayland com.opera.Opera opera
+                    sleep 5
+                done
+            ) &
+
+            mkdir -p /etc/dbus-1
+            cat > /etc/dbus-1/session-local.conf << 'DBUSEOF'
+<busconfig>
+  <policy context="default">
+    <allow user="$flatpakUid"/>
+  </policy>
+</busconfig>
+DBUSEOF
+
+            # Ensure runtime dir exists with correct permissions
+            mkdir -p /tmp/runtime-root
+            chown root:root /tmp/runtime-root
+            chmod 0700 /tmp/runtime-root
+
+            # GNOME Software and PackageKit require a system bus. There is no
+            # systemd in this chroot, so start D-Bus and polkit explicitly.
+            mkdir -p /run/dbus
+            rm -f /run/dbus/pid /run/dbus/system_bus_socket
+            dbus-uuidgen --ensure
+            if dbus-daemon --system --fork --nopidfile; then
+                echo "NativOS: System D-Bus started"
+                if [ -x /usr/lib/polkit-1/polkitd ]; then
+                    /usr/lib/polkit-1/polkitd --no-debug &
+                    echo "NativOS: polkit started"
+                fi
+            else
+                echo "NativOS: WARNING — system D-Bus failed to start"
+            fi
+
+            # Run OpenSSH when it is present in the rootfs. Use a high port so
+            # the chroot does not compete with Android services, and never
+            # expose the built-in desktop password over the network. Users can
+            # authorize access by adding a public key to
+            # /root/.ssh/authorized_keys.
+            if [ -x /usr/sbin/sshd ]; then
+                mkdir -p /run/sshd /root/.ssh /etc/ssh/sshd_config.d
+                chmod 0700 /root/.ssh
+                cat > /etc/ssh/sshd_config.d/nativos.conf << 'SSHEOF'
+Port 8022
+ListenAddress 0.0.0.0
+PermitRootLogin prohibit-password
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+UsePAM no
+SSHEOF
+                ssh-keygen -A
+                pkill -x sshd 2>/dev/null || true
+                if /usr/sbin/sshd -t && /usr/sbin/sshd -E /tmp/sshd.log; then
+                    echo "NativOS: SSH ready on port 8022 (key only)"
+                else
+                    echo "NativOS: WARNING — SSH failed to start"
+                fi
+            fi
+
+            # Set root password to 1234 so lockscreen can be unlocked
+            echo 'root:1234' | chpasswd
+
+            # We compiled a glibc-compatible libsocket_hook.so directly in the chroot
+            # at /usr/local/lib/libsocket_hook.so
+            # This library intercepts connect() and translates filesystem socket paths
+            # to abstract sockets, preserving SCM_RIGHTS fd-passing (critical for MIT-SHM)
+
+            # Start the NativOS bridge client daemon
+            if [ -f /usr/local/bin/nativOS-bridge ]; then
+                /usr/local/bin/nativOS-bridge &
+                echo "NativOS: Bridge client started"
+            fi
+            
+            # Clean up any lingering Wayland sockets and loops
+            if [ -f /tmp/phosh_loop.pid ]; then kill -9 $(cat /tmp/phosh_loop.pid) 2>/dev/null || true; rm /tmp/phosh_loop.pid; fi
+            rm -rf /tmp/runtime-root/wayland-* 2>/dev/null || true
+
+            # Generate phoc.ini with device-specific resolution
+            mkdir -p /etc/nativOS
+            cat > /etc/nativOS/phoc.ini << PHOCEOF
+[core]
+xwayland=false
+
+[output:X11-1]
+mode=${screenWidth}x${screenHeight}
+scale=$displayScale
+PHOCEOF
+            
+            echo "NativOS: Display configured: ${screenWidth}x${screenHeight} @ scale $displayScale"
+            echo "NativOS: Starting Wayland session..."
+            if command -v phoc >/dev/null 2>&1; then
+                echo "NativOS: Launching phoc (X11 backend)..."
+                
+                # Configure wlroots X11 backend
+                export WLR_BACKENDS=x11
+                export WLR_X11_OUTPUTS=1
+                export DISPLAY=:0
+                
+                # The X11 backend never owns Android's physical DRM display.
+                export WLR_DRM_NO_ATOMIC=1
+                export WLR_DRM_DEVICES=""
+                
+                # CRITICAL: Set TMPDIR to match the Android app's TMPDIR
+                # libsocket_hook.so uses TMPDIR to construct the abstract socket path
+                # The bundled X11 server (libXlorie.so) creates abstract socket at: @<TMPDIR>/.X11-unix/X0
+                # Both sides MUST use the same TMPDIR value for the abstract socket path to match
+                export TMPDIR=${tmpDir.absolutePath}
+                
+                # LD_PRELOAD: Only load libraries that actually exist on this device
+                # libsocket_hook.so translates filesystem connect() to abstract socket
+                # libnodri3.so makes wlroots use X11 shared-memory presentation.
+                # libandroid-shmem.so provides shared memory on Android kernels
+                PRELOAD=""
+                for lib in $preloadLibraries; do
+                    if [ -f "${'$'}lib" ]; then
+                        if [ -z "${'$'}PRELOAD" ]; then
+                            PRELOAD="${'$'}lib"
+                        else
+                            PRELOAD="${'$'}PRELOAD:${'$'}lib"
+                        fi
+                    fi
+                done
+                if [ -n "${'$'}PRELOAD" ]; then
+                    export LD_PRELOAD=${'$'}PRELOAD
+                    echo "NativOS: LD_PRELOAD=${'$'}LD_PRELOAD"
+                else
+                    echo "NativOS: No LD_PRELOAD libraries found (fresh install)"
+                fi
+
+                # Phoc needs libnodri3, but hardware-accelerated applications do
+                # not. Phosh replaces LD_PRELOAD before launching the app session.
+                APP_PRELOAD=""
+                for lib in $appPreloadLibraries; do
+                    if [ -f "${'$'}lib" ]; then
+                        if [ -z "${'$'}APP_PRELOAD" ]; then
+                            APP_PRELOAD="${'$'}lib"
+                        else
+                            APP_PRELOAD="${'$'}APP_PRELOAD:${'$'}lib"
+                        fi
+                    fi
+                done
+                export NATIVOS_APP_LD_PRELOAD="${'$'}APP_PRELOAD"
+                
+                echo "NativOS: TMPDIR=${'$'}TMPDIR"
+                echo "NativOS: DISPLAY=${'$'}DISPLAY"
+                echo "NativOS: GPU=${'$'}NATIVOS_GPU"
+                
+                cat > /tmp/start_phosh.sh << 'PHOSHEOF'
+#!/bin/bash
+echo $$ > /tmp/phosh_loop.pid
+while true; do
+    dbus-run-session -- phoc -C /etc/nativOS/phoc.ini -E "bash -c '
+        export LD_PRELOAD=${'$'}NATIVOS_APP_LD_PRELOAD
+        [ -x /usr/libexec/xdg-desktop-portal-gtk ] && /usr/libexec/xdg-desktop-portal-gtk >/tmp/xdg-desktop-portal-gtk.log 2>&1 &
+        [ -x /usr/libexec/xdg-desktop-portal ] && /usr/libexec/xdg-desktop-portal >/tmp/xdg-desktop-portal.log 2>&1 &
+        gsettings set org.gnome.desktop.interface enable-animations false >/dev/null 2>&1 || true
+        # Enable the mobile on-screen keyboard and start Squeekboard explicitly.
+        # This rootfs has no systemd user session to launch its autostart service.
+        gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled true >/dev/null 2>&1 || true
+        if command -v squeekboard >/dev/null 2>&1; then
+            (squeekboard >/tmp/squeekboard.log 2>&1 &)
+        fi
+        exec /usr/libexec/phosh -U
+    '"
+    echo "NativOS: Phoc exited, restarting..."
+    sleep 0.5
+done
+PHOSHEOF
+                chmod +x /tmp/start_phosh.sh
+                exec /tmp/start_phosh.sh
+            elif command -v kgx >/dev/null 2>&1; then
+                echo "NativOS: Fallback — launching GNOME Console"
+                exec kgx
+            else
+                echo "NativOS: ERROR — no compositor or terminal found"
+                sleep 999
+            fi
+        """.trimIndent()
+
+        Log.i(TAG, "Starting Phosh session")
+
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/bash -c ${shellQuote(runScript)}"
+        val startedSession = ProcessBuilder(su, "-c", fullCommand)
+            .redirectErrorStream(true)
+            .start()
+        sessionProcess = startedSession
+
+        // Log output from the session
+        Thread {
+            try {
+                val reader = startedSession.inputStream.bufferedReader()
+                val buffer = CharArray(1024)
+                var charsRead: Int
+                while (reader.read(buffer).also { charsRead = it } != -1) {
+                    Log.d(TAG, "SESSION: " + String(buffer, 0, charsRead))
+                }
+            } catch (error: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Wait until both the Wayland socket and Phosh process exist. */
+    fun awaitDesktopReady(timeoutMs: Long = 20_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            if (execChroot(
+                    "test -S /tmp/runtime-root/wayland-0 && " +
+                        "(pgrep -x phosh >/dev/null 2>&1 || pidof phosh >/dev/null 2>&1)"
+                ) == 0
+            ) {
+                Log.i(TAG, "Desktop readiness check passed")
+                // The process and socket appear just before Phosh commits its first
+                // frame. Keep the splash visible through that short final gap.
+                Thread.sleep(500)
+                return true
+            }
+            try {
+                Thread.sleep(250)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Desktop did not become ready within ${timeoutMs}ms")
+        return false
+    }
+
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()
+                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
+
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '$root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '$root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        val targets = listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks GPG/Flatpak temporary dirs.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"
+    }
+}
+}app_id" ] || [ -d "/var/lib/flatpak/app/${'
+                flags_dir="/root/.var/app/${'$'}app_id/config"
+                flags_file="${'$'}flags_dir/${'$'}flags_name-flags.conf"
+                mkdir -p "${'$'}flags_dir"
+                touch "${'$'}flags_file"
+                grep -qxF -- '--ozone-platform=wayland' "${'$'}flags_file" || \
+                    printf '%s\n' '--ozone-platform=wayland' >> "${'$'}flags_file"
+            }
+            (
+                while true; do
+                    configure_cobalt_wayland com.google.Chrome chrome
+                    configure_cobalt_wayland com.microsoft.Edge edge
+                    configure_cobalt_wayland com.brave.Browser brave
+                    configure_cobalt_wayland com.vivaldi.Vivaldi vivaldi
+                    configure_cobalt_wayland com.opera.Opera opera
+                    sleep 5
+                done
+            ) &
+
+            mkdir -p /etc/dbus-1
+            cat > /etc/dbus-1/session-local.conf << 'DBUSEOF'
+<busconfig>
+  <policy context="default">
+    <allow user="$flatpakUid"/>
+  </policy>
+</busconfig>
+DBUSEOF
+
+            # Ensure runtime dir exists with correct permissions
+            mkdir -p /tmp/runtime-root
+            chown root:root /tmp/runtime-root
+            chmod 0700 /tmp/runtime-root
+
+            # GNOME Software and PackageKit require a system bus. There is no
+            # systemd in this chroot, so start D-Bus and polkit explicitly.
+            mkdir -p /run/dbus
+            rm -f /run/dbus/pid /run/dbus/system_bus_socket
+            dbus-uuidgen --ensure
+            if dbus-daemon --system --fork --nopidfile; then
+                echo "NativOS: System D-Bus started"
+                if [ -x /usr/lib/polkit-1/polkitd ]; then
+                    /usr/lib/polkit-1/polkitd --no-debug &
+                    echo "NativOS: polkit started"
+                fi
+            else
+                echo "NativOS: WARNING — system D-Bus failed to start"
+            fi
+
+            # Run OpenSSH when it is present in the rootfs. Use a high port so
+            # the chroot does not compete with Android services, and never
+            # expose the built-in desktop password over the network. Users can
+            # authorize access by adding a public key to
+            # /root/.ssh/authorized_keys.
+            if [ -x /usr/sbin/sshd ]; then
+                mkdir -p /run/sshd /root/.ssh /etc/ssh/sshd_config.d
+                chmod 0700 /root/.ssh
+                cat > /etc/ssh/sshd_config.d/nativos.conf << 'SSHEOF'
+Port 8022
+ListenAddress 0.0.0.0
+PermitRootLogin prohibit-password
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+UsePAM no
+SSHEOF
+                ssh-keygen -A
+                pkill -x sshd 2>/dev/null || true
+                if /usr/sbin/sshd -t && /usr/sbin/sshd -E /tmp/sshd.log; then
+                    echo "NativOS: SSH ready on port 8022 (key only)"
+                else
+                    echo "NativOS: WARNING — SSH failed to start"
+                fi
+            fi
+
+            # Set root password to 1234 so lockscreen can be unlocked
+            echo 'root:1234' | chpasswd
+
+            # We compiled a glibc-compatible libsocket_hook.so directly in the chroot
+            # at /usr/local/lib/libsocket_hook.so
+            # This library intercepts connect() and translates filesystem socket paths
+            # to abstract sockets, preserving SCM_RIGHTS fd-passing (critical for MIT-SHM)
+
+            # Start the NativOS bridge client daemon
+            if [ -f /usr/local/bin/nativOS-bridge ]; then
+                /usr/local/bin/nativOS-bridge &
+                echo "NativOS: Bridge client started"
+            fi
+            
+            # Clean up any lingering Wayland sockets and loops
+            if [ -f /tmp/phosh_loop.pid ]; then kill -9 $(cat /tmp/phosh_loop.pid) 2>/dev/null || true; rm /tmp/phosh_loop.pid; fi
+            rm -rf /tmp/runtime-root/wayland-* 2>/dev/null || true
+
+            # Generate phoc.ini with device-specific resolution
+            mkdir -p /etc/nativOS
+            cat > /etc/nativOS/phoc.ini << PHOCEOF
+[core]
+xwayland=false
+
+[output:X11-1]
+mode=${screenWidth}x${screenHeight}
+scale=$displayScale
+PHOCEOF
+            
+            echo "NativOS: Display configured: ${screenWidth}x${screenHeight} @ scale $displayScale"
+            echo "NativOS: Starting Wayland session..."
+            if command -v phoc >/dev/null 2>&1; then
+                echo "NativOS: Launching phoc (X11 backend)..."
+                
+                # Configure wlroots X11 backend
+                export WLR_BACKENDS=x11
+                export WLR_X11_OUTPUTS=1
+                export DISPLAY=:0
+                
+                # The X11 backend never owns Android's physical DRM display.
+                export WLR_DRM_NO_ATOMIC=1
+                export WLR_DRM_DEVICES=""
+                
+                # CRITICAL: Set TMPDIR to match the Android app's TMPDIR
+                # libsocket_hook.so uses TMPDIR to construct the abstract socket path
+                # The bundled X11 server (libXlorie.so) creates abstract socket at: @<TMPDIR>/.X11-unix/X0
+                # Both sides MUST use the same TMPDIR value for the abstract socket path to match
+                export TMPDIR=${tmpDir.absolutePath}
+                
+                # LD_PRELOAD: Only load libraries that actually exist on this device
+                # libsocket_hook.so translates filesystem connect() to abstract socket
+                # libnodri3.so makes wlroots use X11 shared-memory presentation.
+                # libandroid-shmem.so provides shared memory on Android kernels
+                PRELOAD=""
+                for lib in $preloadLibraries; do
+                    if [ -f "${'$'}lib" ]; then
+                        if [ -z "${'$'}PRELOAD" ]; then
+                            PRELOAD="${'$'}lib"
+                        else
+                            PRELOAD="${'$'}PRELOAD:${'$'}lib"
+                        fi
+                    fi
+                done
+                if [ -n "${'$'}PRELOAD" ]; then
+                    export LD_PRELOAD=${'$'}PRELOAD
+                    echo "NativOS: LD_PRELOAD=${'$'}LD_PRELOAD"
+                else
+                    echo "NativOS: No LD_PRELOAD libraries found (fresh install)"
+                fi
+
+                # Phoc needs libnodri3, but hardware-accelerated applications do
+                # not. Phosh replaces LD_PRELOAD before launching the app session.
+                APP_PRELOAD=""
+                for lib in $appPreloadLibraries; do
+                    if [ -f "${'$'}lib" ]; then
+                        if [ -z "${'$'}APP_PRELOAD" ]; then
+                            APP_PRELOAD="${'$'}lib"
+                        else
+                            APP_PRELOAD="${'$'}APP_PRELOAD:${'$'}lib"
+                        fi
+                    fi
+                done
+                export NATIVOS_APP_LD_PRELOAD="${'$'}APP_PRELOAD"
+                
+                echo "NativOS: TMPDIR=${'$'}TMPDIR"
+                echo "NativOS: DISPLAY=${'$'}DISPLAY"
+                echo "NativOS: GPU=${'$'}NATIVOS_GPU"
+                
+                cat > /tmp/start_phosh.sh << 'PHOSHEOF'
+#!/bin/bash
+echo $$ > /tmp/phosh_loop.pid
+while true; do
+    dbus-run-session -- phoc -C /etc/nativOS/phoc.ini -E "bash -c '
+        export LD_PRELOAD=${'$'}NATIVOS_APP_LD_PRELOAD
+        [ -x /usr/libexec/xdg-desktop-portal-gtk ] && /usr/libexec/xdg-desktop-portal-gtk >/tmp/xdg-desktop-portal-gtk.log 2>&1 &
+        [ -x /usr/libexec/xdg-desktop-portal ] && /usr/libexec/xdg-desktop-portal >/tmp/xdg-desktop-portal.log 2>&1 &
+        gsettings set org.gnome.desktop.interface enable-animations false >/dev/null 2>&1 || true
+        # Enable the mobile on-screen keyboard and start Squeekboard explicitly.
+        # This rootfs has no systemd user session to launch its autostart service.
+        gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled true >/dev/null 2>&1 || true
+        if command -v squeekboard >/dev/null 2>&1; then
+            (squeekboard >/tmp/squeekboard.log 2>&1 &)
+        fi
+        exec /usr/libexec/phosh -U
+    '"
+    echo "NativOS: Phoc exited, restarting..."
+    sleep 0.5
+done
+PHOSHEOF
+                chmod +x /tmp/start_phosh.sh
+                exec /tmp/start_phosh.sh
+            elif command -v kgx >/dev/null 2>&1; then
+                echo "NativOS: Fallback — launching GNOME Console"
+                exec kgx
+            else
+                echo "NativOS: ERROR — no compositor or terminal found"
+                sleep 999
+            fi
+        """.trimIndent()
+
+        Log.i(TAG, "Starting Phosh session")
+
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/bash -c ${shellQuote(runScript)}"
+        val startedSession = ProcessBuilder(su, "-c", fullCommand)
+            .redirectErrorStream(true)
+            .start()
+        sessionProcess = startedSession
+
+        // Log output from the session
+        Thread {
+            try {
+                val reader = startedSession.inputStream.bufferedReader()
+                val buffer = CharArray(1024)
+                var charsRead: Int
+                while (reader.read(buffer).also { charsRead = it } != -1) {
+                    Log.d(TAG, "SESSION: " + String(buffer, 0, charsRead))
+                }
+            } catch (error: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Wait until both the Wayland socket and Phosh process exist. */
+    fun awaitDesktopReady(timeoutMs: Long = 20_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            if (execChroot(
+                    "test -S /tmp/runtime-root/wayland-0 && " +
+                        "(pgrep -x phosh >/dev/null 2>&1 || pidof phosh >/dev/null 2>&1)"
+                ) == 0
+            ) {
+                Log.i(TAG, "Desktop readiness check passed")
+                // The process and socket appear just before Phosh commits its first
+                // frame. Keep the splash visible through that short final gap.
+                Thread.sleep(500)
+                return true
+            }
+            try {
+                Thread.sleep(250)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Desktop did not become ready within ${timeoutMs}ms")
+        return false
+    }
+
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()
+                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
+
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '$root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '$root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        val targets = listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks GPG/Flatpak temporary dirs.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"
+    }
+}
+}app_id" ] || return 0
                 flags_dir="/root/.var/app/${'$'}app_id/config"
                 flags_file="${'$'}flags_dir/${'$'}flags_name-flags.conf"
                 mkdir -p "${'$'}flags_dir"
