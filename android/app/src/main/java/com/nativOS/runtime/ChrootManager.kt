@@ -1179,14 +1179,23 @@ class ChrootManager(private val context: Context) {
                 # Disable password-based root login; the Android-side root bridge
                 # remains responsible for chroot administration.
                 passwd -l root >/dev/null 2>&1 || true
-                if ! grep -q 'METMC_DEFAULT_TERMINAL_USER' /etc/bash.bashrc 2>/dev/null; then
-                    cat >> /etc/bash.bashrc <<'METMC_DEFAULT_TERMINAL_USER'
-# METMC_DEFAULT_TERMINAL_USER: use a regular account for interactive root terminals.
-if [[ ${'$'}- == *i* && ${'$'}{EUID:-1} -eq 0 && -z "${'$'}{SUDO_USER:-}" ]] && id metmc >/dev/null 2>&1; then
-    exec su - metmc
-fi
-METMC_DEFAULT_TERMINAL_USER
+                # Do not replace every interactive root shell from bashrc: this can
+                # leave GNOME Console without a usable prompt on some chroot builds.
+                # Switch to metmc explicitly in the terminal launcher instead.
+                if grep -q 'METMC_DEFAULT_TERMINAL_USER' /etc/bash.bashrc 2>/dev/null; then
+                    sed -i '/# METMC_DEFAULT_TERMINAL_USER: use a regular account for interactive root terminals\./,/^METMC_DEFAULT_TERMINAL_USER$/d' /etc/bash.bashrc
                 fi
+                cat > /usr/local/bin/metmc-terminal <<'METMC_TERMINAL'
+#!/bin/sh
+cd /home/metmc
+exec su - metmc -c 'exec /bin/bash -i'
+METMC_TERMINAL
+                chmod 0755 /usr/local/bin/metmc-terminal
+                for desktop in /usr/share/applications/org.gnome.Console.desktop /usr/share/applications/org.gnome.Console.desktop; do
+                    if [ -f "$desktop" ]; then
+                        sed -i 's|^Exec=.*|Exec=kgx -- /usr/local/bin/metmc-terminal|' "$desktop"
+                    fi
+                done
                 chown -R metmc:metmc /home/metmc
                 chmod 0750 /home/metmc
             """.trimIndent()
