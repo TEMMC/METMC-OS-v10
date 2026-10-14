@@ -1216,7 +1216,10 @@ class ChrootManager(private val context: Context) {
                 # terminal's interactive shell with su and leave a blank window
                 # if that handoff failed. Keep terminal startup independent of bashrc.
                 if [ -f /etc/bash.bashrc ]; then
-                    sed -i '/^# METMC_DEFAULT_TERMINAL_USER:/,/^METMC_DEFAULT_TERMINAL_USER${'
+                    sed -i '/^# METMC_DEFAULT_TERMINAL_USER:/,/METMC_DEFAULT_TERMINAL_USER/d' /etc/bash.bashrc
+                fi
+                # Keep root password login available for local chroot administration.
+                echo 'root:metmc' | chpasswd
                 chown -R metmc:metmc /home/metmc
                 chmod 0750 /home/metmc
             """.trimIndent()
