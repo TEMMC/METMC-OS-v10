@@ -1310,10 +1310,8 @@ class ChrootManager(private val context: Context) {
             # Standard FHS PATH
             export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
             export TMPDIR=/tmp
-            export HOME=/home/metmc
-            export USER=metmc
-            export LOGNAME=metmc
-            export XDG_RUNTIME_DIR=/tmp/runtime-metmc
+            export HOME=/root
+            export XDG_RUNTIME_DIR=/tmp/runtime-root
             # Phoc is running a Wayland session on the nested X11 backend. Report the
             # client session as Wayland so Phosh activates Wayland text-input/OSK support.
             export XDG_SESSION_TYPE=wayland
@@ -1322,8 +1320,8 @@ class ChrootManager(private val context: Context) {
             export DESKTOP_SESSION=phosh
             # Flatpak exports launchers here. Keeping both locations in the
             # session search path lets Phosh discover Store installs live.
-            export XDG_DATA_HOME=/home/metmc/.local/share
-            export XDG_DATA_DIRS=/home/metmc/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/run/nativOS/android-apps/share:/usr/local/share:/usr/share
+            export XDG_DATA_HOME=/root/.local/share
+            export XDG_DATA_DIRS=/root/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/run/nativOS/android-apps/share:/usr/local/share:/usr/share
             export XDG_CONFIG_DIRS=/etc/xdg
             export DISPLAY=:0
             export LANG=C.UTF-8
@@ -1382,9 +1380,9 @@ class ChrootManager(private val context: Context) {
 DBUSEOF
 
             # Ensure runtime dir exists with correct permissions
-            install -d -o metmc -g metmc -m 0700 /tmp/runtime-metmc
-            install -d -o metmc -g metmc -m 0750 /home/metmc/.local/share
-            chown -R metmc:metmc /home/metmc
+            mkdir -p /tmp/runtime-root
+            chown root:root /tmp/runtime-root
+            chmod 0700 /tmp/runtime-root
 
             # GNOME Software and PackageKit require a system bus. There is no
             # systemd in this chroot, so start D-Bus and polkit explicitly.
@@ -1443,7 +1441,7 @@ SSHEOF
             
             # Clean up any lingering Wayland sockets and loops
             if [ -f /tmp/phosh_loop.pid ]; then kill -9 $(cat /tmp/phosh_loop.pid) 2>/dev/null || true; rm /tmp/phosh_loop.pid; fi
-            rm -rf /tmp/runtime-metmc/wayland-* 2>/dev/null || true
+            rm -rf /tmp/runtime-root/wayland-* 2>/dev/null || true
 
             # Generate phoc.ini with device-specific resolution
             mkdir -p /etc/nativOS
@@ -1537,8 +1535,7 @@ while true; do
 done
 PHOSHEOF
                 chmod +x /tmp/start_phosh.sh
-                chown root:root /tmp/start_phosh.sh
-                exec runuser -u metmc --preserve-environment -- /tmp/start_phosh.sh
+                exec /tmp/start_phosh.sh
             elif command -v kgx >/dev/null 2>&1; then
                 echo "NativOS: Fallback — launching GNOME Console"
                 exec kgx
