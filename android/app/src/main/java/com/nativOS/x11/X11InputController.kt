@@ -14,6 +14,44 @@ class X11InputController(private val lorieView: LorieView) {
         InputEventSender(lorieView),
     )
 
+    // Android can emit repeated ACTION_MOVE events with identical coordinates.
+    // Forwarding those duplicates makes gesture velocity estimators see zero-speed
+    // samples, which can make Phosh swipes feel sticky or fail to complete.
+    // Filter only exact duplicate MOVE frames; preserve DOWN/UP/CANCEL and all
+    // genuine multi-pointer movement.
+    private var lastMoveX = FloatArray(0)
+    private var lastMoveY = FloatArray(0)
+    private var lastMovePointerCount = 0
+
+    private fun isDuplicateMove(event: MotionEvent): Boolean {
+        val count = event.pointerCount
+        if (count == 0 || count != lastMovePointerCount ||
+            lastMoveX.size != count || lastMoveY.size != count) return false
+        for (i in 0 until count) {
+            if (event.getX(i) != lastMoveX[i] || event.getY(i) != lastMoveY[i]) {
+                return false
+            }
+        }
+        return true
+    }
+
+    private fun rememberMove(event: MotionEvent) {
+        val count = event.pointerCount
+        if (lastMoveX.size != count) {
+            lastMoveX = FloatArray(count)
+            lastMoveY = FloatArray(count)
+        }
+        for (i in 0 until count) {
+            lastMoveX[i] = event.getX(i)
+            lastMoveY[i] = event.getY(i)
+        }
+        lastMovePointerCount = count
+    }
+
+    private fun clearMoveHistory() {
+        lastMovePointerCount = 0
+    }
+
     init {
         // Direct XInput touch is not handled by every nested Wayland compositor.
         // Simulated touch preserves phone-style absolute positioning using mouse events.
@@ -34,6 +72,15 @@ class X11InputController(private val lorieView: LorieView) {
         // Reclaim focus after Android overlays or wake-up, but never open the
         // keyboard merely because the user touched the bottom of the desktop.
         // The keyboard remains available through the existing three-finger gesture.
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> clearMoveHistory()
+            MotionEvent.ACTION_MOVE -> {
+                if (isDuplicateMove(event)) return true
+                rememberMove(event)
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_CANCEL ->
+                clearMoveHistory()
+        }
         if (event.actionMasked == MotionEvent.ACTION_DOWN && !lorieView.hasFocus()) {
             lorieView.requestFocus()
         }
