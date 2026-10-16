@@ -1292,10 +1292,13 @@ METMC_LAUNCH_EOF
         val hardwareGpu = prepareHardwareGpu()
         // Keep the UI scale stable when width and height swap on rotation.
         // Very-high-density panels need scale 3; normal phone panels use 2.
+        // Keep Phosh controls comfortably sized on phone panels while reducing
+        // the amount of nested X11 rendering work on mid-density devices.
+        // Phoc accepts fractional output scales; the output mode remains native pixels.
         val displayScale = when {
-            context.resources.displayMetrics.densityDpi >= 500 -> 3
-            context.resources.displayMetrics.densityDpi >= 280 -> 2
-            else -> 1
+            context.resources.displayMetrics.densityDpi >= 500 -> 2.0
+            context.resources.displayMetrics.densityDpi >= 280 -> 1.5
+            else -> 1.0
         }
         val gpuEnvironment = if (hardwareGpu) {
             """
@@ -1420,13 +1423,57 @@ DBUSEOF
             rm -f /run/dbus/pid /run/dbus/system_bus_socket
             dbus-uuidgen --ensure
             if dbus-daemon --system --fork --nopidfile; then
-                echo "NativOS: System D-Bus started"
+                echo "METMC OS: System D-Bus started"
                 if [ -x /usr/lib/polkit-1/polkitd ]; then
                     /usr/lib/polkit-1/polkitd --no-debug &
-                    echo "NativOS: polkit started"
+                    echo "METMC OS: polkit started"
                 fi
+                # UPower is optional in the bundled rootfs. When present, start
+                # it on the system bus so Phosh can read battery/charging state.
+                # The Android kernel remains authoritative for battery and thermal policy.
+                if command -v upowerd >/dev/null 2>&1; then
+                    if pgrep -x upowerd >/dev/null 2>&1; then
+                        echo "METMC OS: UPower already running"
+                    else
+                        upowerd --no-debug &
+                        sleep 1
+                        if pgrep -x upowerd >/dev/null 2>&1; then
+                            echo "METMC OS: UPower started"
+                        else
+                            echo "METMC OS: WARNING — UPower failed to start"
+                        fi
+                    fi
+                else
+                    echo "METMC OS: UPower not installed; battery integration remains unavailable"
+                fi
+                # Record kernel-exposed power/input/display capabilities for diagnostics.
+                mkdir -p /run/metmc
+                {
+                    echo "timestamp=$(date -Is 2>/dev/null || date)"
+                    echo "power_supplies:"
+                    for p in /sys/class/power_supply/*; do
+                        [ -e "$p" ] || continue
+                        echo "[$(basename "$p")]"
+                        for f in type status capacity online; do
+                            [ -r "$p/$f" ] && printf '%s=%s\n' "$f" "$(cat "$p/$f" 2>/dev/null)"
+                        done
+                    done
+                    echo "backlight:"
+                    for p in /sys/class/backlight/*; do
+                        [ -e "$p" ] || continue
+                        echo "[$(basename "$p")]"
+                        for f in brightness actual_brightness max_brightness; do
+                            [ -r "$p/$f" ] && printf '%s=%s\n' "$f" "$(cat "$p/$f" 2>/dev/null)"
+                        done
+                    done
+                    echo "graphics:"
+                    ls -l /dev/dri 2>/dev/null || true
+                    echo "input:"
+                    ls -l /dev/input 2>/dev/null || true
+                } > /run/metmc/hardware-status.txt
+                chmod 0644 /run/metmc/hardware-status.txt
             else
-                echo "NativOS: WARNING — system D-Bus failed to start"
+                echo "METMC OS: WARNING — system D-Bus failed to start"
             fi
 
             # Run OpenSSH when it is present in the rootfs. Use a high port so
