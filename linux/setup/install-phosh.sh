@@ -30,6 +30,7 @@ apt-get install -y --no-install-recommends \
     x11-utils \
     x11-xserver-utils \
     dbus-x11 \
+    upower \
     ca-certificates \
     locales \
     wget \
