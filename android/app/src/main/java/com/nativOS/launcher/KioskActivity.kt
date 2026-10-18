@@ -575,12 +575,25 @@ class KioskActivity : Activity() {
     }
 
     private fun showLinuxHome() {
+        // The Android navigation handle is a Home action, not an app-drawer
+        // toggle. Toggling Super_L here can reopen Phosh's overview; when the
+        // nested X11 surface is stale that leaves a black home layer and makes
+        // the shell look frozen. Restore/focus the Phosh window, then dismiss
+        // any open overview with Escape and repaint the embedded X11 surface.
         Thread({
             val restored = chrootManager.restoreMaximizedX11Window(focusDesktop = true)
             if (restored) SystemClock.sleep(160)
             val focused = chrootManager.focusPhoshWindow()
             runOnUiThread {
-                if (focused) desktopView?.postDelayed({ togglePhoshOverview() }, 80)
+                desktopView?.postDelayed({
+                    if (focused && desktopView?.isAttachedToWindow == true) {
+                        sendLinuxKey(KeyEvent.KEYCODE_ESCAPE)
+                        desktopView?.postDelayed({
+                            desktopView?.triggerCallback()
+                            MainActivity.getInstance().lorieView?.triggerCallback()
+                        }, 120)
+                    }
+                }, 80)
             }
         }, "LinuxHome").start()
     }
