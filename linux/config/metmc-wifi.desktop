@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=METMC Wi-Fi
+Comment=Manage Android Wi-Fi from the Phosh desktop
+Exec=metmc-wifi open
+Icon=network-wireless
+Terminal=true
+Categories=Settings;Network;
