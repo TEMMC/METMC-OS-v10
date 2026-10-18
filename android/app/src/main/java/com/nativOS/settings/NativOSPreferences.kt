@@ -13,7 +13,7 @@ object NativOSPreferences {
 
     fun hideSystemBars(context: Context): Boolean =
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
-            .getBoolean(HIDE_SYSTEM_BARS, false)
+            .getBoolean(HIDE_SYSTEM_BARS, true)
 
     fun setHideSystemBars(context: Context, enabled: Boolean) {
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
