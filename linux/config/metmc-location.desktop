@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Location Settings
+Comment=Open Android location settings
+Exec=metmc-settings location
+Icon=location-services
+Terminal=true
+Categories=Settings;HardwareSettings;
