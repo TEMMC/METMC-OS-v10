@@ -27,10 +27,16 @@ echo "[2/4] Installing bridge daemon..."
 cp "$BRIDGE_DIR/nativOS-bridge.py" /usr/local/bin/nativOS-bridge
 chmod +x /usr/local/bin/nativOS-bridge
 
+# Install Phosh-accessible Wi-Fi controls backed by Android Wi-Fi APIs.
+cp "$BRIDGE_DIR/metmc-wifi.py" /usr/local/bin/metmc-wifi
+chmod +x /usr/local/bin/metmc-wifi
+
 # ── Copy phoc config ──
 echo "[3/4] Installing phoc configuration..."
 mkdir -p /etc/nativOS
 cp "$CONFIG_DIR/phoc.ini" /etc/nativOS/phoc.ini
+mkdir -p /usr/share/applications
+cp "$CONFIG_DIR/metmc-wifi.desktop" /usr/share/applications/metmc-wifi.desktop
 
 # ── Install systemd service ──
 echo "[4/4] Installing systemd service..."
@@ -46,3 +52,4 @@ echo "✅ Bridge client installed!"
 echo "   Daemon: /usr/local/bin/nativOS-bridge"
 echo "   Service: nativOS-bridge.service"
 echo "   Socket: /run/nativOS/bridge.sock (bind-mounted from Android)"
+echo "   Wi-Fi: launch METMC Wi-Fi from Phosh or run metmc-wifi status/open"
