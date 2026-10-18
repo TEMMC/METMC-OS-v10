@@ -11,7 +11,9 @@ on:
     branches: [main]
     paths:
       - "android/**"
-      - "linux/config/phoc.ini"
+      - "linux/config/**"
+      - "linux/bridge-client/**"
+      - "linux/setup/**"
       - ".github/workflows/build-apk.yml"
 
 permissions:
@@ -169,6 +171,9 @@ jobs:
             - Improved Android/Linux clipboard text synchronization, including mixed plain-text and HTML clipboard items.
             - Removed the legacy root-shell redirect that could interfere with opening the terminal; Linux root password defaults to `metmc`.
             - Includes compact Phoc display scaling and a Phosh animation-disable tweak.
+            - Adds Phosh launchers for Bluetooth, display, sound, location, and Android system settings; Android remains the owner of physical radios.
+            - Installs optional Phosh Mobile Settings, GNOME Control Center, GNOME Tweaks, and dconf-editor when available in configured Ubuntu repositories.
+            - Adds BlueZ/rfkill diagnostic utilities without starting a competing Linux radio manager.
             - This is an alpha build. Touch responsiveness and hardware acceleration may vary by device.
             - APK is signed with the METMC OS V10 release keystore; this does not imply Play Store certification.
             - Package operations require root access, a provisioned Linux rootfs, and an internet connection. Review the operation log and close the Linux desktop before upgrades.
