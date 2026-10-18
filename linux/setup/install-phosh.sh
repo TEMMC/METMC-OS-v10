@@ -108,6 +108,12 @@ apt-get install -y --no-install-recommends \
     iio-sensor-proxy \
     2>/dev/null || echo "[!] iio-sensor-proxy not available"
 
+# ── Remove Flatpak to keep the Linux rootfs lean ──
+echo "[8/8] Removing Flatpak and its software-center integrations..."
+apt-get purge -y flatpak gnome-software-plugin-flatpak plasma-discover-backend-flatpak 2>/dev/null || true
+# Remove Flatpak system installation data only; user files outside the rootfs are untouched.
+rm -rf /var/lib/flatpak/repo /var/cache/flatpak
+
 # ── Cleanup ──
 echo "[8/8] Cleaning up..."
 apt-get clean
@@ -118,7 +124,7 @@ mkdir -p /etc/nativOS
 
 echo ""
 echo "╔══════════════════════════════════════════╗"
-echo "║       Phosh installation complete!       ║"
+echo "║    Phosh install complete (no Flatpak)   ║"
 echo "╚══════════════════════════════════════════╝"
 echo ""
 echo "Next: run install-bridge.sh to set up the NativOS hardware bridge"
