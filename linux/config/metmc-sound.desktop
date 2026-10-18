@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Sound Settings
+Comment=Open Android sound and volume settings
+Exec=metmc-settings sound
+Icon=audio-volume-high
+Terminal=true
+Categories=Settings;HardwareSettings;
