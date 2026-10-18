@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Bluetooth
+Comment=Manage Bluetooth using Android's Bluetooth service
+Exec=metmc-settings bluetooth
+Icon=bluetooth
+Terminal=true
+Categories=Settings;HardwareSettings;
