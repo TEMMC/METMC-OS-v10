@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.wifi.WifiManager
 import android.hardware.camera2.CameraManager
 import android.os.BatteryManager
 import android.provider.Settings
@@ -39,6 +40,8 @@ class SystemBridge(private val service: BridgeService) {
             BridgeProtocol.ACTION_TORCH_OFF -> handleTorch(request, false)
             BridgeProtocol.ACTION_GET_SIGNAL -> handleGetSignal(request)
             "get_device_info" -> handleGetDeviceInfo(request)
+            "get_wifi" -> handleGetWifi(request)
+            "open_wifi_settings" -> handleOpenWifiSettings(request)
             else -> BridgeProtocol.response(
                 request.id, BridgeProtocol.STATUS_ERROR,
                 JSONObject().put("message", "Unknown system action: ${request.action}")
@@ -204,6 +207,54 @@ class SystemBridge(private val service: BridgeService) {
         } catch (e: SecurityException) {
             BridgeProtocol.response(request.id, BridgeProtocol.STATUS_ERROR,
                 JSONObject().put("message", "Phone state permission not granted"))
+        }
+    }
+
+
+    /**
+     * Read Wi-Fi state from Android. Android remains the owner of the radio,
+     * MediaTek driver and firmware; Linux must not bring wlan interfaces down.
+     */
+    @Suppress("DEPRECATION")
+    private fun handleGetWifi(request: BridgeRequest): String {
+        return try {
+            val wifi = service.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            val enabled = wifi.isWifiEnabled
+            val info = if (enabled) wifi.connectionInfo else null
+            val rawSsid = info?.ssid.orEmpty()
+            val ssid = if (rawSsid == "<unknown ssid>" || rawSsid == "0x") "" else rawSsid.trim('"')
+            BridgeProtocol.response(request.id, BridgeProtocol.STATUS_OK, JSONObject().apply {
+                put("enabled", enabled)
+                put("connected", !ssid.isNullOrBlank() && info?.networkId != -1)
+                put("ssid", ssid)
+                put("rssi_dbm", info?.rssi ?: -127)
+                put("link_speed_mbps", info?.linkSpeed ?: -1)
+                put("frequency_mhz", info?.frequency ?: -1)
+                put("note", "Signal and link speed are reported by Android; physical range depends on hardware and regulatory limits.")
+            })
+        } catch (e: Exception) {
+            BridgeProtocol.response(request.id, BridgeProtocol.STATUS_ERROR,
+                JSONObject().put("message", "Could not read Android Wi-Fi state: ${e.message}"))
+        }
+    }
+
+    /**
+     * Open Android's supported Wi-Fi panel. Recent Android versions restrict
+     * third-party apps from silently toggling Wi-Fi; let the user confirm it.
+     */
+    private fun handleOpenWifiSettings(request: BridgeRequest): String {
+        return try {
+            val intent = if (android.os.Build.VERSION.SDK_INT >= 29) {
+                Intent(Settings.Panel.ACTION_WIFI)
+            } else {
+                Intent(Settings.ACTION_WIFI_SETTINGS)
+            }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            service.startActivity(intent)
+            BridgeProtocol.response(request.id, BridgeProtocol.STATUS_OK,
+                JSONObject().put("opened", true).put("owner", "Android Wi-Fi"))
+        } catch (e: Exception) {
+            BridgeProtocol.response(request.id, BridgeProtocol.STATUS_ERROR,
+                JSONObject().put("message", "Could not open Android Wi-Fi controls: ${e.message}"))
         }
     }
 
