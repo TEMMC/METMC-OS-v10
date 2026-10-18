@@ -42,6 +42,11 @@ class SystemBridge(private val service: BridgeService) {
             "get_device_info" -> handleGetDeviceInfo(request)
             "get_wifi" -> handleGetWifi(request)
             "open_wifi_settings" -> handleOpenWifiSettings(request)
+            "open_bluetooth_settings" -> handleOpenAndroidSettings(request, Settings.ACTION_BLUETOOTH_SETTINGS, "Bluetooth")
+            "open_system_settings" -> handleOpenAndroidSettings(request, Settings.ACTION_SETTINGS, "Android settings")
+            "open_display_settings" -> handleOpenAndroidSettings(request, Settings.ACTION_DISPLAY_SETTINGS, "Display settings")
+            "open_sound_settings" -> handleOpenAndroidSettings(request, Settings.ACTION_SOUND_SETTINGS, "Sound settings")
+            "open_location_settings" -> handleOpenAndroidSettings(request, Settings.ACTION_LOCATION_SOURCE_SETTINGS, "Location settings")
             else -> BridgeProtocol.response(
                 request.id, BridgeProtocol.STATUS_ERROR,
                 JSONObject().put("message", "Unknown system action: ${request.action}")
@@ -255,6 +260,18 @@ class SystemBridge(private val service: BridgeService) {
         } catch (e: Exception) {
             BridgeProtocol.response(request.id, BridgeProtocol.STATUS_ERROR,
                 JSONObject().put("message", "Could not open Android Wi-Fi controls: ${e.message}"))
+        }
+    }
+
+    /** Open Android-owned hardware controls from Phosh without fighting Android's radio/driver ownership. */
+    private fun handleOpenAndroidSettings(request: BridgeRequest, action: String, label: String): String {
+        return try {
+            service.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            BridgeProtocol.response(request.id, BridgeProtocol.STATUS_OK,
+                JSONObject().put("opened", true).put("owner", label))
+        } catch (e: Exception) {
+            BridgeProtocol.response(request.id, BridgeProtocol.STATUS_ERROR,
+                JSONObject().put("message", "Could not open $label: ${e.message}"))
         }
     }
 
