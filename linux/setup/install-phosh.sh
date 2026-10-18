@@ -108,14 +108,31 @@ apt-get install -y --no-install-recommends \
     iio-sensor-proxy \
     2>/dev/null || echo "[!] iio-sensor-proxy not available"
 
+# ── Phosh settings, desktop tweaks, Bluetooth tools ──
+echo "[8/10] Installing Phosh settings and desktop customization tools..."
+for package in phosh-mobile-settings gnome-control-center gnome-tweaks dconf-editor; do
+    if apt-cache show "$package" >/dev/null 2>&1; then
+        apt-get install -y --no-install-recommends "$package" || echo "[!] Could not install optional package: $package"
+    else
+        echo "[!] Package not available in configured Ubuntu repositories: $package"
+    fi
+done
+# Useful Bluetooth diagnostics only. Android remains the owner of the physical Bluetooth radio;
+# do not start a competing Linux NetworkManager/BlueZ radio manager on this Android-hosted setup.
+for package in bluez rfkill; do
+    if apt-cache show "$package" >/dev/null 2>&1; then
+        apt-get install -y --no-install-recommends "$package" || echo "[!] Could not install optional package: $package"
+    fi
+done
+
 # ── Remove Flatpak to keep the Linux rootfs lean ──
-echo "[8/8] Removing Flatpak and its software-center integrations..."
+echo "[9/10] Removing Flatpak and its software-center integrations..."
 apt-get purge -y flatpak gnome-software-plugin-flatpak plasma-discover-backend-flatpak 2>/dev/null || true
 # Remove Flatpak system installation data only; user files outside the rootfs are untouched.
 rm -rf /var/lib/flatpak/repo /var/cache/flatpak
 
 # ── Cleanup ──
-echo "[8/8] Cleaning up..."
+echo "[10/10] Cleaning up..."
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 
@@ -127,4 +144,4 @@ echo "╔═══════════════════════�
 echo "║    Phosh install complete (no Flatpak)   ║"
 echo "╚══════════════════════════════════════════╝"
 echo ""
-echo "Next: run install-bridge.sh to set up the NativOS hardware bridge"
+echo "Next: run install-bridge.sh to add METMC Wi-Fi, Bluetooth, display, sound, location and system-settings launchers"
