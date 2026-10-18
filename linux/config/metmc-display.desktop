@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Display Settings
+Comment=Open Android display and brightness settings
+Exec=metmc-settings display
+Icon=video-display
+Terminal=true
+Categories=Settings;HardwareSettings;
