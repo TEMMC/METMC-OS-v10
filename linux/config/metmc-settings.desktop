@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=METMC Device Settings
+Comment=Open Android device settings from Phosh
+Exec=metmc-settings settings
+Icon=preferences-system
+Terminal=true
+Categories=Settings;
