@@ -30,6 +30,8 @@ chmod +x /usr/local/bin/nativOS-bridge
 # Install Phosh-accessible Wi-Fi controls backed by Android Wi-Fi APIs.
 cp "$BRIDGE_DIR/metmc-wifi.py" /usr/local/bin/metmc-wifi
 chmod +x /usr/local/bin/metmc-wifi
+cp "$BRIDGE_DIR/metmc-settings.py" /usr/local/bin/metmc-settings
+chmod +x /usr/local/bin/metmc-settings
 
 # ── Copy phoc config ──
 echo "[3/4] Installing phoc configuration..."
@@ -37,6 +39,9 @@ mkdir -p /etc/nativOS
 cp "$CONFIG_DIR/phoc.ini" /etc/nativOS/phoc.ini
 mkdir -p /usr/share/applications
 cp "$CONFIG_DIR/metmc-wifi.desktop" /usr/share/applications/metmc-wifi.desktop
+for launcher in metmc-bluetooth metmc-settings metmc-display metmc-sound metmc-location; do
+    cp "$CONFIG_DIR/$launcher.desktop" "/usr/share/applications/$launcher.desktop"
+done
 
 # ── Install systemd service ──
 echo "[4/4] Installing systemd service..."
@@ -52,4 +57,5 @@ echo "✅ Bridge client installed!"
 echo "   Daemon: /usr/local/bin/nativOS-bridge"
 echo "   Service: nativOS-bridge.service"
 echo "   Socket: /run/nativOS/bridge.sock (bind-mounted from Android)"
-echo "   Wi-Fi: launch METMC Wi-Fi from Phosh or run metmc-wifi status/open"
+echo "   Wi-Fi: launch METMC Wi-Fi from Phosh or run metmc-wifi status/open
+   Hardware: launch Bluetooth, Display, Sound, Location, or METMC Device Settings from Phosh"
