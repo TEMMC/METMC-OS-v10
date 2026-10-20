@@ -977,9 +977,8 @@ class KioskActivity : Activity() {
                     view.postDelayed({
                         val width = view.width
                         val height = view.height
-                        Thread({
-                            chrootManager.resizeXfceDisplay(width, height)
-                        }, "nativOS-display-resize").start()
+                        // The embedded X11 server follows the resized SurfaceView via
+                        // triggerCallback() above; ChrootManager has no separate resize API.
                     }, 150)
                 }
             }
