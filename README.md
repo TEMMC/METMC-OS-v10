@@ -31,7 +31,7 @@ The Linux chroot sets the **root** account password to **`metmc`**. This is the 
 
 ## Offline startup guarantee
 
-The Android boot path must never download a root filesystem, run `apt-get update`, install Linux packages, or contact Flathub/update servers. The GitHub Actions build downloads the upstream rootfs while building the APK and embeds it as an asset; first launch only copies and extracts that bundled asset. The bundled rootfs must already contain Xfce, the essential tools, and `sudo`. If the asset or required desktop files are missing, the app must show an actionable error and stop rather than attempting network recovery. Manual package management from the Linux desktop remains user-initiated.
+The Android boot path must never download a root filesystem, run `apt-get update`, install Linux packages, or contact Flathub/update servers. The GitHub Actions build downloads the upstream rootfs, provisions Xfce and essential tools inside the ARM64 rootfs on the runner, validates the required binaries, and embeds the prepared archive in the APK; first launch only copies and extracts that bundled asset. The bundled rootfs must already contain Xfce, the essential tools, and `sudo`. If the asset or required desktop files are missing, the app must show an actionable error and stop rather than attempting network recovery. Manual package management from the Linux desktop remains user-initiated.
 
 ## Current status
 
