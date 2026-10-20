@@ -9,7 +9,7 @@ scripts/build-rootfs-asset.sh /path/to/prepared-rootfs \
   android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz
 ```
 
-The prepared image must already contain Phosh, Phoc, GNOME Console, schemas, icons, and the compatibility libraries expected by the imported NativOS runtime. Do not package a user's live root filesystem without reviewing it for accounts, tokens, history, and personal data.
+The prepared image must already contain KDE Plasma X11, KWin X11, Konsole, schemas, icons, and the compatibility libraries expected by the imported NativOS runtime. Do not package a user's live root filesystem without reviewing it for accounts, tokens, history, and personal data.
 
 The packaging script requires GNU tar (`gtar` on macOS), normalizes ownership, ordering, timestamps, and gzip metadata, and records installed package versions in `/usr/share/nativos/rootfs-packages.txt`. Set `SOURCE_DATE_EPOCH` when producing a reproducible release.
 
