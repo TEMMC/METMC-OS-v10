@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════
-#  NativOS — Install Phosh Desktop Environment in Chroot
+#  METMC OS — Install KDE Plasma Desktop Environment in Chroot
 #
 #  Run this inside the chroot Ubuntu filesystem to install
-#  Phosh (the GNOME Phone Shell) and all required dependencies.
+#  KDE Plasma desktop shell and all required dependencies.
 #
-#  Usage: chroot /path/to/rootfs /bin/bash /setup/install-phosh.sh
+#  Usage: chroot /path/to/rootfs /bin/bash /setup/install-plasma.sh
 # ═══════════════════════════════════════════════════════════════
 
 set -e
 
 echo "╔══════════════════════════════════════════╗"
-echo "║       NativOS — Installing Phosh         ║"
+echo "║       NativOS — Installing KDE Plasma         ║"
 echo "╚══════════════════════════════════════════╝"
 echo ""
 
@@ -36,32 +36,17 @@ apt-get install -y --no-install-recommends \
     wget \
     curl
 
-# ── Install phoc (Wayland compositor for Phosh) ──
-echo "[3/8] Installing phoc compositor..."
+# ── Install KDE Plasma for the embedded Android X11 display ──
+echo "[3/8] Installing KDE Plasma and KWin X11..."
 apt-get install -y --no-install-recommends \
-    phoc || {
-    echo "[!] phoc not in default repos — adding PureOS/Mobian repo..."
-    # Fallback: build from source or add Mobian repo
-    echo "deb http://repo.mobian-project.org/ bookworm main" > /etc/apt/sources.list.d/mobian.list
-    wget -qO- https://repo.mobian-project.org/mobian.gpg | apt-key add - 2>/dev/null || true
-    apt-get update -y -q
-    apt-get install -y --no-install-recommends phoc || echo "[!] phoc install failed — will need manual build"
-}
+    plasma-desktop plasma-workspace kwin-x11 konsole dolphin \
+    systemsettings plasma-nm xwayland x11-xserver-utils \
+    dbus-x11 policykit-1 || exit 1
 
-# ── Install Phosh ──
-echo "[4/8] Installing Phosh shell..."
-apt-get install -y --no-install-recommends \
-    phosh || {
-    echo "[!] Phosh not available — trying alternative sources..."
-    apt-get install -y --no-install-recommends phosh-mobile-settings 2>/dev/null || true
-}
-
-# ── Touch keyboard ──
-echo "[5/8] Installing on-screen keyboard..."
-apt-get install -y --no-install-recommends \
-    squeekboard || \
-    apt-get install -y --no-install-recommends maliit-keyboard 2>/dev/null || \
-    echo "[!] No on-screen keyboard available"
+# ── Optional on-screen keyboard ──
+echo "[4/8] Installing an on-screen keyboard..."
+apt-get install -y --no-install-recommends maliit-keyboard 2>/dev/null || \
+    echo "[!] Optional on-screen keyboard package unavailable"
 
 # ── Phone apps (GNOME Calls, Chatty for SMS, Camera) ──
 echo "[6/8] Installing phone applications..."
@@ -108,9 +93,9 @@ apt-get install -y --no-install-recommends \
     iio-sensor-proxy \
     2>/dev/null || echo "[!] iio-sensor-proxy not available"
 
-# ── Phosh settings, desktop tweaks, Bluetooth tools ──
-echo "[8/10] Installing Phosh settings and desktop customization tools..."
-for package in phosh-mobile-settings gnome-control-center gnome-tweaks dconf-editor; do
+# ── KDE Plasma settings, desktop tweaks, Bluetooth tools ──
+echo "[8/10] Installing KDE Plasma settings and desktop customization tools..."
+for package in plasma-mobile-settings gnome-control-center gnome-tweaks dconf-editor; do
     if apt-cache show "$package" >/dev/null 2>&1; then
         apt-get install -y --no-install-recommends "$package" || echo "[!] Could not install optional package: $package"
     else
@@ -127,7 +112,7 @@ done
 
 # ── Remove Flatpak to keep the Linux rootfs lean ──
 echo "[9/10] Removing Flatpak and its software-center integrations..."
-apt-get purge -y flatpak gnome-software-plugin-flatpak plasma-discover-backend-flatpak 2>/dev/null || true
+apt-get purge -y plasma-discover-backend-flatpak 2>/dev/null || true
 # Remove Flatpak system installation data only; user files outside the rootfs are untouched.
 rm -rf /var/lib/flatpak/repo /var/cache/flatpak
 
@@ -141,7 +126,7 @@ mkdir -p /etc/nativOS
 
 echo ""
 echo "╔══════════════════════════════════════════╗"
-echo "║    Phosh install complete (no Flatpak)   ║"
+echo "║    KDE Plasma install complete              ║"
 echo "╚══════════════════════════════════════════╝"
 echo ""
 echo "Next: run install-bridge.sh to add METMC Wi-Fi, Bluetooth, display, sound, location and system-settings launchers"
