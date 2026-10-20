@@ -7,6 +7,16 @@ name: Build METMC OS v10 APK
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "android/**"
+      - "linux/config/**"
+      - "linux/bridge-client/**"
+      - "linux/setup/**"
+      - "scripts/**"
+      - "README.md"
+      - ".github/workflows/build-apk.yml"
   push:
     branches: [main]
     paths:
