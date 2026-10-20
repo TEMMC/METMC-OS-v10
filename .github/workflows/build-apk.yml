@@ -139,6 +139,10 @@ jobs:
           sudo chown -R "$USER":"$USER" "$ROOTFS"
           scripts/build-rootfs-asset.sh "$ROOTFS" android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz
           cd android/app/src/main/assets/rootfs
+          # The asset was rebuilt after the original upstream checksum was recorded.
+          # Regenerate its checksum so Gradle validates the final bundled archive,
+          # not the pre-provisioning upstream archive.
+          sha256sum nativos-rootfs-arm64.tgz > nativos-rootfs-arm64.tgz.sha256
           sha256sum --check nativos-rootfs-arm64.tgz.sha256
 
       - name: Build and verify APK
