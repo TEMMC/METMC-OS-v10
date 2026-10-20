@@ -1297,7 +1297,7 @@ METMC_LAUNCH_EOF
             export TMPDIR=${tmpPath} DISPLAY=:0 LANG=C.UTF-8 LC_ALL=C.UTF-8
             export QT_QPA_PLATFORM=xcb XDG_SESSION_TYPE=x11
             export XDG_CURRENT_DESKTOP=Xfce XDG_SESSION_DESKTOP=xfce DESKTOP_SESSION=xfce
-            export XDG_DATA_DIRS=/run/metmc/android-apps/share:/usr/local/share:/usr/share
+            export XDG_DATA_DIRS=/run/nativOS/android-apps/share:/usr/local/share:/usr/share
             ${gpuEnvironment}
             mkdir -p /run/dbus /run/metmc
             rm -f /run/dbus/pid /run/dbus/system_bus_socket
