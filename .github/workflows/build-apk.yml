@@ -88,6 +88,7 @@ jobs:
           mkdir -p "$ROOTFS"
           sudo tar --numeric-owner -xzf android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz -C "$ROOTFS"
           sudo cp /usr/bin/qemu-aarch64-static "$ROOTFS/usr/bin/qemu-aarch64-static"
+          sudo rm -f "$ROOTFS/etc/resolv.conf"
           sudo cp -L /etc/resolv.conf "$ROOTFS/etc/resolv.conf"
           sudo mkdir -p "$ROOTFS/dev" "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/dev/pts"
 
