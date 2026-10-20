@@ -110,51 +110,25 @@ class RootfsManager(private val context: Context) {
         val wm = File(rootfsDir, "usr/bin/xfwm4")
         if (session.exists() && panel.exists() && wm.exists()) return true
 
-        Log.w(TAG, "Xfce runtime missing; repairing installation")
-        val result = chrootManager.execChroot(
-            """
-                dpkg --configure -a || true
-                apt-get update || exit 1
-                TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC \
-                    apt-get install -y --no-install-recommends \
-                    xfce4-session xfce4-panel xfwm4 xfce4-settings \
-                    xfce4-terminal thunar xfce4-whiskermenu-plugin \
-                    xfce4-pulseaudio-plugin adwaita-icon-theme \
-                    dbus-x11 x11-xserver-utils policykit-1 || exit 1
-                test -x /usr/bin/startxfce4
-                test -x /usr/bin/xfce4-panel
-                test -x /usr/bin/xfwm4
-            """.trimIndent()
-        )
-        if (result == 0 && session.exists() && panel.exists() && wm.exists()) {
-            Log.i(TAG, "Xfce runtime is ready")
-            return true
-        }
-        Log.e(TAG, "Could not repair Xfce runtime (exit $result)")
+        Log.e(TAG, "Xfce runtime is incomplete; offline startup will not install or repair packages")
         return false
     }
 
     /** Keep a small terminal and essential diagnostics/networking tools available. */
     fun ensureEssentialTools(chrootManager: ChrootManager): Boolean {
-        val terminal = File(rootfsDir, "usr/bin/xfce4-terminal")
-        val result = chrootManager.execChroot(
-            """
-                dpkg --configure -a || true
-                apt-get update || exit 1
-                TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC \
-                    apt-get install -y --no-install-recommends \
-                    xfce4-terminal thunar nano less htop file procps psmisc \
-                    ca-certificates curl wget git openssh-client \
-                    iproute2 iputils-ping net-tools dnsutils traceroute \
-                    netcat-openbsd nmap whois || exit 1
-                test -x /usr/bin/xfce4-terminal
-            """.trimIndent()
+        val required = listOf(
+            "usr/bin/xfce4-terminal",
+            "usr/bin/thunar",
+            "usr/bin/curl",
+            "usr/bin/ip",
+            "usr/bin/ping"
         )
-        if (result == 0 && terminal.exists()) {
-            Log.i(TAG, "Essential desktop and networking tools are ready")
+        val missing = required.filterNot { File(rootfsDir, it).exists() }
+        if (missing.isEmpty()) {
+            Log.i(TAG, "Essential desktop and networking tools are present in the bundled rootfs")
             return true
         }
-        Log.w(TAG, "Could not provision all essential tools (exit $result)")
+        Log.w(TAG, "Offline rootfs is missing required tools: ${missing.joinToString()}")
         return false
     }
 
