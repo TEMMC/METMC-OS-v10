@@ -22,9 +22,10 @@ if ! "$tar_bin" --version 2>/dev/null | grep -q 'GNU tar'; then
     exit 2
 fi
 
-test -x "$rootfs/usr/bin/phosh"
-test -x "$rootfs/usr/bin/phoc"
-test -x "$rootfs/usr/bin/kgx"
+test -x "$rootfs/usr/bin/startplasma-x11"
+test -x "$rootfs/usr/bin/plasmashell"
+test -x "$rootfs/usr/bin/kwin_x11"
+test -x "$rootfs/usr/bin/konsole"
 test -f "$rootfs/usr/share/glib-2.0/schemas/org.gnome.settings-daemon.peripherals.gschema.xml"
 
 staging=$(mktemp -d "${TMPDIR:-/tmp}/nativos-rootfs.XXXXXX")
@@ -41,7 +42,7 @@ chmod 1777 "$staging/tmp" "$staging/var/tmp"
 
 # Record the exact Debian package set included in this image. This file is part
 # of the rootfs and can be compared between releases without booting it.
-mkdir -p "$staging/usr/share/nativos"
+mkdir -p "$staging/usr/share/metmc"
 awk '
     BEGIN { RS=""; FS="\n" }
     {
@@ -55,9 +56,9 @@ awk '
             print package "=" version " [" architecture "]"
     }
 ' "$staging/var/lib/dpkg/status" | LC_ALL=C sort > \
-    "$staging/usr/share/nativos/rootfs-packages.txt"
+    "$staging/usr/share/metmc/rootfs-packages.txt"
 
-cat > "$staging/usr/share/nativos/rootfs-build.txt" <<EOF
+cat > "$staging/usr/share/metmc/rootfs-build.txt" <<EOF
 schema=1
 architecture=arm64
 source_date_epoch=$source_date_epoch
