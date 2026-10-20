@@ -1284,7 +1284,7 @@ METMC_LAUNCH_EOF
             export NATIVOS_GPU=turnip
             unset LIBGL_ALWAYS_SOFTWARE GBM_ALWAYS_SOFTWARE
             export GALLIUM_DRIVER=zink MESA_LOADER_DRIVER_OVERRIDE=zink
-            export VK_ICD_FILENAMES=\${turnipIcd.absolutePath.removePrefix(rootfsDir.absolutePath)}
+            export VK_ICD_FILENAMES=${turnipIcd.absolutePath.removePrefix(rootfsDir.absolutePath)}
             export TU_DEBUG=noconform ZINK_DESCRIPTORS=lazy MESA_VK_WSI_DEBUG=sw
         """.trimIndent() else """
             export NATIVOS_GPU=software LIBGL_ALWAYS_SOFTWARE=1 GBM_ALWAYS_SOFTWARE=1
@@ -1294,11 +1294,11 @@ METMC_LAUNCH_EOF
         val runScript = """
             set -u
             export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-            export TMPDIR=\${tmpPath} DISPLAY=:0 LANG=C.UTF-8 LC_ALL=C.UTF-8
+            export TMPDIR=${tmpPath} DISPLAY=:0 LANG=C.UTF-8 LC_ALL=C.UTF-8
             export QT_QPA_PLATFORM=xcb XDG_SESSION_TYPE=x11
             export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=plasma DESKTOP_SESSION=plasma
             export XDG_DATA_DIRS=/run/metmc/android-apps/share:/usr/local/share:/usr/share
-            \${gpuEnvironment}
+            ${gpuEnvironment}
             mkdir -p /run/dbus /run/metmc
             rm -f /run/dbus/pid /run/dbus/system_bus_socket
             dbus-uuidgen --ensure=/etc/machine-id
@@ -1331,7 +1331,7 @@ METMC_LAUNCH_EOF
         """.trimIndent()
         Log.i(TAG, "Starting KDE Plasma X11 session")
         val su = rootShell.findSuPath() ?: return
-        val fullCommand = "chroot \${rootfsDir.absolutePath} /usr/bin/env -i /bin/bash -c \${shellQuote(runScript)}"
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/bash -c ${shellQuote(runScript)}"
         val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
         sessionProcess = process
         Thread {
@@ -1360,7 +1360,7 @@ METMC_LAUNCH_EOF
                 return false
             }
         }
-        Log.e(TAG, "KDE Plasma did not become ready within \${timeoutMs}ms")
+        Log.e(TAG, "KDE Plasma did not become ready within ${timeoutMs}ms")
         return false
     }
 
