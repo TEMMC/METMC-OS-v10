@@ -1322,12 +1322,15 @@ METMC_LAUNCH_EOF
             mkdir -p "$METMC_HOME" /tmp/runtime-metmc
             chown -R metmc:metmc "$METMC_HOME" /tmp/runtime-metmc
             chmod 0700 /tmp/runtime-metmc
-            export LD_PRELOAD=/usr/local/lib/libsocket_hook.so:/usr/local/lib/libnativos-close-range.so:/usr/local/lib/libandroid-shmem.so
+            PRELOAD=""
+            for lib in /usr/local/lib/libsocket_hook.so /usr/local/lib/libnativos-close-range.so /usr/local/lib/libandroid-shmem.so; do
+                if [ -f "$lib" ]; then PRELOAD="${PRELOAD:+$PRELOAD:}$lib"; fi
+            done
             runuser -u metmc -- env HOME="$METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0 \
                 TMPDIR="$TMPDIR" XDG_RUNTIME_DIR=/tmp/runtime-metmc \
                 XDG_SESSION_TYPE=x11 XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=plasma \
                 DESKTOP_SESSION=plasma XDG_DATA_DIRS="$XDG_DATA_DIRS" QT_QPA_PLATFORM=xcb \
-                LD_PRELOAD="$LD_PRELOAD" dbus-run-session -- startplasma-x11
+                LD_PRELOAD="$PRELOAD" dbus-run-session -- startplasma-x11
         """.trimIndent()
         Log.i(TAG, "Starting KDE Plasma X11 session")
         val su = rootShell.findSuPath() ?: return
