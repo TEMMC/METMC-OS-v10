@@ -1,7 +1,7 @@
 name: Build METMC OS v10 APK
 
 # METMC OS V10 v10.7.0 combined feature release; keep upgrade compatibility across alpha builds.
-# Publish METMC OS V10 v10.7.0 only after the KDE Plasma build passes.
+# Publish METMC OS V10 v10.7.0 only after the Xfce build passes.
 # Release publishing is gated on the commit message so only verified builds are published.
 # Xfce X11 session, touch-friendly panel, dark hacker theme, compact networking tools, and package metadata are verified before release.
 
