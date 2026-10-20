@@ -103,83 +103,55 @@ class RootfsManager(private val context: Context) {
         }
     }
 
-    /**
-     * Repair a partially provisioned Phosh installation. The phoc binary can be
-     * unpacked before the remaining packages finish, so it is not a sufficient
-     * readiness marker by itself. Without the touchscreen schema Phosh aborts
-     * immediately and the X11 cursor visibly flickers in a restart loop.
-     */
-    fun ensurePhoshRuntime(chrootManager: ChrootManager): Boolean {
-        val schema = File(
-            rootfsDir,
-            "usr/share/glib-2.0/schemas/org.gnome.settings-daemon.peripherals.gschema.xml"
-        )
-        val svgLoader = File(
-            rootfsDir,
-            "usr/lib/aarch64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders/libpixbufloader-svg.so"
-        )
-        if (schema.exists() && svgLoader.exists()) return true
+    /** Ensure the KDE Plasma X11 session and its essential runtime dependencies exist. */
+    fun ensureKdeRuntime(chrootManager: ChrootManager): Boolean {
+        val startPlasma = File(rootfsDir, "usr/bin/startplasma-x11")
+        val plasmaShell = File(rootfsDir, "usr/bin/plasmashell")
+        val kwin = File(rootfsDir, "usr/bin/kwin_x11")
+        if (startPlasma.exists() && plasmaShell.exists() && kwin.exists()) return true
 
-        Log.w(TAG, "Phosh runtime components missing; repairing interrupted provisioning")
+        Log.w(TAG, "KDE Plasma runtime missing; repairing installation")
         val result = chrootManager.execChroot(
             """
                 dpkg --configure -a || true
                 apt-get update || exit 1
                 TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC \
                     apt-get install -y --no-install-recommends \
-                    gnome-settings-daemon-common librsvg2-common || exit 1
-                glib-compile-schemas /usr/share/glib-2.0/schemas || exit 1
-                GDK_LOADER=${'$'}(find /usr/lib -name gdk-pixbuf-query-loaders | head -n 1)
-                if [ -x "${'$'}GDK_LOADER" ]; then
-                    "${'$'}GDK_LOADER" > "${'$'}(dirname "${'$'}GDK_LOADER")/2.10.0/loaders.cache" || exit 1
-                fi
-                gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
-                gtk-update-icon-cache -f -t /usr/share/icons/Adwaita 2>/dev/null || true
-                test -f /usr/share/glib-2.0/schemas/org.gnome.settings-daemon.peripherals.gschema.xml
-                test -f /usr/lib/aarch64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders/libpixbufloader-svg.so
+                    plasma-desktop plasma-workspace kwin-x11 dbus-x11 \
+                    konsole dolphin systemsettings plasma-nm \
+                    xwayland x11-xserver-utils policykit-1 || exit 1
+                test -x /usr/bin/startplasma-x11
+                test -x /usr/bin/plasmashell
+                test -x /usr/bin/kwin_x11
             """.trimIndent()
         )
-        if (result == 0 && schema.exists() && svgLoader.exists()) {
-            Log.i(TAG, "Phosh runtime schemas and SVG loader repaired")
+        if (result == 0 && startPlasma.exists() && plasmaShell.exists() && kwin.exists()) {
+            Log.i(TAG, "KDE Plasma runtime is ready")
             return true
         }
-        Log.e(TAG, "Could not repair Phosh runtime components (exit $result)")
+        Log.e(TAG, "Could not repair KDE Plasma runtime (exit $result)")
         return false
     }
 
-    /** Install the adaptive Wayland terminal and remove the two legacy XTerm launchers. */
-    fun ensureProfessionalTerminal(chrootManager: ChrootManager): Boolean {
-        val console = File(rootfsDir, "usr/bin/kgx")
-        val legacyXterm = File(rootfsDir, "usr/bin/xterm")
-        val legacyGnomeTerminal = File(rootfsDir, "usr/bin/gnome-terminal")
-        if (console.exists() && !legacyXterm.exists() && !legacyGnomeTerminal.exists()) return true
-
+    /** Ensure Konsole is available as the default terminal for KDE Plasma. */
+    fun ensureKdeTerminal(chrootManager: ChrootManager): Boolean {
+        val konsole = File(rootfsDir, "usr/bin/konsole")
+        if (konsole.exists()) return true
         val result = chrootManager.execChroot(
             """
-                # A previously interrupted optional package must not prevent the
-                # terminal migration from repairing the installation.
                 dpkg --configure -a || true
-                if ! command -v kgx >/dev/null 2>&1; then
-                    apt-get update || exit 1
-                    TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC \
-                        apt-get install -y --no-install-recommends gnome-console || exit 1
-                fi
-                # XTerm and UXTerm are supplied by the same package. Keep the proven
-                # adaptive Console installed before removing either legacy terminal.
-                rm -f /usr/share/applications/debian-xterm.desktop \
-                    /usr/share/applications/debian-uxterm.desktop \
-                    /usr/share/applications/org.gnome.Terminal.desktop
-                TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive \
-                    apt-get purge -y xterm gnome-terminal gnome-terminal-data || exit 1
-                update-desktop-database /usr/share/applications 2>/dev/null || true
+                apt-get update || exit 1
+                TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC \
+                    apt-get install -y --no-install-recommends konsole || exit 1
+                test -x /usr/bin/konsole
             """.trimIndent()
         )
-        if (result == 0) {
-            Log.i(TAG, "GNOME Console ready; legacy terminal launchers removed")
-        } else {
-            Log.w(TAG, "Could not provision GNOME Console (exit $result)")
+        if (result == 0 && konsole.exists()) {
+            Log.i(TAG, "Konsole is ready")
+            return true
         }
-        return result == 0
+        Log.w(TAG, "Could not provision Konsole (exit $result)")
+        return false
     }
 
     /** Add or repair the signed per-user Flathub remote used by GNOME Software. */
@@ -337,7 +309,7 @@ class RootfsManager(private val context: Context) {
         listOf("tmp", "tmp/runtime-root", "run", "var/run", "dev/shm").forEach { File(rootfsDir, it).mkdirs() }
     }
 
-    fun installPhosh(chrootManager: ChrootManager, onProgress: (Double, String) -> Unit) {
+    fun installKdePlasma(chrootManager: ChrootManager, onProgress: (Double, String) -> Unit) {
         try {
             onProgress(0.0, "Clearing package locks...")
             try { chrootManager.execChroot("rm -f /var/lib/apt/lists/lock /var/cache/apt/archives/lock /var/lib/dpkg/lock*; dpkg --configure -a 2>/dev/null || true") } catch (_: Exception) {}
@@ -345,20 +317,19 @@ class RootfsManager(private val context: Context) {
             onProgress(0.05, "Updating package lists...")
             chrootManager.execChroot("apt-get update -y")
 
-            // dbus is CRITICAL - without it no session can start
-            onProgress(0.10, "Installing D-Bus (required)...")
+            onProgress(0.10, "Installing D-Bus and desktop services...")
             chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends dbus dbus-x11 policykit-1 packagekit")
 
-            onProgress(0.20, "Installing Phosh & Compositor...")
-            chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends phoc phosh")
+            onProgress(0.20, "Installing KDE Plasma desktop...")
+            chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends plasma-desktop plasma-workspace kwin-x11 konsole dolphin systemsettings plasma-nm xwayland x11-xserver-utils")
 
-            onProgress(0.40, "Installing GUI Dependencies...")
-            chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends squeekboard phosh-mobile-settings gnome-settings-daemon gnome-settings-daemon-common librsvg2-common gnome-console adwaita-icon-theme fonts-cantarell")
+            onProgress(0.35, "Installing touch-friendly and desktop dependencies...")
+            chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends qtwayland5 qt6-wayland adwaita-icon-theme fonts-noto-core fonts-noto-color-emoji dbus-user-session")
 
-            onProgress(0.55, "Installing compilation tools...")
+            onProgress(0.45, "Installing compatibility tools...")
             chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends gcc libxcb1-dev libxcb-dri3-dev libc6-dev libvulkan1 vulkan-tools wget curl")
 
-            onProgress(0.70, "Building universal hooks (Socket)...")
+            onProgress(0.55, "Building X11 socket compatibility hook...")
             chrootManager.execChroot("""
                 bash -c "cat > /tmp/socket_hook.c << 'EOF'
 #define _GNU_SOURCE
@@ -367,7 +338,6 @@ class RootfsManager(private val context: Context) {
 #include <dlfcn.h>
 #include <string.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <stddef.h>
 int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
     int (*real_connect)(int, const struct sockaddr *, socklen_t) = dlsym(RTLD_NEXT, \"connect\");
@@ -390,20 +360,17 @@ EOF
 gcc -shared -fPIC -o /usr/local/lib/libsocket_hook.so /tmp/socket_hook.c -ldl"
             """.trimIndent())
 
-            onProgress(0.85, "Building universal hooks (DRI3)...")
+            onProgress(0.65, "Building kernel compatibility hooks...")
             chrootManager.execChroot("""
                 bash -c "cat > /tmp/nodri3.c << 'EOF'
 #include <xcb/xcb.h>
 #include <dlfcn.h>
-#include <stdio.h>
 extern xcb_extension_t xcb_dri3_id;
 const xcb_query_extension_reply_t *xcb_get_extension_data(xcb_connection_t *c, xcb_extension_t *ext) {
     const xcb_query_extension_reply_t *(*real_fn)(xcb_connection_t*, xcb_extension_t*) = dlsym(RTLD_NEXT, \"xcb_get_extension_data\");
     if (ext == &xcb_dri3_id) {
         const xcb_query_extension_reply_t *reply = real_fn(c, ext);
-        if (reply && reply->present) {
-            ((xcb_query_extension_reply_t *)reply)->present = 0;
-        }
+        if (reply && reply->present) ((xcb_query_extension_reply_t *)reply)->present = 0;
         return reply;
     }
     return real_fn(c, ext);
@@ -411,40 +378,32 @@ const xcb_query_extension_reply_t *xcb_get_extension_data(xcb_connection_t *c, x
 EOF
 gcc -shared -fPIC -o /usr/local/lib/libnodri3.so /tmp/nodri3.c -lxcb -ldl -lxcb-dri3"
             """.trimIndent())
-
             chrootManager.execChroot("""
                 bash -c "cat > /tmp/close_range_compat.c << 'EOF'
 #define _GNU_SOURCE
 #include <errno.h>
 int close_range(unsigned int first, unsigned int last, int flags) {
-    (void) first; (void) last; (void) flags;
-    errno = ENOSYS;
-    return -1;
+    (void) first; (void) last; (void) flags; errno = ENOSYS; return -1;
 }
 EOF
 gcc -shared -fPIC -o /usr/local/lib/libnativos-close-range.so /tmp/close_range_compat.c"
             """.trimIndent())
 
-            onProgress(0.90, "Installing Built-in Apps & Store...")
-            chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends software-properties-common nautilus gnome-calculator gnome-clocks megapixels gnome-software gnome-software-plugin-flatpak flatpak")
+            onProgress(0.75, "Installing built-in apps and software center...")
+            chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends software-properties-common firefox-esr gnome-calculator gnome-clocks gnome-software gnome-software-plugin-flatpak flatpak")
 
-            onProgress(0.95, "Setting up Firefox...")
-            chrootManager.execChroot("""
-                bash -c "add-apt-repository -y ppa:mozillateam/ppa && echo 'Package: *\nPin: release o=LP-PPA-mozillateam\nPin-Priority: 1001\n\nPackage: firefox\nPin: version 1:1snap1-0ubuntu2\nPin-Priority: -1' > /etc/apt/preferences.d/mozilla-firefox && apt-get update && DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends firefox"
-            """.trimIndent())
-
-            onProgress(0.97, "Configuring Flathub...")
+            onProgress(0.85, "Configuring Flathub...")
             ensureFlathub(chrootManager)
 
-            onProgress(0.98, "Building icon caches...")
+            onProgress(0.95, "Building icon and desktop caches...")
             chrootManager.execChroot("""
-                bash -c "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin && GDK_LOADER=${'$'}(find /usr/lib -name gdk-pixbuf-query-loaders | head -n 1) && ${'$'}GDK_LOADER > ${'$'}(dirname ${'$'}GDK_LOADER)/2.10.0/loaders.cache && gtk-update-icon-cache -f -t /usr/share/icons/hicolor && gtk-update-icon-cache -f -t /usr/share/icons/Adwaita && glib-compile-schemas /usr/share/glib-2.0/schemas"
+                bash -c "update-desktop-database /usr/share/applications 2>/dev/null || true; gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true; glib-compile-schemas /usr/share/glib-2.0/schemas 2>/dev/null || true"
             """.trimIndent())
 
-            onProgress(1.0, "Phosh installed!")
+            onProgress(1.0, "KDE Plasma installed!")
         } catch (e: Exception) {
-            Log.e(TAG, "Phosh install failed: ${e.message}", e)
-            onProgress(-1.0, "Phosh install failed: ${e.message}")
+            Log.e(TAG, "KDE Plasma install failed: ${e.message}", e)
+            onProgress(-1.0, "KDE Plasma install failed: ${e.message}")
         }
     }
 
