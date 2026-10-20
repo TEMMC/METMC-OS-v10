@@ -22,9 +22,9 @@ if ! "$tar_bin" --version 2>/dev/null | grep -q 'GNU tar'; then
     exit 2
 fi
 
-test -x "$rootfs/usr/bin/startplasma-x11"
-test -x "$rootfs/usr/bin/plasmashell"
-test -x "$rootfs/usr/bin/kwin_x11"
+test -x "$rootfs/usr/bin/startxfce4"
+test -x "$rootfs/usr/bin/xfce4-panel"
+test -x "$rootfs/usr/bin/xfwm4"
 test -x "$rootfs/usr/bin/konsole"
 test -f "$rootfs/usr/share/glib-2.0/schemas/org.gnome.settings-daemon.peripherals.gschema.xml"
 
