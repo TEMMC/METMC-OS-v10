@@ -1,104 +1,66 @@
 #!/usr/bin/env bash
-# ═══════════════════════════════════════════════════════════════
-#  METMC OS — Install KDE Plasma Desktop Environment in Chroot
-#
-#  Run this inside the chroot Ubuntu filesystem to install
-#  KDE Plasma desktop shell and all required dependencies.
-#
-#  Usage: chroot /path/to/rootfs /bin/bash /setup/install-phosh.sh
-# ═══════════════════════════════════════════════════════════════
-
-set -e
-
-echo "╔══════════════════════════════════════════╗"
-echo "║       METMC OS — Installing KDE Plasma        ║"
-echo "╚══════════════════════════════════════════╝"
-echo ""
+# METMC OS — lightweight Xfce desktop, touch layout, and networking tools.
+# Run inside the Ubuntu rootfs/chroot as root.
+set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
 
-# ── Update package index ──
-echo "[1/8] Updating package lists..."
-apt-get update -y -q
+echo "[1/5] Updating package lists..."
+apt-get update
 
-# ── Core X11/Wayland dependencies ──
-echo "[2/8] Installing display server dependencies..."
+echo "[2/5] Installing lightweight Xfce and touch-friendly panel..."
 apt-get install -y --no-install-recommends \
-    xwayland \
-    weston \
-    x11-utils \
-    x11-xserver-utils \
-    dbus-x11 \
-    upower \
-    ca-certificates \
-    locales \
-    wget \
-    curl
+  xfce4-session xfce4-panel xfwm4 xfce4-settings xfce4-terminal thunar \
+  xfce4-whiskermenu-plugin xfce4-pulseaudio-plugin \
+  dbus dbus-x11 policykit-1 x11-xserver-utils \
+  adwaita-icon-theme fonts-noto-core fonts-noto-color-emoji
 
-# ── Install KDE Plasma for the embedded Android X11 display ──
-echo "[3/8] Installing KDE Plasma and KWin X11..."
+echo "[3/5] Installing essential shell and networking tools..."
 apt-get install -y --no-install-recommends \
-    plasma-desktop plasma-workspace kwin-x11 konsole dolphin \
-    systemsettings xwayland x11-xserver-utils \
-    dbus-x11 policykit-1 || exit 1
+  nano less htop file procps psmisc ca-certificates curl wget git \
+  openssh-client iproute2 iputils-ping net-tools dnsutils traceroute \
+  netcat-openbsd nmap whois
 
-# ── Optional on-screen keyboard ──
-echo "[4/8] Installing an on-screen keyboard..."
-apt-get install -y --no-install-recommends maliit-keyboard 2>/dev/null || \
-    echo "[!] Optional on-screen keyboard package unavailable"
+echo "[4/5] Applying dark hacker theme and low-memory window settings..."
+install -d /etc/metmc
+cat > /etc/metmc/xfce-theme.ini <<'EOF'
+Theme=Adwaita-dark
+Accent=#00ff88
+TerminalBackground=#101418
+TerminalForeground=#00ff88
+PanelSize=52
+PanelIconSize=28
+WindowCompositing=false
+EOF
 
-# ── KDE utilities (optional; do not fail the desktop install if unavailable) ──
-echo "[5/8] Installing optional KDE utilities..."
-for package in kcalc ark okular plasma-systemmonitor; do
-    if apt-cache show "$package" >/dev/null 2>&1; then
-        apt-get install -y --no-install-recommends "$package" || echo "[!] Could not install optional package: $package"
-    fi
-done
+if id metmc >/dev/null 2>&1; then
+  install -d -o metmc -g metmc \
+    /home/metmc/.config/gtk-3.0 \
+    /home/metmc/.config/xfce4/xfconf/xfce-perchannel-xml \
+    /home/metmc/.config/xfce4/terminal
+  cat > /home/metmc/.config/gtk-3.0/settings.ini <<'EOF'
+[Settings]
+gtk-theme-name=Adwaita-dark
+gtk-icon-theme-name=Adwaita
+gtk-font-name=Noto Sans 11
+gtk-cursor-theme-name=Adwaita
+EOF
+  cat > /home/metmc/.config/xfce4/terminal/terminalrc <<'EOF'
+[Configuration]
+FontName=Monospace 11
+MiscAlwaysShowTabs=TRUE
+MiscMenubarDefault=FALSE
+MiscToolbarDefault=FALSE
+ColorForeground=#00ff88
+ColorBackground=#101418
+EOF
+  chown -R metmc:metmc /home/metmc/.config
+fi
 
-# ── Audio (PipeWire) ──
-echo "[7/8] Installing audio stack..."
-apt-get install -y --no-install-recommends \
-    pipewire \
-    pipewire-pulse \
-    wireplumber \
-    2>/dev/null || \
-    apt-get install -y --no-install-recommends pulseaudio 2>/dev/null || true
-
-# ── Feedback daemon (haptics, LEDs) ──
-apt-get install -y --no-install-recommends \
-    feedbackd \
-    2>/dev/null || echo "[!] feedbackd not available"
-
-# ── Location service ──
-apt-get install -y --no-install-recommends \
-    geoclue-2.0 \
-    2>/dev/null || echo "[!] geoclue not available"
-
-# ── Sensors ──
-apt-get install -y --no-install-recommends \
-    iio-sensor-proxy \
-    2>/dev/null || echo "[!] iio-sensor-proxy not available"
-
-# ── Optional KDE settings and Bluetooth diagnostics ──
-echo "[8/10] Installing optional KDE settings and hardware diagnostics..."
-for package in plasma-systemmonitor plasma-discover bluez rfkill; do
-    if apt-cache show "$package" >/dev/null 2>&1; then
-        apt-get install -y --no-install-recommends "$package" || echo "[!] Could not install optional package: $package"
-    fi
-done
-
-# ── Cleanup ──
-echo "[10/10] Cleaning up..."
+echo "[5/5] Cleaning apt cache..."
 apt-get clean
 rm -rf /var/lib/apt/lists/*
-
-# ── Create METMC configuration directory ──
-mkdir -p /etc/metmc
-
-echo ""
-echo "╔══════════════════════════════════════════╗"
-echo "║    KDE Plasma install complete              ║"
-echo "╚══════════════════════════════════════════╝"
-echo ""
-echo "Next: run install-bridge.sh to add METMC Wi-Fi, Bluetooth, display, sound, location and system-settings launchers"
+echo "METMC OS Xfce desktop and networking tools installed."
+echo "Desktop: floating windows + Xfwm4; panel/tasklist sized for touch."
+echo "Network tools: ip, ping, ss, netstat, dig, traceroute, nc, nmap, whois, curl, wget, ssh."
