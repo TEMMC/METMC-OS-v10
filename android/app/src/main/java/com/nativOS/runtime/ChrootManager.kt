@@ -10,7 +10,7 @@ import java.security.MessageDigest
  * and command execution inside the chroot.
  *
  * Adapted from DroidDesk's ChrootRuntime for NativOS —
- * focused on Phosh/Wayland instead of XFCE.
+ * focused on KDE Plasma's X11 session inside the Android-hosted X server.
  */
 class ChrootManager(private val context: Context) {
 
@@ -46,9 +46,10 @@ class ChrootManager(private val context: Context) {
 
     fun isRootfsReady(): Boolean = File(rootfsDir, "usr/bin/bash").exists()
 
-    fun isPhoshInstalled(): Boolean =
-        File(rootfsDir, "usr/bin/phosh-session").exists() ||
-        File(rootfsDir, "usr/bin/phoc").exists()
+    fun isKdePlasmaInstalled(): Boolean =
+        File(rootfsDir, "usr/bin/startplasma-x11").exists() &&
+        File(rootfsDir, "usr/bin/plasmashell").exists() &&
+        File(rootfsDir, "usr/bin/kwin_x11").exists()
 
     fun isRunning(): Boolean = sessionProcess?.isAlive == true
 
@@ -1262,402 +1263,104 @@ METMC_LAUNCH_EOF
     // ── Session management ──
 
     /**
-     * Start the Phosh desktop session inside the chroot.
-     * This launches phoc (Wayland compositor) which hosts Phosh.
-     *
-     * @param screenWidth  The device's real screen width in pixels
-     * @param screenHeight The device's real screen height in pixels
+     * Start KDE Plasma as the unprivileged Linux user on the Android-hosted X11 display.
+     * Plasma/KWin runs directly on DISPLAY=:0; Android remains the physical display owner.
      */
     @Synchronized
-    fun startPhoshSession(screenWidth: Int = 1080, screenHeight: Int = 2160) {
-        if (!hasRoot()) {
-            Log.e(TAG, "Cannot start session without root")
+    fun startKdePlasmaSession(screenWidth: Int = 1080, screenHeight: Int = 2160) {
+        if (!hasRoot() || !isRootfsReady()) {
+            Log.e(TAG, "Cannot start KDE: root or rootfs unavailable")
             return
         }
-        if (!isRootfsReady()) {
-            Log.e(TAG, "Rootfs not ready")
-            return
-        }
-        if (isRunning()) Log.w(TAG, "Replacing existing tracked session")
-        stopTrackedSessionProcess()
+        if (isRunning()) stopTrackedSessionProcess()
         killRootfsProcesses()
-
         ensureMounts()
         ensureDefaultLinuxUser()
         bindX11Socket()
         prepareCloseRangeCompatibility()
-        prepareDisplayResizeHelper()
         prepareFlatpakCompatibility()
-
         val hardwareGpu = prepareHardwareGpu()
-        // Keep the UI scale stable when width and height swap on rotation.
-        // Very-high-density panels need scale 3; normal phone panels use 2.
-        // Keep Phosh controls comfortably sized on phone panels while reducing
-        // the amount of nested X11 rendering work on mid-density devices.
-        // Phoc accepts fractional output scales; the output mode remains native pixels.
-        val displayScale = when {
-            context.resources.displayMetrics.densityDpi >= 500 -> 2.0
-            context.resources.displayMetrics.densityDpi >= 280 -> 1.5
-            else -> 1.0
-        }
-        val gpuEnvironment = if (hardwareGpu) {
-            """
-                export NATIVOS_GPU=turnip
-                # Termux:X11 legacy drawing does not provide wlroots with a DRI3
-                # DRM fd. Keep the compositor on Pixman while applications use
-                # hardware-accelerated Zink/Turnip.
-                export WLR_RENDERER=pixman
-                unset LIBGL_ALWAYS_SOFTWARE
-                unset GBM_ALWAYS_SOFTWARE
-                export GALLIUM_DRIVER=zink
-                export MESA_LOADER_DRIVER_OVERRIDE=zink
-                export VK_ICD_FILENAMES=${turnipIcd.absolutePath.removePrefix(rootfsDir.absolutePath)}
-                export TU_DEBUG=noconform
-                export ZINK_DESCRIPTORS=lazy
-                export MESA_VK_WSI_DEBUG=sw
-            """.trimIndent()
-        } else {
-            """
-                export NATIVOS_GPU=software
-                export WLR_RENDERER=pixman
-                export LIBGL_ALWAYS_SOFTWARE=1
-                export GBM_ALWAYS_SOFTWARE=1
-                export GALLIUM_DRIVER=llvmpipe
-                export MESA_LOADER_DRIVER_OVERRIDE=swrast
-            """.trimIndent()
-        }
-        // Embedded X11 legacy drawing cannot return a DRM fd from DRI3. Hide the
-        // extension so wlroots selects its shared-memory path. Zink still renders
-        // on Turnip and presents through MESA_VK_WSI_DEBUG=sw.
-        val preloadLibraries =
-            "/usr/local/lib/libsocket_hook.so /usr/local/lib/libnativos-close-range.so /usr/local/lib/libnodri3.so /usr/local/lib/libandroid-shmem.so"
-        val appPreloadLibraries = if (hardwareGpu) {
-            "/usr/local/lib/libsocket_hook.so /usr/local/lib/libnativos-close-range.so /usr/local/lib/libandroid-shmem.so"
-        } else {
-            preloadLibraries
-        }
-
-        val nativeLibDir = context.applicationInfo.nativeLibraryDir
-        val flatpakUid = context.applicationInfo.uid
-        val runScript = """
-            # Standard FHS PATH
-            export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-            export TMPDIR=/tmp
-            export HOME=/root
-            export XDG_RUNTIME_DIR=/tmp/runtime-root
-            # Phoc is running a Wayland session on the nested X11 backend. Report the
-            # client session as Wayland so Phosh activates Wayland text-input/OSK support.
-            export XDG_SESSION_TYPE=wayland
-            export XDG_CURRENT_DESKTOP=Phosh
-            export XDG_SESSION_DESKTOP=phosh
-            export DESKTOP_SESSION=phosh
-            # Flatpak exports launchers here. Keeping both locations in the
-            # session search path lets Phosh discover Store installs live.
-            export XDG_DATA_HOME=/root/.local/share
-            export XDG_DATA_DIRS=/root/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/run/nativOS/android-apps/share:/usr/local/share:/usr/share
-            export XDG_CONFIG_DIRS=/etc/xdg
-            export DISPLAY=:0
-            export LANG=C.UTF-8
-            export LC_ALL=C.UTF-8
-            export GTK_A11Y=none
-            # GTK4's GL renderer requires dmabuf support that the nested X11
-            # backend cannot expose. Cairo keeps GTK windows visible while GL
-            # applications continue to use Zink/Turnip.
-            export GSK_RENDERER=cairo
-            $gpuEnvironment
-
-            # The desktop runs as root to manage this private chroot, while
-            # Flatpak applications are dropped to the Android app UID. This
-            # keeps them non-root while satisfying Android app-data SELinux.
-            # Permit that UID to
-            # authenticate to the session bus; per-app xdg-dbus-proxy policies
-            # still filter every Flatpak connection.
-            if ! getent passwd $flatpakUid >/dev/null 2>&1; then
-                useradd --uid $flatpakUid --user-group --no-create-home --home-dir /root \
-                    --shell /usr/sbin/nologin nativos-app
-            fi
-            mkdir -p /etc/opt/chrome/policies/managed \
-                /etc/opt/chrome/policies/recommended \
-                /etc/opt/chrome/policies/enrollment
-            dbus-uuidgen --ensure=/etc/machine-id
-
-            configure_cobalt_wayland() {
-                app_id="${'$'}1"
-                flags_name="${'$'}2"
-                [ -d "/root/.local/share/flatpak/app/${'$'}app_id" ] || return 0
-                flags_dir="/root/.var/app/${'$'}app_id/config"
-                flags_file="${'$'}flags_dir/${'$'}flags_name-flags.conf"
-                mkdir -p "${'$'}flags_dir"
-                touch "${'$'}flags_file"
-                grep -qxF -- '--ozone-platform=wayland' "${'$'}flags_file" || \
-                    printf '%s\n' '--ozone-platform=wayland' >> "${'$'}flags_file"
-            }
-            (
-                while true; do
-                    configure_cobalt_wayland com.google.Chrome chrome
-                    configure_cobalt_wayland com.microsoft.Edge edge
-                    configure_cobalt_wayland com.brave.Browser brave
-                    configure_cobalt_wayland com.vivaldi.Vivaldi vivaldi
-                    configure_cobalt_wayland com.opera.Opera opera
-                    sleep 5
-                done
-            ) &
-
-            mkdir -p /etc/dbus-1
-            cat > /etc/dbus-1/session-local.conf << 'DBUSEOF'
-<busconfig>
-  <policy context="default">
-    <allow user="$flatpakUid"/>
-  </policy>
-</busconfig>
-DBUSEOF
-
-            # Ensure runtime dir exists with correct permissions
-            mkdir -p /tmp/runtime-root
-            chown root:root /tmp/runtime-root
-            chmod 0700 /tmp/runtime-root
-
-            # GNOME Software and PackageKit require a system bus. There is no
-            # systemd in this chroot, so start D-Bus and polkit explicitly.
-            mkdir -p /run/dbus
-            rm -f /run/dbus/pid /run/dbus/system_bus_socket
-            dbus-uuidgen --ensure
-            if dbus-daemon --system --fork --nopidfile; then
-                echo "METMC OS: System D-Bus started"
-                if [ -x /usr/lib/polkit-1/polkitd ]; then
-                    /usr/lib/polkit-1/polkitd --no-debug &
-                    echo "METMC OS: polkit started"
-                fi
-                # UPower is optional in the bundled rootfs. When present, start
-                # it on the system bus so Phosh can read battery/charging state.
-                # The Android kernel remains authoritative for battery and thermal policy.
-                if command -v upowerd >/dev/null 2>&1; then
-                    if pgrep -x upowerd >/dev/null 2>&1; then
-                        echo "METMC OS: UPower already running"
-                    else
-                        upowerd --no-debug &
-                        sleep 1
-                        if pgrep -x upowerd >/dev/null 2>&1; then
-                            echo "METMC OS: UPower started"
-                        else
-                            echo "METMC OS: WARNING — UPower failed to start"
-                        fi
-                    fi
-                else
-                    echo "METMC OS: UPower not installed; battery integration remains unavailable"
-                fi
-                # Save a small read-only hardware snapshot for troubleshooting.
-                mkdir -p /run/metmc
-                {
-                    date -Is 2>/dev/null || date
-                    echo '=== power supplies ==='
-                    ls -la /sys/class/power_supply 2>/dev/null || true
-                    echo '=== backlight ==='
-                    ls -la /sys/class/backlight 2>/dev/null || true
-                    echo '=== graphics ==='
-                    ls -la /dev/dri 2>/dev/null || true
-                    echo '=== input ==='
-                    ls -la /dev/input 2>/dev/null || true
-                } > /run/metmc/hardware-status.txt
-                chmod 0644 /run/metmc/hardware-status.txt
-            else
-                echo "METMC OS: WARNING — system D-Bus failed to start"
-            fi
-
-            # Run OpenSSH when it is present in the rootfs. Use a high port so
-            # the chroot does not compete with Android services, and never
-            # expose the built-in desktop password over the network. Users can
-            # authorize access by adding a public key to
-            # /root/.ssh/authorized_keys.
-            if [ -x /usr/sbin/sshd ]; then
-                mkdir -p /run/sshd /root/.ssh /etc/ssh/sshd_config.d
-                chmod 0700 /root/.ssh
-                cat > /etc/ssh/sshd_config.d/nativos.conf << 'SSHEOF'
-Port 8022
-ListenAddress 0.0.0.0
-PermitRootLogin prohibit-password
-PasswordAuthentication no
-KbdInteractiveAuthentication no
-PubkeyAuthentication yes
-UsePAM no
-SSHEOF
-                ssh-keygen -A
-                pkill -x sshd 2>/dev/null || true
-                if /usr/sbin/sshd -t && /usr/sbin/sshd -E /tmp/sshd.log; then
-                    echo "NativOS: SSH ready on port 8022 (key only)"
-                else
-                    echo "NativOS: WARNING — SSH failed to start"
-                fi
-            fi
-
-            # Set root password to 1234 so lockscreen can be unlocked
-            echo 'root:1234' | chpasswd
-
-            # We compiled a glibc-compatible libsocket_hook.so directly in the chroot
-            # at /usr/local/lib/libsocket_hook.so
-            # This library intercepts connect() and translates filesystem socket paths
-            # to abstract sockets, preserving SCM_RIGHTS fd-passing (critical for MIT-SHM)
-
-            # Start the NativOS bridge client daemon
-            if [ -f /usr/local/bin/nativOS-bridge ]; then
-                /usr/local/bin/nativOS-bridge &
-                echo "NativOS: Bridge client started"
-            fi
-            
-            # Clean up any lingering Wayland sockets and loops
-            if [ -f /tmp/phosh_loop.pid ]; then kill -9 $(cat /tmp/phosh_loop.pid) 2>/dev/null || true; rm /tmp/phosh_loop.pid; fi
-            rm -rf /tmp/runtime-root/wayland-* 2>/dev/null || true
-
-            # Generate phoc.ini with device-specific resolution
-            mkdir -p /etc/nativOS
-            cat > /etc/nativOS/phoc.ini << PHOCEOF
-[core]
-xwayland=false
-
-[output:X11-1]
-mode=${screenWidth}x${screenHeight}
-scale=$displayScale
-PHOCEOF
-            
-            echo "NativOS: Display configured: ${screenWidth}x${screenHeight} @ scale $displayScale"
-            echo "NativOS: Starting Wayland session..."
-            if command -v phoc >/dev/null 2>&1; then
-                echo "NativOS: Launching phoc (X11 backend)..."
-                
-                # Configure wlroots X11 backend
-                export WLR_BACKENDS=x11
-                export WLR_X11_OUTPUTS=1
-                export DISPLAY=:0
-                
-                # The X11 backend never owns Android's physical DRM display.
-                export WLR_DRM_NO_ATOMIC=1
-                export WLR_DRM_DEVICES=""
-                
-                # CRITICAL: Set TMPDIR to match the Android app's TMPDIR
-                # libsocket_hook.so uses TMPDIR to construct the abstract socket path
-                # The bundled X11 server (libXlorie.so) creates abstract socket at: @<TMPDIR>/.X11-unix/X0
-                # Both sides MUST use the same TMPDIR value for the abstract socket path to match
-                export TMPDIR=${tmpDir.absolutePath}
-                
-                # LD_PRELOAD: Only load libraries that actually exist on this device
-                # libsocket_hook.so translates filesystem connect() to abstract socket
-                # libnodri3.so makes wlroots use X11 shared-memory presentation.
-                # libandroid-shmem.so provides shared memory on Android kernels
-                PRELOAD=""
-                for lib in $preloadLibraries; do
-                    if [ -f "${'$'}lib" ]; then
-                        if [ -z "${'$'}PRELOAD" ]; then
-                            PRELOAD="${'$'}lib"
-                        else
-                            PRELOAD="${'$'}PRELOAD:${'$'}lib"
-                        fi
-                    fi
-                done
-                if [ -n "${'$'}PRELOAD" ]; then
-                    export LD_PRELOAD=${'$'}PRELOAD
-                    echo "NativOS: LD_PRELOAD=${'$'}LD_PRELOAD"
-                else
-                    echo "NativOS: No LD_PRELOAD libraries found (fresh install)"
-                fi
-
-                # Phoc needs libnodri3, but hardware-accelerated applications do
-                # not. Phosh replaces LD_PRELOAD before launching the app session.
-                APP_PRELOAD=""
-                for lib in $appPreloadLibraries; do
-                    if [ -f "${'$'}lib" ]; then
-                        if [ -z "${'$'}APP_PRELOAD" ]; then
-                            APP_PRELOAD="${'$'}lib"
-                        else
-                            APP_PRELOAD="${'$'}APP_PRELOAD:${'$'}lib"
-                        fi
-                    fi
-                done
-                export NATIVOS_APP_LD_PRELOAD="${'$'}APP_PRELOAD"
-                
-                echo "NativOS: TMPDIR=${'$'}TMPDIR"
-                echo "NativOS: DISPLAY=${'$'}DISPLAY"
-                echo "NativOS: GPU=${'$'}NATIVOS_GPU"
-                
-                cat > /tmp/start_phosh.sh << 'PHOSHEOF'
-#!/bin/bash
-echo $$ > /tmp/phosh_loop.pid
-while true; do
-    dbus-run-session -- phoc -C /etc/nativOS/phoc.ini -E "bash -c '
-        export LD_PRELOAD=${'$'}NATIVOS_APP_LD_PRELOAD
-        [ -x /usr/libexec/xdg-desktop-portal-gtk ] && /usr/libexec/xdg-desktop-portal-gtk >/tmp/xdg-desktop-portal-gtk.log 2>&1 &
-        [ -x /usr/libexec/xdg-desktop-portal ] && /usr/libexec/xdg-desktop-portal >/tmp/xdg-desktop-portal.log 2>&1 &
-        gsettings set org.gnome.desktop.interface enable-animations false >/dev/null 2>&1 || true
-        # Enable the mobile on-screen keyboard and start Squeekboard explicitly.
-        # This rootfs has no systemd user session to launch its autostart service.
-        gsettings set org.gnome.desktop.a11y.applications screen-keyboard-enabled true >/dev/null 2>&1 || true
-        if command -v squeekboard >/dev/null 2>&1; then
-            (squeekboard >/tmp/squeekboard.log 2>&1 &)
-        fi
-        exec /usr/libexec/phosh -U
-    '"
-    echo "NativOS: Phoc exited, restarting..."
-    sleep 0.5
-done
-PHOSHEOF
-                chmod +x /tmp/start_phosh.sh
-                exec /tmp/start_phosh.sh
-            elif command -v kgx >/dev/null 2>&1; then
-                echo "NativOS: Fallback — launching GNOME Console"
-                exec kgx
-            else
-                echo "NativOS: ERROR — no compositor or terminal found"
-                sleep 999
-            fi
+        val gpuEnvironment = if (hardwareGpu) """
+            export NATIVOS_GPU=turnip
+            unset LIBGL_ALWAYS_SOFTWARE GBM_ALWAYS_SOFTWARE
+            export GALLIUM_DRIVER=zink MESA_LOADER_DRIVER_OVERRIDE=zink
+            export VK_ICD_FILENAMES=\${turnipIcd.absolutePath.removePrefix(rootfsDir.absolutePath)}
+            export TU_DEBUG=noconform ZINK_DESCRIPTORS=lazy MESA_VK_WSI_DEBUG=sw
+        """.trimIndent() else """
+            export NATIVOS_GPU=software LIBGL_ALWAYS_SOFTWARE=1 GBM_ALWAYS_SOFTWARE=1
+            export GALLIUM_DRIVER=llvmpipe MESA_LOADER_DRIVER_OVERRIDE=swrast
         """.trimIndent()
-
-        Log.i(TAG, "Starting Phosh session")
-
+        val tmpPath = tmpDir.absolutePath
+        val runScript = """
+            set -u
+            export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+            export TMPDIR=\${tmpPath} DISPLAY=:0 LANG=C.UTF-8 LC_ALL=C.UTF-8
+            export QT_QPA_PLATFORM=xcb XDG_SESSION_TYPE=x11
+            export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=plasma DESKTOP_SESSION=plasma
+            export XDG_DATA_DIRS=/run/metmc/android-apps/share:/usr/local/share:/usr/share
+            \${gpuEnvironment}
+            mkdir -p /run/dbus /run/metmc
+            rm -f /run/dbus/pid /run/dbus/system_bus_socket
+            dbus-uuidgen --ensure=/etc/machine-id
+            if dbus-daemon --system --fork --nopidfile; then
+                [ -x /usr/lib/polkit-1/polkitd ] && /usr/lib/polkit-1/polkitd --no-debug >/tmp/polkit.log 2>&1 &
+                command -v upowerd >/dev/null 2>&1 && upowerd --no-debug >/tmp/upowerd.log 2>&1 &
+            fi
+            if [ -x /usr/local/bin/nativOS-bridge ]; then
+                /usr/local/bin/nativOS-bridge >/tmp/metmc-bridge.log 2>&1 &
+            fi
+            {
+                date -Is 2>/dev/null || date
+                echo '=== power supplies ==='; ls -la /sys/class/power_supply 2>/dev/null || true
+                echo '=== backlight ==='; ls -la /sys/class/backlight 2>/dev/null || true
+                echo '=== graphics ==='; ls -la /dev/dri 2>/dev/null || true
+                echo '=== input ==='; ls -la /dev/input 2>/dev/null || true
+            } > /run/metmc/hardware-status.txt
+            chmod 0644 /run/metmc/hardware-status.txt
+            id metmc >/dev/null 2>&1 || useradd -m -s /bin/bash metmc
+            METMC_HOME=$(getent passwd metmc | cut -d: -f6)
+            mkdir -p "$METMC_HOME" /tmp/runtime-metmc
+            chown -R metmc:metmc "$METMC_HOME" /tmp/runtime-metmc
+            chmod 0700 /tmp/runtime-metmc
+            export LD_PRELOAD=/usr/local/lib/libsocket_hook.so:/usr/local/lib/libnativos-close-range.so:/usr/local/lib/libandroid-shmem.so
+            runuser -u metmc -- env HOME="$METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0 \
+                TMPDIR="$TMPDIR" XDG_RUNTIME_DIR=/tmp/runtime-metmc \
+                XDG_SESSION_TYPE=x11 XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=plasma \
+                DESKTOP_SESSION=plasma XDG_DATA_DIRS="$XDG_DATA_DIRS" QT_QPA_PLATFORM=xcb \
+                LD_PRELOAD="$LD_PRELOAD" dbus-run-session -- startplasma-x11
+        """.trimIndent()
+        Log.i(TAG, "Starting KDE Plasma X11 session")
         val su = rootShell.findSuPath() ?: return
-        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/bash -c ${shellQuote(runScript)}"
-        val startedSession = ProcessBuilder(su, "-c", fullCommand)
-            .redirectErrorStream(true)
-            .start()
-        sessionProcess = startedSession
-
-        // Log output from the session
+        val fullCommand = "chroot \${rootfsDir.absolutePath} /usr/bin/env -i /bin/bash -c \${shellQuote(runScript)}"
+        val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
+        sessionProcess = process
         Thread {
             try {
-                val reader = startedSession.inputStream.bufferedReader()
-                val buffer = CharArray(1024)
-                var charsRead: Int
-                while (reader.read(buffer).also { charsRead = it } != -1) {
-                    Log.d(TAG, "SESSION: " + String(buffer, 0, charsRead))
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { Log.d(TAG, "SESSION: $it") }
                 }
-            } catch (error: java.io.IOException) {
+            } catch (_: java.io.IOException) {
                 Log.d(TAG, "Session output stream closed")
             }
         }.start()
     }
 
-    /** Wait until both the Wayland socket and Phosh process exist. */
-    fun awaitDesktopReady(timeoutMs: Long = 20_000): Boolean {
+    /** Wait for KWin and Plasma Shell to appear on the embedded X11 display. */
+    fun awaitDesktopReady(timeoutMs: Long = 45_000): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
             if (sessionProcess?.isAlive != true) return false
-            if (execChroot(
-                    "test -S /tmp/runtime-root/wayland-0 && " +
-                        "(pgrep -x phosh >/dev/null 2>&1 || pidof phosh >/dev/null 2>&1)"
-                ) == 0
-            ) {
-                Log.i(TAG, "Desktop readiness check passed")
-                // The process and socket appear just before Phosh commits its first
-                // frame. Keep the splash visible through that short final gap.
-                Thread.sleep(500)
+            if (execChroot("pgrep -x plasmashell >/dev/null 2>&1 && pgrep -f 'kwin_x11' >/dev/null 2>&1") == 0) {
+                Log.i(TAG, "KDE Plasma readiness check passed")
+                Thread.sleep(700)
                 return true
             }
-            try {
-                Thread.sleep(250)
-            } catch (_: InterruptedException) {
+            try { Thread.sleep(300) } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
                 return false
             }
         }
-        Log.e(TAG, "Desktop did not become ready within ${timeoutMs}ms")
+        Log.e(TAG, "KDE Plasma did not become ready within \${timeoutMs}ms")
         return false
     }
 
