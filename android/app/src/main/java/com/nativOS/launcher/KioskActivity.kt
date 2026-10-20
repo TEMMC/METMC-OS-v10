@@ -53,7 +53,7 @@ import java.lang.ref.WeakReference
  *   1. Initialize X11 surface (LorieView)
  *   2. Download Linux rootfs (if first boot)
  *   3. Extract and configure rootfs
- *   4. Install KDE Plasma desktop (if not installed)
+ *   4. Install Xfce desktop (if not installed)
  *   5. Start the Linux desktop session
  *
  * Escape hatch: press Volume Up 5 times rapidly to show Android.
@@ -344,10 +344,10 @@ class KioskActivity : Activity() {
             FrameLayout.LayoutParams.WRAP_CONTENT
         ))
 
-        // KDE Plasma provides a Super-key launcher. Keep a small phone-friendly handle
+        // Xfce provides a Super-key launcher. Keep a small phone-friendly handle
         // to invoke it with the Super_L shortcut.
         navigationHandle = FrameLayout(this).apply {
-            contentDescription = "Open KDE app launcher"
+            contentDescription = "Open Xfce app launcher"
             visibility = View.GONE
             isClickable = true
             isFocusable = true
@@ -501,7 +501,7 @@ class KioskActivity : Activity() {
      * Keep the Linux display inside Android's physical safe area. System bars
      * may be hidden, but their stable geometry still protects gesture handles,
      * navigation buttons and landscape side bars. The display cutout protects
-     * Phosh's centered clock from notches and hole-punch cameras.
+     * Xfce's centered clock from notches and hole-punch cameras.
      */
     private fun updateDesktopSafeInsets(insets: WindowInsets) {
         val cutout = insets.displayCutout
@@ -574,8 +574,8 @@ class KioskActivity : Activity() {
     }
 
     private fun showLinuxHome() {
-        // KDE Plasma owns the Linux desktop and its window manager. The Super key
-        // opens Plasma's launcher; avoid Phoc-specific X11 window manipulation.
+        // Xfce owns the Linux desktop and its window manager. The Super key
+        // opens Xfce's launcher; avoid Phoc-specific X11 window manipulation.
         toggleKdeLauncher()
         desktopView?.postDelayed({
             desktopView?.triggerCallback()
@@ -705,33 +705,33 @@ class KioskActivity : Activity() {
 
             // Step 4: Install essential packages (dbus is required for any session)
             updateOverlay(0.74, "Checking essential packages...", "")
-            if (!chrootManager.isKdePlasmaInstalled()) {
-                updateOverlay(0.75, "Installing KDE Plasma desktop...", "First boot — installing packages (5-15 min)")
+            if (!chrootManager.isXfceInstalled()) {
+                updateOverlay(0.75, "Installing Xfce desktop...", "First boot — installing packages (5-15 min)")
                 bootFailed = false
-                rootfsManager.installKdePlasma(chrootManager) { progress, status ->
+                rootfsManager.installXfceDesktop(chrootManager) { progress, status ->
                     if (progress < 0) {
                         bootFailed = true
-                        updateOverlay(-1.0, "KDE Plasma installation failed", status)
+                        updateOverlay(-1.0, "Xfce installation failed", status)
                     } else {
                         updateOverlay(0.75 + progress * 0.20, status, "")
                     }
                 }
                 if (bootFailed) {
-                    // Even if Phosh failed, leave the rootfs package database usable.
-                    updateOverlay(0.90, "Installing minimal session...", "KDE Plasma failed, trying fallback")
+                    // Even if Xfce failed, leave the rootfs package database usable.
+                    updateOverlay(0.90, "Installing minimal session...", "Xfce failed, trying fallback")
                     try {
                         chrootManager.execChroot(
                             "TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends dbus dbus-x11")
                     } catch (_: Exception) {}
                 }
             } else {
-                updateOverlay(0.95, "KDE Plasma desktop found", "")
+                updateOverlay(0.95, "Xfce desktop found", "")
             }
 
-            // A KDE installation can be interrupted during package unpacking. Repair the
-            // package state and verify the Plasma session components before launch.
-            updateOverlay(0.95, "Checking desktop components...", "KDE Plasma runtime")
-            if (!rootfsManager.ensureKdeRuntime(chrootManager)) {
+            // A Xfce installation can be interrupted during package unpacking. Repair the
+            // package state and verify the Xfce session components before launch.
+            updateOverlay(0.95, "Checking desktop components...", "Xfce runtime")
+            if (!rootfsManager.ensureXfceRuntime(chrootManager)) {
                 updateOverlay(
                     -1.0,
                     "Desktop repair failed",
@@ -741,9 +741,9 @@ class KioskActivity : Activity() {
             }
 
             // Migrate existing installs away from the tiny unmanaged XTerm/UXTerm
-            // windows. GNOME Console is adaptive and is maximized by Phosh.
-            updateOverlay(0.95, "Checking terminal...", "Konsole")
-            rootfsManager.ensureKdeTerminal(chrootManager)
+            // windows. GNOME Console is adaptive and is maximized by Xfce.
+            updateOverlay(0.95, "Checking terminal...", "Xfce terminal")
+            rootfsManager.ensureEssentialTools(chrootManager)
 
             // Migrate existing installations that have Flatpak but were created
             // before Flathub setup became independent from Firefox provisioning.
@@ -856,21 +856,21 @@ class KioskActivity : Activity() {
 
             Log.i(TAG, "Starting test session...")
 
-            // Match the KDE session to the current Android X11 surface dimensions.
+            // Match the Xfce session to the current Android X11 surface dimensions.
             val screenWidth = lorieView.width
             val screenHeight = lorieView.height
             Log.i(TAG, "Detected screen: ${screenWidth}x${screenHeight}")
 
-            chrootManager.startKdePlasmaSession(screenWidth, screenHeight)
-            updateOverlay(0.98, "Starting Linux desktop...", "Waiting for KDE Plasma")
-            if (!chrootManager.awaitDesktopReady()) {
-                throw IllegalStateException("KDE Plasma did not become ready")
+            chrootManager.startXfceSession(screenWidth, screenHeight)
+            updateOverlay(0.98, "Starting Linux desktop...", "Waiting for Xfce")
+            if (!chrootManager.awaitXfceReady()) {
+                throw IllegalStateException("Xfce did not become ready")
             }
             runOnUiThread {
                 overlayLayout?.visibility = View.GONE
                 keyboardButton?.visibility = View.VISIBLE
                 keyboardButton?.bringToFront()
-                // KDE Plasma has its own panel; keep the extra Android navigation handle hidden.
+                // Xfce has its own panel; keep the extra Android navigation handle hidden.
                 navigationHandle?.visibility = View.GONE
             }
 
@@ -935,8 +935,8 @@ class KioskActivity : Activity() {
             }, delay)
         }
 
-        // Launching an Android shortcut closes Phosh's overview before Android
-        // takes focus. Returning would therefore show Phosh's valid but empty
+        // Launching an Android shortcut closes Xfce's overview before Android
+        // takes focus. Returning would therefore show Xfce's valid but empty
         // black home layer, which looks like a frozen renderer. Reopen the
         // overview after the recreated Surface has received its first frames.
         if (returningFromAndroid) {
@@ -975,7 +975,7 @@ class KioskActivity : Activity() {
         enterImmersiveMode()
 
         // The activity is retained across rotation so the X11 connection and
-        // Phosh session stay alive. Recalculate Android's cutout/navigation
+        // Xfce session stay alive. Recalculate Android's cutout/navigation
         // safe area, then notify X11 after SurfaceView has its new dimensions.
         assistiveMenu?.visibility = View.GONE
         rootLayout?.requestApplyInsets()
@@ -989,7 +989,7 @@ class KioskActivity : Activity() {
                         val width = view.width
                         val height = view.height
                         Thread({
-                            chrootManager.resizePhoshDisplay(width, height)
+                            chrootManager.resizeXfceDisplay(width, height)
                         }, "nativOS-display-resize").start()
                     }, 150)
                 }
