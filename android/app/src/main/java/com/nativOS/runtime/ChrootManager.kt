@@ -64,14 +64,17 @@ class ChrootManager(private val context: Context) {
                     "echo FREEFORM_SETTING:; settings get global enable_freeform_support; " +
                     "echo RESIZABLE_SETTING:; settings get global force_resizable_activities"
             )
-            val settingEnabled = output.lineSequence().any {
-                it.trim() == "FREEFORM_SETTING:" 
-            } && output.substringAfter("FREEFORM_SETTING:", "").trimStart().startsWith("1")
+            val settingValue = output.substringAfter("FREEFORM_SETTING:", "").lineSequence()
+                .drop(1).firstOrNull()?.trim().orEmpty()
+            val lowRamValue = output.substringAfter("LOW_RAM:", "").lineSequence()
+                .drop(1).firstOrNull()?.trim().orEmpty()
+            val settingEnabled = settingValue == "1"
             val featurePresent = output.contains("android.software.freeform_window_management")
-            val lowRam = output.substringAfter("LOW_RAM:", "").lineSequence().firstOrNull()?.trim() == "true"
+            val lowRam = lowRamValue.equals("true", ignoreCase = true)
             Log.i(
                 TAG,
-                "Android windowing probe: settingEnabled=$settingEnabled, " +
+                "Android windowing probe: settingValue=$settingValue, " +
+                    "resizableValue=${output.substringAfter("RESIZABLE_SETTING:", "").lineSequence().drop(1).firstOrNull()?.trim().orEmpty()}, " +
                     "freeformFeature=$featurePresent, lowRam=$lowRam; " +
                     output.take(1200).trim()
             )
