@@ -76,6 +76,70 @@ jobs:
           sha256sum nativos-rootfs-arm64.tgz > nativos-rootfs-arm64.tgz.sha256
           sha256sum --check nativos-rootfs-arm64.tgz.sha256
 
+      - name: Prepare complete offline ARM64 rootfs on GitHub
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static binfmt-support
+          sudo update-binfmts --enable qemu-aarch64 || true
+
+          ROOTFS="$RUNNER_TEMP/metmc-rootfs"
+          mkdir -p "$ROOTFS"
+          sudo tar --numeric-owner -xzf android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz -C "$ROOTFS"
+          sudo cp /usr/bin/qemu-aarch64-static "$ROOTFS/usr/bin/qemu-aarch64-static"
+          sudo cp -L /etc/resolv.conf "$ROOTFS/etc/resolv.conf"
+          sudo mkdir -p "$ROOTFS/dev" "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/dev/pts"
+
+          cleanup_mounts() {
+            sudo umount "$ROOTFS/sys" 2>/dev/null || true
+            sudo umount "$ROOTFS/proc" 2>/dev/null || true
+            sudo umount "$ROOTFS/dev" 2>/dev/null || true
+          }
+          trap cleanup_mounts EXIT
+          sudo mount --bind /dev "$ROOTFS/dev"
+          sudo mount -t proc proc "$ROOTFS/proc"
+          sudo mount --bind /sys "$ROOTFS/sys"
+
+          # All downloads and package installation happen on this GitHub runner,
+          # never on the phone. The finished APK carries this complete ARM64 rootfs.
+          sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive apt-get update
+          sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends \
+            xfce4-session xfce4-panel xfwm4 xfce4-settings xfce4-terminal thunar \
+            xfce4-whiskermenu-plugin xfce4-pulseaudio-plugin dbus dbus-x11 \
+            policykit-1 x11-xserver-utils adwaita-icon-theme fonts-noto-core \
+            fonts-noto-color-emoji nano less htop file procps psmisc \
+            ca-certificates curl wget git openssh-client iproute2 iputils-ping \
+            net-tools dnsutils traceroute netcat-openbsd nmap whois sudo
+
+          sudo chroot "$ROOTFS" /bin/bash -eu -c '
+            id -u metmc >/dev/null 2>&1 || useradd --create-home --shell /bin/bash metmc
+            usermod -aG sudo metmc
+            install -d -m 0755 /etc/sudoers.d
+            printf "%s\\n" "Defaults !requiretty" "metmc ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/metmc
+            chmod 0440 /etc/sudoers.d/metmc
+            echo "root:metmc" | chpasswd
+            command -v sudo >/dev/null
+            test -x /usr/bin/startxfce4
+            test -x /usr/bin/xfce4-panel
+            test -x /usr/bin/xfwm4
+            test -x /usr/bin/xfce4-terminal
+            test -x /usr/bin/thunar
+            test -x /usr/bin/curl
+            test -x /usr/bin/ip
+            test -x /usr/bin/ping
+            apt-get clean
+            rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+          '
+
+          cleanup_mounts
+          trap - EXIT
+          sudo rm -f "$ROOTFS/usr/bin/qemu-aarch64-static"
+          sudo chown -R "$USER":"$USER" "$ROOTFS"
+          scripts/build-rootfs-asset.sh "$ROOTFS" android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz
+          cd android/app/src/main/assets/rootfs
+          sha256sum --check nativos-rootfs-arm64.tgz.sha256
+
       - name: Build and verify APK
         working-directory: android
         run: |
