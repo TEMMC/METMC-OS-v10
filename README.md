@@ -29,6 +29,10 @@ The Linux chroot sets the **root** account password to **`metmc`**. This is the 
 - Keep upstream copyright notices, licenses, and third-party attribution intact.
 - Document device compatibility honestly; fixes are not claimed until tested.
 
+## Offline startup guarantee
+
+The Android boot path must never download a root filesystem, run `apt-get update`, install Linux packages, or contact Flathub/update servers. The GitHub Actions build downloads the upstream rootfs while building the APK and embeds it as an asset; first launch only copies and extracts that bundled asset. The bundled rootfs must already contain Xfce, the essential tools, and `sudo`. If the asset or required desktop files are missing, the app must show an actionable error and stop rather than attempting network recovery. Manual package management from the Linux desktop remains user-initiated.
+
 ## Current status
 
 The NativOS source has been imported and rebranded as METMC OS v10. The app includes Android hardware controls, CPU/RAM status, and an opt-in system diagnostics export. v10.7.0 uses lightweight Xfce/Xfwm4 on the embedded X11 display, with a dark green hacker-style theme, a touch-sized panel/taskbar, and Xfce Terminal. It retains the guarded Linux package manager with quick-access desktop controls, a live system monitor, shared-folder access, update-center links, Linux configuration backup and rootfs validation. The app is labelled METMC OS V10. Selecting METMC OS V10 as Android's default Home app lets Android open it after boot. Package upgrades affect only the Linux rootfs. Includes compact network diagnostics (iproute2, ping, DNS tools, traceroute, netcat, nmap, whois, curl, wget and SSH client). Desktop performance and touch behavior still need on-device testing.
