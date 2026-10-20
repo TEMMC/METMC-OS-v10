@@ -10,7 +10,7 @@ import java.security.MessageDigest
  * and command execution inside the chroot.
  *
  * Adapted from DroidDesk's ChrootRuntime for NativOS —
- * focused on KDE Plasma's X11 session inside the Android-hosted X server.
+ * focused on Xfce's X11 session inside the Android-hosted X server.
  */
 class ChrootManager(private val context: Context) {
 
@@ -46,10 +46,10 @@ class ChrootManager(private val context: Context) {
 
     fun isRootfsReady(): Boolean = File(rootfsDir, "usr/bin/bash").exists()
 
-    fun isKdePlasmaInstalled(): Boolean =
-        File(rootfsDir, "usr/bin/startplasma-x11").exists() &&
-        File(rootfsDir, "usr/bin/plasmashell").exists() &&
-        File(rootfsDir, "usr/bin/kwin_x11").exists()
+    fun isXfceInstalled(): Boolean =
+        File(rootfsDir, "usr/bin/startxfce4").exists() &&
+        File(rootfsDir, "usr/bin/xfce4-panel").exists() &&
+        File(rootfsDir, "usr/bin/xfwm4").exists()
 
     fun isRunning(): Boolean = sessionProcess?.isAlive == true
 
@@ -1263,13 +1263,13 @@ METMC_LAUNCH_EOF
     // ── Session management ──
 
     /**
-     * Start KDE Plasma as the unprivileged Linux user on the Android-hosted X11 display.
-     * Plasma/KWin runs directly on DISPLAY=:0; Android remains the physical display owner.
+     * Start Xfce as the unprivileged Linux user on the Android-hosted X11 display.
+     * Xfce/KWin runs directly on DISPLAY=:0; Android remains the physical display owner.
      */
     @Synchronized
-    fun startKdePlasmaSession(screenWidth: Int = 1080, screenHeight: Int = 2160) {
+    fun startXfceSession(screenWidth: Int = 1080, screenHeight: Int = 2160) {
         if (!hasRoot() || !isRootfsReady()) {
-            Log.e(TAG, "Cannot start KDE: root or rootfs unavailable")
+            Log.e(TAG, "Cannot start Xfce: root or rootfs unavailable")
             return
         }
         if (isRunning()) stopTrackedSessionProcess()
@@ -1296,7 +1296,7 @@ METMC_LAUNCH_EOF
             export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
             export TMPDIR=${tmpPath} DISPLAY=:0 LANG=C.UTF-8 LC_ALL=C.UTF-8
             export QT_QPA_PLATFORM=xcb XDG_SESSION_TYPE=x11
-            export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=plasma DESKTOP_SESSION=plasma
+            export XDG_CURRENT_DESKTOP=Xfce XDG_SESSION_DESKTOP=xfce DESKTOP_SESSION=xfce
             export XDG_DATA_DIRS=/run/metmc/android-apps/share:/usr/local/share:/usr/share
             ${gpuEnvironment}
             mkdir -p /run/dbus /run/metmc
@@ -1328,11 +1328,11 @@ METMC_LAUNCH_EOF
             done
             runuser -u metmc -- env HOME="${'$'}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0 \
                 TMPDIR="${'$'}TMPDIR" XDG_RUNTIME_DIR=/tmp/runtime-metmc \
-                XDG_SESSION_TYPE=x11 XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=plasma \
-                DESKTOP_SESSION=plasma XDG_DATA_DIRS="${'$'}XDG_DATA_DIRS" QT_QPA_PLATFORM=xcb KWIN_COMPOSE=N \
-                LD_PRELOAD="${'$'}PRELOAD" dbus-run-session -- startplasma-x11
+                XDG_SESSION_TYPE=x11 XDG_CURRENT_DESKTOP=Xfce XDG_SESSION_DESKTOP=xfce \
+                DESKTOP_SESSION=xfce XDG_DATA_DIRS="${'$'}XDG_DATA_DIRS" QT_QPA_PLATFORM=xcb KWIN_COMPOSE=N \
+                LD_PRELOAD="${'$'}PRELOAD" dbus-run-session -- startxfce4
         """.trimIndent()
-        Log.i(TAG, "Starting KDE Plasma X11 session")
+        Log.i(TAG, "Starting Xfce X11 session")
         val su = rootShell.findSuPath() ?: return
         val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/bash -c ${shellQuote(runScript)}"
         val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
@@ -1348,13 +1348,13 @@ METMC_LAUNCH_EOF
         }.start()
     }
 
-    /** Wait for KWin and Plasma Shell to appear on the embedded X11 display. */
-    fun awaitDesktopReady(timeoutMs: Long = 45_000): Boolean {
+    /** Wait for KWin and Xfce Shell to appear on the embedded X11 display. */
+    fun awaitXfceReady(timeoutMs: Long = 45_000): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
             if (sessionProcess?.isAlive != true) return false
-            if (execChroot("pgrep -x plasmashell >/dev/null 2>&1 && pgrep -f 'kwin_x11' >/dev/null 2>&1") == 0) {
-                Log.i(TAG, "KDE Plasma readiness check passed")
+            if (execChroot("pgrep -x xfce4-panel >/dev/null 2>&1 && pgrep -f 'xfwm4' >/dev/null 2>&1") == 0) {
+                Log.i(TAG, "Xfce readiness check passed")
                 Thread.sleep(700)
                 return true
             }
@@ -1363,7 +1363,7 @@ METMC_LAUNCH_EOF
                 return false
             }
         }
-        Log.e(TAG, "KDE Plasma did not become ready within ${timeoutMs}ms")
+        Log.e(TAG, "Xfce did not become ready within ${timeoutMs}ms")
         return false
     }
 
