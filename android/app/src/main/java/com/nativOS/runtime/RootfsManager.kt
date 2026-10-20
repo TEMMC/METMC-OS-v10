@@ -390,7 +390,7 @@ gcc -shared -fPIC -o /usr/local/lib/libnativos-close-range.so /tmp/close_range_c
             """.trimIndent())
 
             onProgress(0.75, "Installing built-in apps and software center...")
-            chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends software-properties-common firefox-esr gnome-calculator gnome-clocks gnome-software gnome-software-plugin-flatpak flatpak")
+            chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends gnome-calculator gnome-clocks gnome-software flatpak 2>/dev/null || true")
 
             onProgress(0.85, "Configuring Flathub...")
             ensureFlathub(chrootManager)
