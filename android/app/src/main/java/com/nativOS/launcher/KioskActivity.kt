@@ -344,15 +344,14 @@ class KioskActivity : Activity() {
             FrameLayout.LayoutParams.WRAP_CONTENT
         ))
 
-        // Phosh 0.38 has no persistent bottom affordance. Provide a small,
-        // functional phone-style handle: tap or swipe it upward to toggle the
-        // Phosh overview via its Super_L shortcut.
+        // KDE Plasma provides a Super-key launcher. Keep a small phone-friendly handle
+        // to invoke it with the Super_L shortcut.
         navigationHandle = FrameLayout(this).apply {
-            contentDescription = "Open Linux overview"
+            contentDescription = "Open KDE app launcher"
             visibility = View.GONE
             isClickable = true
             isFocusable = true
-            setOnClickListener { togglePhoshOverview() }
+            setOnClickListener { toggleKdeLauncher() }
             addView(View(this@KioskActivity).apply {
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
@@ -556,7 +555,7 @@ class KioskActivity : Activity() {
         view.requestLayout()
     }
 
-    private fun togglePhoshOverview() {
+    private fun toggleKdeLauncher() {
         val view = desktopView ?: return
         view.sendKeyEvent(0, KeyEvent.KEYCODE_META_LEFT, true)
         view.postDelayed({
@@ -720,34 +719,34 @@ class KioskActivity : Activity() {
 
             // Step 4: Install essential packages (dbus is required for any session)
             updateOverlay(0.74, "Checking essential packages...", "")
-            if (!chrootManager.isPhoshInstalled()) {
-                updateOverlay(0.75, "Installing Phosh desktop...", "First boot — installing packages (5-15 min)")
+            if (!chrootManager.isKdePlasmaInstalled()) {
+                updateOverlay(0.75, "Installing KDE Plasma desktop...", "First boot — installing packages (5-15 min)")
                 bootFailed = false
-                rootfsManager.installPhosh(chrootManager) { progress, status ->
+                rootfsManager.installKdePlasma(chrootManager) { progress, status ->
                     if (progress < 0) {
                         bootFailed = true
-                        updateOverlay(-1.0, "Phosh installation failed", status)
+                        updateOverlay(-1.0, "KDE Plasma installation failed", status)
                     } else {
                         updateOverlay(0.75 + progress * 0.20, status, "")
                     }
                 }
                 if (bootFailed) {
                     // Even if Phosh failed, leave the rootfs package database usable.
-                    updateOverlay(0.90, "Installing minimal session...", "Phosh failed, trying fallback")
+                    updateOverlay(0.90, "Installing minimal session...", "KDE Plasma failed, trying fallback")
                     try {
                         chrootManager.execChroot(
                             "TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends dbus dbus-x11")
                     } catch (_: Exception) {}
                 }
             } else {
-                updateOverlay(0.95, "Phosh desktop found", "")
+                updateOverlay(0.95, "KDE Plasma desktop found", "")
             }
 
             // A first-boot install can be interrupted after phoc is unpacked but
             // before Phosh's required schemas arrive. Repair that partial state
             // instead of entering an invisible compositor restart loop.
-            updateOverlay(0.95, "Checking desktop components...", "Phosh runtime")
-            if (!rootfsManager.ensurePhoshRuntime(chrootManager)) {
+            updateOverlay(0.95, "Checking desktop components...", "KDE Plasma runtime")
+            if (!rootfsManager.ensureKdeRuntime(chrootManager)) {
                 updateOverlay(
                     -1.0,
                     "Desktop repair failed",
@@ -758,8 +757,8 @@ class KioskActivity : Activity() {
 
             // Migrate existing installs away from the tiny unmanaged XTerm/UXTerm
             // windows. GNOME Console is adaptive and is maximized by Phosh.
-            updateOverlay(0.95, "Checking terminal...", "GNOME Console")
-            rootfsManager.ensureProfessionalTerminal(chrootManager)
+            updateOverlay(0.95, "Checking terminal...", "Konsole")
+            rootfsManager.ensureKdeTerminal(chrootManager)
 
             // Migrate existing installations that have Flatpak but were created
             // before Flathub setup became independent from Firefox provisioning.
@@ -877,10 +876,10 @@ class KioskActivity : Activity() {
             val screenHeight = lorieView.height
             Log.i(TAG, "Detected screen: ${screenWidth}x${screenHeight}")
 
-            chrootManager.startPhoshSession(screenWidth, screenHeight)
-            updateOverlay(0.98, "Starting Linux desktop...", "Waiting for Phosh")
+            chrootManager.startKdePlasmaSession(screenWidth, screenHeight)
+            updateOverlay(0.98, "Starting Linux desktop...", "Waiting for KDE Plasma")
             if (!chrootManager.awaitDesktopReady()) {
-                throw IllegalStateException("Phosh did not become ready")
+                throw IllegalStateException("KDE Plasma did not become ready")
             }
             runOnUiThread {
                 overlayLayout?.visibility = View.GONE
@@ -959,7 +958,7 @@ class KioskActivity : Activity() {
         if (returningFromAndroid) {
             rootLayout?.postDelayed({
                 if (hasWindowFocus() && desktopView?.isAttachedToWindow == true) {
-                    togglePhoshOverview()
+                    toggleKdeLauncher()
                 }
             }, 400)
         }
