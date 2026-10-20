@@ -351,7 +351,7 @@ class KioskActivity : Activity() {
             visibility = View.GONE
             isClickable = true
             isFocusable = true
-            setOnClickListener { toggleKdeLauncher() }
+            setOnClickListener { toggleXfceMenu() }
             addView(View(this@KioskActivity).apply {
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
@@ -555,7 +555,7 @@ class KioskActivity : Activity() {
         view.requestLayout()
     }
 
-    private fun toggleKdeLauncher() {
+    private fun toggleXfceMenu() {
         val view = desktopView ?: return
         view.sendKeyEvent(0, KeyEvent.KEYCODE_META_LEFT, true)
         view.postDelayed({
@@ -576,7 +576,7 @@ class KioskActivity : Activity() {
     private fun showLinuxHome() {
         // Xfce owns the Linux desktop and its window manager. The Super key
         // opens Xfce's launcher; avoid Phoc-specific X11 window manipulation.
-        toggleKdeLauncher()
+        toggleXfceMenu()
         desktopView?.postDelayed({
             desktopView?.triggerCallback()
             MainActivity.getInstance().lorieView?.triggerCallback()
@@ -744,6 +744,7 @@ class KioskActivity : Activity() {
             // windows. GNOME Console is adaptive and is maximized by Xfce.
             updateOverlay(0.95, "Checking terminal...", "Xfce terminal")
             rootfsManager.ensureEssentialTools(chrootManager)
+            rootfsManager.configureXfceTouchLayout(chrootManager)
 
             // Migrate existing installations that have Flatpak but were created
             // before Flathub setup became independent from Firefox provisioning.
@@ -942,7 +943,7 @@ class KioskActivity : Activity() {
         if (returningFromAndroid) {
             rootLayout?.postDelayed({
                 if (hasWindowFocus() && desktopView?.isAttachedToWindow == true) {
-                    toggleKdeLauncher()
+                    toggleXfceMenu()
                 }
             }, 400)
         }
