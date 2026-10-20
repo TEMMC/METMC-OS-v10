@@ -118,7 +118,7 @@ class RootfsManager(private val context: Context) {
                 TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC \
                     apt-get install -y --no-install-recommends \
                     plasma-desktop plasma-workspace kwin-x11 dbus-x11 \
-                    konsole dolphin systemsettings plasma-nm \
+                    konsole dolphin systemsettings \
                     xwayland x11-xserver-utils policykit-1 || exit 1
                 test -x /usr/bin/startplasma-x11
                 test -x /usr/bin/plasmashell
@@ -321,10 +321,10 @@ class RootfsManager(private val context: Context) {
             chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends dbus dbus-x11 policykit-1 packagekit")
 
             onProgress(0.20, "Installing KDE Plasma desktop...")
-            chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends plasma-desktop plasma-workspace kwin-x11 konsole dolphin systemsettings plasma-nm xwayland x11-xserver-utils")
+            chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends plasma-desktop plasma-workspace kwin-x11 konsole dolphin systemsettings xwayland x11-xserver-utils")
 
             onProgress(0.35, "Installing touch-friendly and desktop dependencies...")
-            chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends qtwayland5 qt6-wayland adwaita-icon-theme fonts-noto-core fonts-noto-color-emoji dbus-user-session")
+            chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends adwaita-icon-theme fonts-noto-core fonts-noto-color-emoji")
 
             onProgress(0.45, "Installing compatibility tools...")
             chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends gcc libxcb1-dev libxcb-dri3-dev libc6-dev libvulkan1 vulkan-tools wget curl")
