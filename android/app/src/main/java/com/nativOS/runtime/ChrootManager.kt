@@ -46,23 +46,37 @@ class ChrootManager(private val context: Context) {
 
     /**
      * Best-effort enable Android's developer freeform windowing switches.
-     * This does not add missing firmware/SystemUI freeform support; launch
-     * bounds remain a hint and Android may still open apps fullscreen.
+     *
+     * This asks Android's own WindowManager to try freeform windows; it cannot
+     * transfer Android surfaces into Xfwm4 or add missing firmware/SystemUI
+     * support. Launch bounds are only a hint unless the host supports freeform.
      */
     fun enableFreeformWindows(): Boolean {
         if (!hasRoot()) return false
         return try {
             val output = rootShell.exec(
                 "settings put global enable_freeform_support 1 && " +
-                    "settings put global force_resizable_activities 1 && " +
-                    "echo FREEFORM_FEATURES: && pm list features | grep -E 'android.software.freeform_window_management|android.software.activities_on_secondary_displays' || true; " +
-                    "echo FREEFORM_SETTING: && settings get global enable_freeform_support; " +
-                    "echo RESIZABLE_SETTING: && settings get global force_resizable_activities"
+                    "settings put global force_resizable_activities 1; " +
+                    "echo FREEFORM_FEATURES:; " +
+                    "pm list features | grep -E 'android.software.freeform_window_management|android.software.activities_on_secondary_displays' || true; " +
+                    "echo LOW_RAM:; " +
+                    "getprop ro.config.low_ram; " +
+                    "echo FREEFORM_SETTING:; settings get global enable_freeform_support; " +
+                    "echo RESIZABLE_SETTING:; settings get global force_resizable_activities"
             )
-            val enabled = output.contains("FREEFORM_SETTING:") &&
-                output.substringAfter("FREEFORM_SETTING:").trimStart().startsWith("1")
-            Log.i(TAG, "Android freeform probe: ${output.take(1200).trim()}")
-            enabled
+            val settingEnabled = output.lineSequence().any {
+                it.trim() == "FREEFORM_SETTING:" 
+            } && output.substringAfter("FREEFORM_SETTING:", "").trimStart().startsWith("1")
+            val featurePresent = output.contains("android.software.freeform_window_management")
+            val lowRam = output.substringAfter("LOW_RAM:", "").lineSequence().firstOrNull()?.trim() == "true"
+            Log.i(
+                TAG,
+                "Android windowing probe: settingEnabled=$settingEnabled, " +
+                    "freeformFeature=$featurePresent, lowRam=$lowRam; " +
+                    output.take(1200).trim()
+            )
+            // Return whether the request was stored, not whether firmware supports it.
+            settingEnabled
         } catch (error: Throwable) {
             Log.w(TAG, "Could not configure Android freeform windowing", error)
             false
