@@ -1205,8 +1205,8 @@ class ChrootManager(private val context: Context) {
                     useradd --create-home --shell /bin/bash metmc
                 fi
                 if ! command -v sudo >/dev/null 2>&1; then
-                    apt-get update
-                    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends sudo
+                    echo "Offline rootfs is missing sudo; rebuild the bundled rootfs with sudo preinstalled." >&2
+                    exit 127
                 fi
                 usermod -aG sudo metmc
                 install -d -m 0755 /etc/sudoers.d
