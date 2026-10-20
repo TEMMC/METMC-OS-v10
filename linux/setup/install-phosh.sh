@@ -40,7 +40,7 @@ apt-get install -y --no-install-recommends \
 echo "[3/8] Installing KDE Plasma and KWin X11..."
 apt-get install -y --no-install-recommends \
     plasma-desktop plasma-workspace kwin-x11 konsole dolphin \
-    systemsettings plasma-nm xwayland x11-xserver-utils \
+    systemsettings xwayland x11-xserver-utils \
     dbus-x11 policykit-1 || exit 1
 
 # ── Optional on-screen keyboard ──
