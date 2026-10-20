@@ -974,12 +974,7 @@ class KioskActivity : Activity() {
                 applyDesktopSafeArea(view)
                 view.post {
                     view.triggerCallback()
-                    view.postDelayed({
-                        val width = view.width
-                        val height = view.height
-                        // The embedded X11 server follows the resized SurfaceView via
-                        // triggerCallback() above; ChrootManager has no separate resize API.
-                    }, 150)
+
                 }
             }
             keyboardButton?.let { button ->
