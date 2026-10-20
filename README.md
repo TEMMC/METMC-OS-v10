@@ -57,3 +57,6 @@ METMC OS v10 is an independent derivative project, not an official upstream rele
 
 ---
 Maintained by **Tinotenda Enock Mapfumo (Dr TEMMC)**.
+
+
+Release publishing is performed by GitHub Actions after the APK build and signature verification pass.
