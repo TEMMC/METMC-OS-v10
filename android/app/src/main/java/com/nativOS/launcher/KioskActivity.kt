@@ -655,41 +655,33 @@ class KioskActivity : Activity() {
             }
             updateOverlay(0.05, "Root access confirmed", "")
 
-            // Step 2: Download + extract rootfs if needed
+            // Step 2: Prepare the bundled rootfs only. Boot must never use the network.
             if (!rootfsManager.isRootfsReady()) {
-                // Production builds carry a ready rootfs. Development builds and
-                // damaged assets retain the resumable Ubuntu download as recovery.
                 val bundled = rootfsManager.stageBundledRootfs { progress, status ->
-                    updateOverlay(0.05 + progress * 0.45, status, "No network required")
+                    updateOverlay(0.05 + progress * 0.45, status, "Bundled in this APK — no network required")
                 }
                 if (!bundled) {
-                    updateOverlay(0.05, "Downloading Linux filesystem...", "First boot — this takes a few minutes")
-                    bootFailed = false
-                    rootfsManager.downloadRootfs { progress, status ->
-                        if (progress < 0) {
-                            bootFailed = true
-                            updateOverlay(-1.0, "Download failed", status)
-                        } else {
-                            updateOverlay(0.05 + progress * 0.45, status, "")
-                        }
-                    }
-                    if (bootFailed) return
+                    updateOverlay(
+                        -1.0,
+                        "Offline root filesystem missing",
+                        "This APK must include the prepared Linux rootfs. Rebuild it through GitHub Actions; boot will not download files."
+                    )
+                    return
                 }
 
-                // Extract
-                updateOverlay(0.50, "Extracting Linux filesystem...", "This may take a few minutes")
+                updateOverlay(0.50, "Extracting bundled Linux filesystem...", "No network required")
                 bootFailed = false
                 rootfsManager.extractRootfs { progress, status ->
                     if (progress < 0) {
                         bootFailed = true
-                        updateOverlay(-1.0, "Extraction failed", status)
+                        updateOverlay(-1.0, "Rootfs extraction failed", status)
                     } else {
                         updateOverlay(0.50 + progress * 0.20, status, "")
                     }
                 }
                 if (bootFailed) return
             } else {
-                updateOverlay(0.70, "Linux filesystem found", "")
+                updateOverlay(0.70, "Local Linux filesystem found", "Offline startup")
             }
 
             if (!rootfsManager.isRootfsReady()) {
@@ -703,55 +695,32 @@ class KioskActivity : Activity() {
             chrootManager.bindX11Socket()
             AndroidAppIntegration.sync(this)
 
-            // Step 4: Install essential packages (dbus is required for any session)
-            updateOverlay(0.74, "Checking essential packages...", "")
+            // Step 4: Validate preinstalled desktop components. Never run apt or
+            // configure online repositories during startup; the bundled rootfs must
+            // already contain the complete desktop and essential tools.
+            updateOverlay(0.74, "Checking offline desktop...", "")
             if (!chrootManager.isXfceInstalled()) {
-                updateOverlay(0.75, "Installing Xfce desktop...", "First boot — installing packages (5-15 min)")
-                bootFailed = false
-                rootfsManager.installXfceDesktop(chrootManager) { progress, status ->
-                    if (progress < 0) {
-                        bootFailed = true
-                        updateOverlay(-1.0, "Xfce installation failed", status)
-                    } else {
-                        updateOverlay(0.75 + progress * 0.20, status, "")
-                    }
-                }
-                if (bootFailed) {
-                    // Even if Xfce failed, leave the rootfs package database usable.
-                    updateOverlay(0.90, "Installing minimal session...", "Xfce failed, trying fallback")
-                    try {
-                        chrootManager.execChroot(
-                            "TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends dbus dbus-x11")
-                    } catch (_: Exception) {}
-                }
-            } else {
-                updateOverlay(0.95, "Xfce desktop found", "")
-            }
-
-            // A Xfce installation can be interrupted during package unpacking. Repair the
-            // package state and verify the Xfce session components before launch.
-            updateOverlay(0.95, "Checking desktop components...", "Xfce runtime")
-            if (!rootfsManager.ensureXfceRuntime(chrootManager)) {
                 updateOverlay(
                     -1.0,
-                    "Desktop repair failed",
-                    "Connect to the internet and reopen METMC OS V10"
+                    "Offline desktop components missing",
+                    "The bundled Linux rootfs is incomplete. Rebuild the APK on GitHub with the prepared desktop; boot will not install packages."
                 )
                 return
             }
 
-            // Migrate existing installs away from the tiny unmanaged XTerm/UXTerm
-            // windows. GNOME Console is adaptive and is maximized by Xfce.
-            updateOverlay(0.95, "Checking terminal...", "Xfce terminal")
-            rootfsManager.ensureEssentialTools(chrootManager)
-            rootfsManager.configureXfceTouchLayout(chrootManager)
-
-            // Migrate existing installations that have Flatpak but were created
-            // before Flathub setup became independent from Firefox provisioning.
-            if (rootfsManager.isFlatpakInstalled()) {
-                updateOverlay(0.95, "Checking app catalog...", "Flathub")
-                rootfsManager.ensureFlathub(chrootManager)
+            updateOverlay(0.95, "Validating local desktop components...", "No downloads or updates")
+            if (!rootfsManager.ensureXfceRuntime(chrootManager)) {
+                updateOverlay(
+                    -1.0,
+                    "Offline desktop components missing",
+                    "Xfce is incomplete in the bundled rootfs. Rebuild the APK with all desktop packages included."
+                )
+                return
             }
+
+            // Keep startup limited to local configuration and launch operations.
+            updateOverlay(0.95, "Preparing touch-friendly desktop...", "Offline startup")
+            rootfsManager.configureXfceTouchLayout(chrootManager)
 
             // Step 5: Attach the display surface to the bundled X11 service process.
             updateOverlay(0.95, "Getting GUI ready...", "Preparing your desktop")
