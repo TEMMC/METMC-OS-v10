@@ -2,6 +2,7 @@ package com.nativOS.launcher
 
 import android.Manifest
 import android.app.Activity
+import android.app.ActivityOptions
 import android.content.ComponentName
 import android.content.ClipboardManager
 import android.content.Intent
@@ -68,9 +69,10 @@ class KioskActivity : Activity() {
         @Volatile private var activeInstance: WeakReference<KioskActivity>? = null
 
         /**
-         * Launch an Android shortcut from the visible activity so it is placed
-         * above NativOS in the same Android task. Back then reliably returns to
-         * the Linux desktop instead of Android's launcher or an older app task.
+         * Launch an Android app in a bounded task so Android's freeform-capable
+         * window manager can present it as a floating app window above the Linux
+         * desktop. Android may ignore launch bounds on devices without freeform
+         * support; in that case the app opens using the device's normal mode.
          */
         fun launchAndroidApp(component: ComponentName): Boolean {
             val activity = activeInstance?.get() ?: return false
@@ -78,7 +80,19 @@ class KioskActivity : Activity() {
             AndroidAppIntegration.markAndroidAppLaunched()
             activity.runOnUiThread {
                 runCatching {
-                    activity.startActivity(Intent().apply { this.component = component })
+                    val metrics = activity.resources.displayMetrics
+                    val width = metrics.widthPixels
+                    val height = metrics.heightPixels
+                    val windowWidth = (width * 0.88f).toInt().coerceAtLeast(320)
+                    val windowHeight = (height * 0.76f).toInt().coerceAtLeast(480)
+                    val left = ((width - windowWidth) / 2).coerceAtLeast(0)
+                    val top = ((height - windowHeight) / 2).coerceAtLeast(0)
+                    val bounds = Rect(left, top, left + windowWidth, top + windowHeight)
+                    val intent = Intent.makeMainActivity(component).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                    }
+                    val options = ActivityOptions.makeBasic().setLaunchBounds(bounds)
+                    activity.startActivity(intent, options.toBundle())
                 }.onFailure {
                     Log.e(TAG, "Could not launch Android app $component", it)
                 }
