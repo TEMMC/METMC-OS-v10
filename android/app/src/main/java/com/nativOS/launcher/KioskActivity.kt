@@ -53,7 +53,7 @@ import java.lang.ref.WeakReference
  *   1. Initialize X11 surface (LorieView)
  *   2. Download Linux rootfs (if first boot)
  *   3. Extract and configure rootfs
- *   4. Install Phosh desktop (if not installed)
+ *   4. Install KDE Plasma desktop (if not installed)
  *   5. Start the Linux desktop session
  *
  * Escape hatch: press Volume Up 5 times rapidly to show Android.
@@ -574,27 +574,13 @@ class KioskActivity : Activity() {
     }
 
     private fun showLinuxHome() {
-        // The Android navigation handle is a Home action, not an app-drawer
-        // toggle. Toggling Super_L here can reopen Phosh's overview; when the
-        // nested X11 surface is stale that leaves a black home layer and makes
-        // the shell look frozen. Restore/focus the Phosh window, then dismiss
-        // any open overview with Escape and repaint the embedded X11 surface.
-        Thread({
-            val restored = chrootManager.restoreMaximizedX11Window(focusDesktop = true)
-            if (restored) SystemClock.sleep(160)
-            val focused = chrootManager.focusPhoshWindow()
-            runOnUiThread {
-                desktopView?.postDelayed({
-                    if (focused && desktopView?.isAttachedToWindow == true) {
-                        sendLinuxKey(KeyEvent.KEYCODE_ESCAPE)
-                        desktopView?.postDelayed({
-                            desktopView?.triggerCallback()
-                            MainActivity.getInstance().lorieView?.triggerCallback()
-                        }, 120)
-                    }
-                }, 80)
-            }
-        }, "LinuxHome").start()
+        // KDE Plasma owns the Linux desktop and its window manager. The Super key
+        // opens Plasma's launcher; avoid Phoc-specific X11 window manipulation.
+        toggleKdeLauncher()
+        desktopView?.postDelayed({
+            desktopView?.triggerCallback()
+            MainActivity.getInstance().lorieView?.triggerCallback()
+        }, 120)
     }
 
     private fun goLinuxBack() {
@@ -742,9 +728,8 @@ class KioskActivity : Activity() {
                 updateOverlay(0.95, "KDE Plasma desktop found", "")
             }
 
-            // A first-boot install can be interrupted after phoc is unpacked but
-            // before Phosh's required schemas arrive. Repair that partial state
-            // instead of entering an invisible compositor restart loop.
+            // A KDE installation can be interrupted during package unpacking. Repair the
+            // package state and verify the Plasma session components before launch.
             updateOverlay(0.95, "Checking desktop components...", "KDE Plasma runtime")
             if (!rootfsManager.ensureKdeRuntime(chrootManager)) {
                 updateOverlay(
@@ -871,7 +856,7 @@ class KioskActivity : Activity() {
 
             Log.i(TAG, "Starting test session...")
 
-            // Match Phoc's nested output to the actual X11 surface dimensions.
+            // Match the KDE session to the current Android X11 surface dimensions.
             val screenWidth = lorieView.width
             val screenHeight = lorieView.height
             Log.i(TAG, "Detected screen: ${screenWidth}x${screenHeight}")
@@ -885,8 +870,7 @@ class KioskActivity : Activity() {
                 overlayLayout?.visibility = View.GONE
                 keyboardButton?.visibility = View.VISIBLE
                 keyboardButton?.bringToFront()
-                // Current Phosh provides its own bottom gesture handle. Keep the
-                // Android overlay handle hidden to avoid duplicate affordances.
+                // KDE Plasma has its own panel; keep the extra Android navigation handle hidden.
                 navigationHandle?.visibility = View.GONE
             }
 
