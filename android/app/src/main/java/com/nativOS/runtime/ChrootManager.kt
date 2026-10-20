@@ -1329,7 +1329,7 @@ METMC_LAUNCH_EOF
             runuser -u metmc -- env HOME="${'$'}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0 \
                 TMPDIR="${'$'}TMPDIR" XDG_RUNTIME_DIR=/tmp/runtime-metmc \
                 XDG_SESSION_TYPE=x11 XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=plasma \
-                DESKTOP_SESSION=plasma XDG_DATA_DIRS="${'$'}XDG_DATA_DIRS" QT_QPA_PLATFORM=xcb \
+                DESKTOP_SESSION=plasma XDG_DATA_DIRS="${'$'}XDG_DATA_DIRS" QT_QPA_PLATFORM=xcb KWIN_COMPOSE=N \
                 LD_PRELOAD="${'$'}PRELOAD" dbus-run-session -- startplasma-x11
         """.trimIndent()
         Log.i(TAG, "Starting KDE Plasma X11 session")
