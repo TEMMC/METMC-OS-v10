@@ -657,23 +657,18 @@ class KioskActivity : Activity() {
 
             // Step 2: Download + extract rootfs if needed
             if (!rootfsManager.isRootfsReady()) {
-                // Production builds carry a ready rootfs. Development builds and
-                // damaged assets retain the resumable Ubuntu download as recovery.
+                // First boot is offline too. The complete Linux rootfs must be
+                // bundled into the APK by GitHub Actions; never download it on-device.
                 val bundled = rootfsManager.stageBundledRootfs { progress, status ->
-                    updateOverlay(0.05 + progress * 0.45, status, "No network required")
+                    updateOverlay(0.05 + progress * 0.45, status, "Offline setup — no network used")
                 }
                 if (!bundled) {
-                    updateOverlay(0.05, "Downloading Linux filesystem...", "First boot — this takes a few minutes")
-                    bootFailed = false
-                    rootfsManager.downloadRootfs { progress, status ->
-                        if (progress < 0) {
-                            bootFailed = true
-                            updateOverlay(-1.0, "Download failed", status)
-                        } else {
-                            updateOverlay(0.05 + progress * 0.45, status, "")
-                        }
-                    }
-                    if (bootFailed) return
+                    updateOverlay(
+                        -1.0,
+                        "Bundled Linux filesystem missing",
+                        "This APK does not contain the required Linux image. Rebuild/download a complete METMC OS APK; boot will not download it."
+                    )
+                    return
                 }
 
                 // Extract
@@ -703,39 +698,30 @@ class KioskActivity : Activity() {
             chrootManager.bindX11Socket()
             AndroidAppIntegration.sync(this)
 
-            // Step 4: Install essential packages (dbus is required for any session)
-            updateOverlay(0.74, "Checking essential packages...", "")
+            // Step 4: Validate locally bundled packages. No apt/dpkg network work
+            // or fallback installation is allowed during first or later boots.
+            updateOverlay(0.74, "Checking offline desktop components...", "")
             if (!chrootManager.isXfceInstalled()) {
-                updateOverlay(0.75, "Installing Xfce desktop...", "First boot — installing packages (5-15 min)")
                 bootFailed = false
                 rootfsManager.installXfceDesktop(chrootManager) { progress, status ->
                     if (progress < 0) {
                         bootFailed = true
-                        updateOverlay(-1.0, "Xfce installation failed", status)
+                        updateOverlay(-1.0, "Offline desktop validation failed", status)
                     } else {
-                        updateOverlay(0.75 + progress * 0.20, status, "")
+                        updateOverlay(0.74 + progress * 0.20, status, "")
                     }
                 }
-                if (bootFailed) {
-                    // Even if Xfce failed, leave the rootfs package database usable.
-                    updateOverlay(0.90, "Installing minimal session...", "Xfce failed, trying fallback")
-                    try {
-                        chrootManager.execChroot(
-                            "TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends dbus dbus-x11")
-                    } catch (_: Exception) {}
-                }
+                if (bootFailed) return
             } else {
-                updateOverlay(0.95, "Xfce desktop found", "")
+                updateOverlay(0.94, "Bundled Xfce desktop found", "")
             }
 
-            // A Xfce installation can be interrupted during package unpacking. Repair the
-            // package state and verify the Xfce session components before launch.
-            updateOverlay(0.95, "Checking desktop components...", "Xfce runtime")
+            updateOverlay(0.95, "Checking offline desktop components...", "")
             if (!rootfsManager.ensureXfceRuntime(chrootManager)) {
                 updateOverlay(
                     -1.0,
-                    "Desktop repair failed",
-                    "Connect to the internet and reopen METMC OS V10"
+                    "Offline desktop incomplete",
+                    "The bundled Linux image is missing required Xfce files. No internet connection or update is attempted; install a complete METMC OS APK."
                 )
                 return
             }
@@ -746,12 +732,8 @@ class KioskActivity : Activity() {
             rootfsManager.ensureEssentialTools(chrootManager)
             rootfsManager.configureXfceTouchLayout(chrootManager)
 
-            // Migrate existing installations that have Flatpak but were created
-            // before Flathub setup became independent from Firefox provisioning.
-            if (rootfsManager.isFlatpakInstalled()) {
-                updateOverlay(0.95, "Checking app catalog...", "Flathub")
-                rootfsManager.ensureFlathub(chrootManager)
-            }
+            // Deliberately do not contact Flathub during startup. Remote setup and
+            // application installs are user-initiated operations outside boot.
 
             // Step 5: Attach the display surface to the bundled X11 service process.
             updateOverlay(0.95, "Getting GUI ready...", "Preparing your desktop")

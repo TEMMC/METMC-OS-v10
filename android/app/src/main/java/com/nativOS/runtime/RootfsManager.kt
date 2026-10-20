@@ -103,58 +103,39 @@ class RootfsManager(private val context: Context) {
         }
     }
 
-    /** Ensure the lightweight Xfce X11 desktop runtime exists. */
+    /**
+     * Validate the pre-provisioned Xfce runtime. Boot is deliberately offline:
+     * missing packages are reported, never repaired with apt/network activity.
+     */
     fun ensureXfceRuntime(chrootManager: ChrootManager): Boolean {
-        val session = File(rootfsDir, "usr/bin/startxfce4")
-        val panel = File(rootfsDir, "usr/bin/xfce4-panel")
-        val wm = File(rootfsDir, "usr/bin/xfwm4")
-        if (session.exists() && panel.exists() && wm.exists()) return true
-
-        Log.w(TAG, "Xfce runtime missing; repairing installation")
-        val result = chrootManager.execChroot(
-            """
-                dpkg --configure -a || true
-                apt-get update || exit 1
-                TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC \
-                    apt-get install -y --no-install-recommends \
-                    xfce4-session xfce4-panel xfwm4 xfce4-settings \
-                    xfce4-terminal thunar xfce4-whiskermenu-plugin \
-                    xfce4-pulseaudio-plugin adwaita-icon-theme \
-                    dbus-x11 x11-xserver-utils policykit-1 || exit 1
-                test -x /usr/bin/startxfce4
-                test -x /usr/bin/xfce4-panel
-                test -x /usr/bin/xfwm4
-            """.trimIndent()
+        val required = listOf(
+            "usr/bin/startxfce4",
+            "usr/bin/xfce4-panel",
+            "usr/bin/xfwm4",
+            "usr/bin/xfce4-terminal",
+            "usr/bin/dbus-daemon"
         )
-        if (result == 0 && session.exists() && panel.exists() && wm.exists()) {
-            Log.i(TAG, "Xfce runtime is ready")
+        val missing = required.filterNot { File(rootfsDir, it).canExecute() }
+        if (missing.isEmpty()) {
+            Log.i(TAG, "Pre-provisioned Xfce runtime is ready (offline check)")
             return true
         }
-        Log.e(TAG, "Could not repair Xfce runtime (exit $result)")
+        Log.e(TAG, "Offline boot blocked; missing bundled runtime files: ${missing.joinToString()}")
         return false
     }
 
-    /** Keep a small terminal and essential diagnostics/networking tools available. */
+    /**
+     * Check optional tools without running apt. Package installation remains an
+     * explicit user action in the package manager, never a boot-time side effect.
+     */
     fun ensureEssentialTools(chrootManager: ChrootManager): Boolean {
-        val terminal = File(rootfsDir, "usr/bin/xfce4-terminal")
-        val result = chrootManager.execChroot(
-            """
-                dpkg --configure -a || true
-                apt-get update || exit 1
-                TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC \
-                    apt-get install -y --no-install-recommends \
-                    xfce4-terminal thunar nano less htop file procps psmisc \
-                    ca-certificates curl wget git openssh-client \
-                    iproute2 iputils-ping net-tools dnsutils traceroute \
-                    netcat-openbsd nmap whois || exit 1
-                test -x /usr/bin/xfce4-terminal
-            """.trimIndent()
-        )
-        if (result == 0 && terminal.exists()) {
-            Log.i(TAG, "Essential desktop and networking tools are ready")
+        val required = listOf("usr/bin/xfce4-terminal", "usr/bin/thunar")
+        val missing = required.filterNot { File(rootfsDir, it).canExecute() }
+        if (missing.isEmpty()) {
+            Log.i(TAG, "Bundled terminal and file manager are ready (offline check)")
             return true
         }
-        Log.w(TAG, "Could not provision all essential tools (exit $result)")
+        Log.w(TAG, "Some optional desktop tools are missing: ${missing.joinToString()}; no downloads attempted")
         return false
     }
 
@@ -409,27 +390,37 @@ EOF
         listOf("tmp", "tmp/runtime-root", "run", "var/run", "dev/shm").forEach { File(rootfsDir, it).mkdirs() }
     }
 
+    /**
+     * Offline first-boot validation only. The APK's bundled rootfs must already
+     * contain Xfce and its runtime dependencies; never run apt during boot.
+     */
     fun installXfceDesktop(chrootManager: ChrootManager, onProgress: (Double, String) -> Unit) {
         try {
-            onProgress(0.0, "Repairing package database...")
-            chrootManager.execChroot("rm -f /var/lib/apt/lists/lock /var/cache/apt/archives/lock /var/lib/dpkg/lock*; dpkg --configure -a 2>/dev/null || true")
-            onProgress(0.05, "Updating package lists...")
-            if (chrootManager.execChroot("apt-get update") != 0) throw IllegalStateException("Could not update package lists")
-            onProgress(0.18, "Installing lightweight Xfce desktop...")
-            val desktopResult = chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends xfce4-session xfce4-panel xfwm4 xfce4-settings xfce4-terminal thunar xfce4-whiskermenu-plugin xfce4-pulseaudio-plugin dbus dbus-x11 policykit-1 x11-xserver-utils adwaita-icon-theme fonts-noto-core fonts-noto-color-emoji")
-            if (desktopResult != 0) throw IllegalStateException("Xfce package installation failed")
-            onProgress(0.45, "Installing compact hacker and networking tools...")
-            val toolsResult = chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends nano less htop file procps psmisc ca-certificates curl wget git openssh-client iproute2 iputils-ping net-tools dnsutils traceroute netcat-openbsd nmap whois")
-            if (toolsResult != 0) Log.w(TAG, "Some optional diagnostics packages could not be installed")
-            onProgress(0.72, "Applying touch-friendly dark theme and taskbar...")
+            onProgress(0.1, "Checking bundled Xfce desktop (offline)...")
+            val required = listOf(
+                "usr/bin/startxfce4",
+                "usr/bin/xfce4-panel",
+                "usr/bin/xfwm4",
+                "usr/bin/xfce4-terminal",
+                "usr/bin/thunar",
+                "usr/bin/dbus-daemon"
+            )
+            val missing = required.filterNot { File(rootfsDir, it).canExecute() }
+            if (missing.isNotEmpty()) {
+                throw IllegalStateException(
+                    "Bundled Linux image is incomplete; missing: ${missing.joinToString()}. " +
+                        "No network download or package update was attempted. Install a complete METMC OS APK."
+                )
+            }
+            onProgress(0.55, "Applying local touch-friendly desktop settings...")
             configureXfceTouchLayout(chrootManager)
-            onProgress(0.88, "Preparing non-root desktop user...")
+            onProgress(0.8, "Preparing local Linux user...")
             chrootManager.ensureDefaultLinuxUser()
-            onProgress(1.0, "METMC OS Xfce desktop ready")
-            Log.i(TAG, "Xfce desktop provisioning complete")
+            onProgress(1.0, "METMC OS desktop ready (offline)")
+            Log.i(TAG, "Offline Xfce validation complete; no package manager was run")
         } catch (error: Throwable) {
-            Log.e(TAG, "Xfce desktop installation failed", error)
-            onProgress(-1.0, error.message ?: "Xfce installation failed")
+            Log.e(TAG, "Offline Xfce validation failed", error)
+            onProgress(-1.0, error.message ?: "Bundled Xfce desktop is incomplete")
         }
     }
 

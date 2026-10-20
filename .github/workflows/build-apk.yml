@@ -75,6 +75,25 @@ jobs:
           cd android/app/src/main/assets/rootfs
           sha256sum nativos-rootfs-arm64.tgz > nativos-rootfs-arm64.tgz.sha256
           sha256sum --check nativos-rootfs-arm64.tgz.sha256
+      - name: Verify rootfs supports fully offline boot
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOTFS="android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz"
+          listing="$(tar -tzf "$ROOTFS")"
+          for required in \
+            usr/bin/startxfce4 \
+            usr/bin/xfce4-panel \
+            usr/bin/xfwm4 \
+            usr/bin/xfce4-terminal \
+            usr/bin/thunar \
+            usr/bin/dbus-daemon; do
+            if ! grep -Eq "(^|/)${required}$" <<< "$listing"; then
+              echo "::error::Bundled rootfs is not offline-ready: missing ${required}. Provision the rootfs in CI before building."
+              exit 1
+            fi
+          done
+          echo "Rootfs has the required Xfce and D-Bus files; first boot can extract locally without downloading packages."
 
       - name: Build and verify APK
         working-directory: android
