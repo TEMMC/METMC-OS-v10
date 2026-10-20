@@ -93,8 +93,8 @@ android {
         applicationId = "com.temmc.metmcosv10"
         minSdk = 28  // Android 9+ (modern root tools, Camera2 stable)
         targetSdk = 35
-        versionCode = 15
-        versionName = "10.6.0" // KDE Plasma X11 desktop migration
+        versionCode = 16
+        versionName = "10.7.0" // Lightweight touch-friendly Xfce desktop
 
         ndk {
             abiFilters += listOf("arm64-v8a")
