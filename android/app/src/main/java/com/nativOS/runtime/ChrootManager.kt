@@ -1239,7 +1239,7 @@ class ChrootManager(private val context: Context) {
      * This is idempotent so existing installations are migrated without
      * deleting or re-extracting the user's Linux filesystem.
      */
-    private fun ensureDefaultLinuxUser() {
+    internal fun ensureDefaultLinuxUser() {
         val result = execChroot(
             """
                 set -eu
