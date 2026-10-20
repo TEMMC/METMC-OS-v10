@@ -11,7 +11,7 @@ It is based on the open-source [NativOS project](https://github.com/orailnoor/Na
 - **Source repository:** https://github.com/TEMMC/METMC-OS-v10
 - **Upstream project:** https://github.com/orailnoor/NativOS
 - **Android application ID:** `com.temmc.metmcosv10`
-- **Current development version:** 10.5.0
+- **Current development version:** 10.6.0
 
 ## 🔐 Default Linux root password
 
@@ -31,7 +31,7 @@ The Linux chroot sets the **root** account password to **`metmc`**. This is the 
 
 ## Current status
 
-The NativOS source has been imported and rebranded as METMC OS v10. The app includes Android hardware controls, CPU/RAM status, and an opt-in system diagnostics export. v10.5.0 combines the guarded Linux package manager with quick-access desktop controls, a live system monitor, shared-folder access, update-center links, Linux configuration backup and rootfs validation. The app is labelled METMC OS V10 while NativOS remains credited as the upstream project. Selecting METMC OS V10 as Android's default Home app lets Android open it after boot. Package upgrades affect only the Linux rootfs. Automatic keyboard display depends on the Linux/X11 app's input-focus behavior and still needs on-device testing.
+The NativOS source has been imported and rebranded as METMC OS v10. The app includes Android hardware controls, CPU/RAM status, and an opt-in system diagnostics export. v10.6.0 switches the Linux desktop session from Phosh to KDE Plasma on the embedded X11 display, with Konsole as the default terminal. It retains the guarded Linux package manager with quick-access desktop controls, a live system monitor, shared-folder access, update-center links, Linux configuration backup and rootfs validation. The app is labelled METMC OS V10 while NativOS remains credited as the upstream project. Selecting METMC OS V10 as Android's default Home app lets Android open it after boot. Package upgrades affect only the Linux rootfs. Automatic keyboard display depends on the Linux/X11 app's input-focus behavior and still needs on-device testing.
 
 This project runs a Linux desktop within an Android-rooted environment. It is **not** a native Linux ROM and does not replace the Android kernel.
 
