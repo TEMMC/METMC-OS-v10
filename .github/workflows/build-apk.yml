@@ -1,7 +1,7 @@
 name: Build METMC OS v10 APK
 
-# METMC OS V10 v10.5.0 combined feature release; keep upgrade compatibility across alpha builds.
-# Publish METMC OS V10 v10.5.0 after the storage-sharing build passed.
+# METMC OS V10 v10.6.0 combined feature release; keep upgrade compatibility across alpha builds.
+# Publish METMC OS V10 v10.6.0 only after the KDE Plasma build passes.
 # Release publishing is gated on the commit message so only verified builds are published.
 # Back-navigation, terminal startup, and package-update output fixes are included in this release build; shell variables are escaped for Kotlin.
 
@@ -116,7 +116,7 @@ jobs:
           retention-days: 30
 
   publish-release:
-    if: github.event_name == 'push' && contains(github.event.head_commit.message, 'Publish METMC OS V10 v10.5.0')
+    if: github.event_name == 'push' && contains(github.event.head_commit.message, 'Publish METMC OS V10 v10.6.0')
     needs: build
     runs-on: ubuntu-22.04
     permissions:
@@ -138,21 +138,21 @@ jobs:
           CHECKSUM="$(find release-assets -type f -name 'app-debug.apk.sha256' -print -quit)"
           test -n "$APK"
           test -n "$CHECKSUM"
-          cp "$APK" METMC-OS-V10.5.0-arm64.apk
+          cp "$APK" METMC-OS-V10.6.0-arm64.apk
           (cd "$(dirname "$CHECKSUM")" && sha256sum "$(basename "$CHECKSUM")" >/dev/null)
-          sha256sum METMC-OS-V10.5.0-arm64.apk > METMC-OS-V10.5.0-arm64.apk.sha256
+          sha256sum METMC-OS-V10.6.0-arm64.apk > METMC-OS-V10.6.0-arm64.apk.sha256
           echo "Release APK prepared and checksum generated."
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v10.5.0
-          name: METMC OS V10 10.5.0
+          tag_name: v10.6.0
+          name: METMC OS V10 10.6.0
           prerelease: true
           overwrite_files: true
           generate_release_notes: true
           body: |
-            METMC OS V10 10.5.0 development release for Android ARM64. This alpha is signed with the METMC OS V10 release keystore.
+            METMC OS V10 10.6.0 development release for Android ARM64. This alpha is signed with the METMC OS V10 release keystore.
 
             - Package ID: `com.temmc.metmcosv10`
             - App label: `METMC OS V10`
@@ -170,15 +170,15 @@ jobs:
             - Keyboard no longer opens on ordinary taps near the bottom of the desktop; use a three-finger tap to toggle it.
             - Improved Android/Linux clipboard text synchronization, including mixed plain-text and HTML clipboard items.
             - Removed the legacy root-shell redirect that could interfere with opening the terminal; Linux root password defaults to `metmc`.
-            - Includes compact Phoc display scaling and a Phosh animation-disable tweak.
-            - Adds Phosh launchers for Bluetooth, display, sound, location, and Android system settings; Android remains the owner of physical radios.
-            - Installs optional Phosh Mobile Settings, GNOME Control Center, GNOME Tweaks, and dconf-editor when available in configured Ubuntu repositories.
+            - Replaces the Phosh/Phoc session with KDE Plasma X11 and KWin, started directly on Android's embedded X11 display as the unprivileged Linux user `metmc`.
+            - Retains METMC launchers for Bluetooth, display, sound, location, and Android system settings; Android remains the owner of physical radios.
+            - Uses Konsole, Dolphin, and KDE System Settings as the default Plasma desktop tools.
             - Adds BlueZ/rfkill diagnostic utilities without starting a competing Linux radio manager.
-            - This is an alpha build. Touch responsiveness and hardware acceleration may vary by device.
+            - This is an alpha build. KDE Plasma is heavier than Phosh; performance and first-boot package installation time must be checked on the target device.
             - APK is signed with the METMC OS V10 release keystore; this does not imply Play Store certification.
             - Package operations require root access, a provisioned Linux rootfs, and an internet connection. Review the operation log and close the Linux desktop before upgrades.
           files: |
-            METMC-OS-V10.5.0-arm64.apk
-            METMC-OS-V10.5.0-arm64.apk.sha256
+            METMC-OS-V10.6.0-arm64.apk
+            METMC-OS-V10.6.0-arm64.apk.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
