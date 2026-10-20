@@ -39,6 +39,12 @@ The NativOS source has been imported and rebranded as METMC OS v10. The app incl
 
 This project runs a Linux desktop within an Android-rooted environment. It is **not** a native Linux ROM and does not replace the Android kernel.
 
+## Android apps in the Xfce desktop
+
+METMC OS publishes installed Android launchers in the Linux application menu. Selecting one asks Android to launch that app as a separate Android task with a preferred window size, and startup tries to enable Android's `enable_freeform_support` and `force_resizable_activities` settings. **This is best-effort only**: Android must support freeform windows in its framework/SystemUI for the app to appear as a movable, resizable floating window.
+
+Android apps are still rendered and managed by Android's WindowManager, not by Xfce's `xfwm4`. Xfce cannot directly adopt an existing Android activity surface as an X11 window. If this Samsung firmware ignores freeform mode, Android apps may take over the screen; the launch-bounds request cannot force a floating window by itself. METMC logs the freeform feature/settings probe for diagnostics. No package downloads are performed to enable this feature.
+
 ## Build requirements
 
 Use the Android project under `android/` and follow the upstream build instructions and [production readiness checklist](PRODUCTION_READINESS.md). The build uses JDK 17 and Android SDK 35. The required prepared ARM64 root filesystem archive and matching SHA-256 file must be present under `android/app/src/main/assets/rootfs/`; the Gradle build intentionally fails if they are missing or do not match.
