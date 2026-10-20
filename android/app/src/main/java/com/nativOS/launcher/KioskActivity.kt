@@ -660,6 +660,11 @@ class KioskActivity : Activity() {
                 return
             }
             waitingForRoot = false
+            // Configure Android's own freeform window manager before Linux
+            // desktop shortcuts launch Android activities. Firmware support is
+            // device-dependent, so failure must not prevent the Linux desktop.
+            val freeformReady = chrootManager.enableFreeformWindows()
+            Log.i(TAG, "Android freeform windowing switches enabled=$freeformReady")
             SharedFolderSync.start(this)
             runOnUiThread {
                 overlayLayout?.apply {
