@@ -44,6 +44,31 @@ class ChrootManager(private val context: Context) {
 
     fun hasRoot(): Boolean = rootShell.hasRoot()
 
+    /**
+     * Best-effort enable Android's developer freeform windowing switches.
+     * This does not add missing firmware/SystemUI freeform support; launch
+     * bounds remain a hint and Android may still open apps fullscreen.
+     */
+    fun enableFreeformWindows(): Boolean {
+        if (!hasRoot()) return false
+        return try {
+            val output = rootShell.exec(
+                "settings put global enable_freeform_support 1 && " +
+                    "settings put global force_resizable_activities 1 && " +
+                    "echo FREEFORM_FEATURES: && pm list features | grep -E 'android.software.freeform_window_management|android.software.activities_on_secondary_displays' || true; " +
+                    "echo FREEFORM_SETTING: && settings get global enable_freeform_support; " +
+                    "echo RESIZABLE_SETTING: && settings get global force_resizable_activities"
+            )
+            val enabled = output.contains("FREEFORM_SETTING:") &&
+                output.substringAfter("FREEFORM_SETTING:").trimStart().startsWith("1")
+            Log.i(TAG, "Android freeform probe: ${output.take(1200).trim()}")
+            enabled
+        } catch (error: Throwable) {
+            Log.w(TAG, "Could not configure Android freeform windowing", error)
+            false
+        }
+    }
+
     fun isRootfsReady(): Boolean = File(rootfsDir, "usr/bin/bash").exists()
 
     fun isXfceInstalled(): Boolean =
