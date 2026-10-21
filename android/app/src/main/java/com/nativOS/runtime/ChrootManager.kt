@@ -837,6 +837,8 @@ class ChrootManager(private val context: Context) {
                     exit 127
                 fi
                 usermod -aG sudo metmc
+                # Root account is locked; admin actions must be explicit sudo commands.
+                passwd -l root >/dev/null 2>&1 || true
                 install -d -m 0755 /etc/sudoers.d
                 printf '%s\n' 'Defaults !requiretty' 'metmc ALL=(ALL:ALL) NOPASSWD: ALL' > /etc/sudoers.d/metmc
                 chmod 0440 /etc/sudoers.d/metmc
@@ -964,11 +966,12 @@ METMC_LAUNCH_EOF
                 export HOME="${'$'}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
                 export TMPDIR=/tmp XDG_RUNTIME_DIR=/tmp/runtime-metmc
                 export LD_PRELOAD="${'$'}PRELOAD"
-                if [ -x /usr/bin/phosh-session ] && [ -x /usr/bin/phoc ]; then
+                if [ -x /usr/bin/phosh-session ] && [ -x /usr/bin/phoc ] && [ -x /usr/bin/Xwayland ]; then
                     export WLR_BACKENDS=x11 WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1
+                export GDK_BACKEND=wayland,x11 SDL_VIDEODRIVER=wayland,x11 MOZ_ENABLE_WAYLAND=1
                     export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh
                     export DESKTOP_SESSION=phosh XDG_DATA_DIRS=/usr/local/share:/usr/share QT_QPA_PLATFORM=wayland
-                    echo "Starting Phosh in nested Wayland mode on X11"
+                    echo "Starting Phosh/Phoc with Xwayland in nested Wayland mode on Android X11"
                     if dbus-run-session -- phosh-session; then exit 0; fi
                     echo "Phosh session exited; falling back to Xfce"
                 fi
