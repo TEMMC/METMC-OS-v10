@@ -719,7 +719,7 @@ class KioskActivity : Activity() {
             chrootManager.bindX11Socket()
             AndroidAppIntegration.sync(this)
 
-            // Step 4: Validate the lean Phosh desktop. Never run apt or
+            // Step 4: Validate the offline Xfce windowed desktop. Never run apt or
             // configure online repositories during startup; the bundled rootfs must
             // already contain the complete desktop and essential tools.
             updateOverlay(0.74, "Checking offline desktop...", "")
@@ -860,7 +860,7 @@ class KioskActivity : Activity() {
                 overlayLayout?.visibility = View.GONE
                 keyboardButton?.visibility = View.VISIBLE
                 keyboardButton?.bringToFront()
-                // Phosh owns the mobile shell; keep the extra Android navigation handle hidden.
+                // Keep the Xfce taskbar and Linux windows unobstructed.
                 navigationHandle?.visibility = View.GONE
             }
 
