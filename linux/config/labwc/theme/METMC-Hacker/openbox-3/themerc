@@ -1,0 +1,29 @@
+# METMC Hacker — Labwc/Openbox-compatible theme
+window.active.title.bg: Flat Solid
+window.active.title.bg.color: #07130f
+window.active.label.text.color: #00ff88
+window.active.label.text.font: Noto Sans Bold 11
+window.inactive.title.bg: Flat Solid
+window.inactive.title.bg.color: #151d1a
+window.inactive.label.text.color: #8ea99a
+window.inactive.label.text.font: Noto Sans 11
+window.active.button.unpressed.image.color: #00ff88
+window.active.button.pressed.image.color: #07130f
+window.inactive.button.unpressed.image.color: #8ea99a
+window.active.border.color: #00ff88
+window.inactive.border.color: #34483d
+window.active.border.width: 2
+window.inactive.border.width: 1
+window.active.handle.bg: Flat Solid
+window.active.handle.bg.color: #07130f
+window.inactive.handle.bg: Flat Solid
+window.inactive.handle.bg.color: #151d1a
+menu.title.bg: Flat Solid
+menu.title.bg.color: #07130f
+menu.title.text.color: #00ff88
+menu.items.bg: Flat Solid
+menu.items.bg.color: #101814
+menu.items.text.color: #d6ffe8
+menu.items.active.bg: Flat Solid
+menu.items.active.bg.color: #00ff88
+menu.items.active.text.color: #07130f
