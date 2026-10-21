@@ -1404,11 +1404,18 @@ METMC_LAUNCH_EOF
             for lib in /usr/local/lib/libsocket_hook.so /usr/local/lib/libnativos-close-range.so /usr/local/lib/libandroid-shmem.so; do
                 if [ -f "${'$'}lib" ]; then PRELOAD="${'$'}{PRELOAD:+${'$'}PRELOAD:}${'$'}lib"; fi
             done
-            runuser -u metmc -- env HOME="${'$'}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0 \
-                TMPDIR="${'$'}TMPDIR" XDG_RUNTIME_DIR=/tmp/runtime-metmc \
-                XDG_SESSION_TYPE=x11 XDG_CURRENT_DESKTOP=Xfce XDG_SESSION_DESKTOP=xfce \
-                DESKTOP_SESSION=xfce XDG_DATA_DIRS="${'$'}XDG_DATA_DIRS" QT_QPA_PLATFORM=xcb KWIN_COMPOSE=N \
-                LD_PRELOAD="${'$'}PRELOAD" dbus-run-session -- startxfce4
+            # Some Android app-data mounts are noexec. runuser's attempt to
+            # execute /usr/bin/env can fail even though the shell itself runs.
+            # Use runuser's built-in environment options and exec the session
+            # through bash, avoiding a separate env executable.
+            runuser -u metmc --preserve-environment -- /bin/bash -c '
+                export HOME="$METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
+                export TMPDIR="$TMPDIR" XDG_RUNTIME_DIR=/tmp/runtime-metmc
+                export XDG_SESSION_TYPE=x11 XDG_CURRENT_DESKTOP=Xfce XDG_SESSION_DESKTOP=xfce
+                export DESKTOP_SESSION=xfce XDG_DATA_DIRS="$XDG_DATA_DIRS" QT_QPA_PLATFORM=xcb KWIN_COMPOSE=N
+                export LD_PRELOAD="$PRELOAD"
+                exec dbus-run-session -- startxfce4
+            '
         """.trimIndent()
         Log.i(TAG, "Starting Xfce X11 session")
         val su = rootShell.findSuPath() ?: return
