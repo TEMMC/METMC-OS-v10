@@ -1,0 +1,7 @@
+#!/bin/sh
+# Boot must remain offline: no package installs, downloads, or update checks.
+swaybg -c '#101418' &
+waybar &
+if command -v wl-paste >/dev/null 2>&1 && command -v cliphist >/dev/null 2>&1; then
+  wl-paste --type text --watch cliphist store &
+fi
