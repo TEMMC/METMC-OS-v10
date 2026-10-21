@@ -1,6 +1,6 @@
 name: Build METMC OS v10 APK
 
-# METMC OS V10 Debian Trixie + Phosh mobile-shell experiment; validate before release.
+# METMC OS V10 Debian Trixie + lightweight Xfce multi-window desktop; validate before release.
 # Keep the bundled rootfs lean; do not publish until the Xfce windowed-desktop build passes device validation.
 # Release publishing is gated on the commit message so only verified builds are published.
 # Use a minimal X11 Xfce session: xfwm4 provides overlapping windows and the panel provides a taskbar.
@@ -246,11 +246,11 @@ jobs:
             - Keyboard no longer opens on ordinary taps near the bottom of the desktop; use a three-finger tap to toggle it.
             - Improved Android/Linux clipboard text synchronization, including mixed plain-text and HTML clipboard items.
             - Removed the legacy root-shell redirect that could interfere with opening the terminal; the Linux root account is locked and administrative commands use `sudo` as `metmc`.
-            - Uses a slim Debian 13 Trixie ARM64 rootfs with Phosh/Phoc 0.46, Xwayland, foot terminal, Thunar file manager, and only essential network/diagnostic tools. Xfce and its panel/window manager are not installed to save storage.
+            - Uses a slim Debian 13 Trixie ARM64 rootfs with Xfce, xfwm4 overlapping windows, the panel/taskbar, Xfce Terminal, Thunar, and essential tools. Phosh/Phoc and Xwayland are omitted because the embedded Android display is already X11.
             - Retains METMC launchers for Bluetooth, display, sound, location, and Android system settings; Android remains the owner of physical radios.
-            - Removed the Adreno-only Turnip driver because the Galaxy A04e uses PowerVR; Phoc uses its configured Pixman renderer. This avoids bundling an incompatible driver.
+            - Uses the Android-hosted X11 display directly; no Adreno-specific Turnip driver or nested Phoc compositor is bundled.
             - Removed developer and network-scanning packages from the default image; install optional tools manually when needed.
-            - This is an alpha build. Phosh's nested compositor path, touch handling, virtual keyboard, GPU behavior, RAM use, and first-boot extraction time still need testing on the A04e.
+            - This is an alpha build. Xfce multi-window behavior, touch-friendly panel sizing, keyboard, Android app freeform windows, GPU behavior, RAM use, and first-boot extraction time still need testing on the A04e.
             - APK is signed with the METMC OS V10 release keystore; this does not imply Play Store certification.
             - The bundled rootfs is a slim Debian 13 Trixie ARM64 image; boot and first launch require no package downloads. Manual package operations require root access, a provisioned Linux rootfs, and an internet connection. Review the operation log and close the Linux desktop before upgrades.
           files: |
