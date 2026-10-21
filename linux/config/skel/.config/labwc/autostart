@@ -1,0 +1,7 @@
+#!/bin/sh
+# Offline-only startup: never download or install packages during boot.
+swaybg -c '#050b08' &
+waybar &
+if command -v wl-paste >/dev/null 2>&1 && command -v cliphist >/dev/null 2>&1; then
+  wl-paste --type text --watch cliphist store &
+fi
