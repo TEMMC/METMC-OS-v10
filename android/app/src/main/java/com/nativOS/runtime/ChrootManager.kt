@@ -820,7 +820,7 @@ METMC_LAUNCH_EOF
     // ── Session management ──
 
     /**
-     * Start Phosh/Phoc as the unprivileged Linux user on the Android-hosted X11 display.
+     * Start Xfce as the unprivileged Linux user on the Android-hosted X11 display.
      * Xfce/KWin runs directly on DISPLAY=:0; Android remains the physical display owner.
      */
     @Synchronized
@@ -835,7 +835,7 @@ METMC_LAUNCH_EOF
         ensureDefaultLinuxUser()
         bindX11Socket()
         prepareCloseRangeCompatibility()
-        // The A04e uses PowerVR, not Adreno KGSL. Phoc is configured for Pixman.
+        // Xfce uses the Android-hosted X11 display; keep software rendering as a safe fallback.
         val gpuEnvironment = """
             export NATIVOS_GPU=software LIBGL_ALWAYS_SOFTWARE=1 GBM_ALWAYS_SOFTWARE=1
             export GALLIUM_DRIVER=llvmpipe MESA_LOADER_DRIVER_OVERRIDE=swrast
@@ -912,7 +912,7 @@ METMC_LAUNCH_EOF
         }.start()
     }
 
-    /** Wait for Phosh/Phoc and Xwayland to appear on the embedded X11 display. */
+    /** Wait for the Xfce session, Xfwm4 window manager, and taskbar on the embedded X11 display. */
     fun awaitXfceReady(timeoutMs: Long = 45_000): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
