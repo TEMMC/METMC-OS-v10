@@ -367,7 +367,7 @@ class RootfsManager(private val context: Context) {
             if (chrootManager.execChroot("apk update") != 0) throw IllegalStateException("Could not refresh Alpine package index")
             onProgress(0.25, "Installing Labwc desktop packages...")
             val desktopResult = chrootManager.execChroot(
-                "apk add bash sudo dbus dbus-x11 labwc waybar fuzzel foot thunar xwayland swaybg wl-clipboard font-noto font-noto-emoji adwaita-icon-theme"
+                "apk add bash sudo util-linux-login dbus dbus-x11 labwc waybar fuzzel foot thunar xwayland swaybg wl-clipboard font-noto font-noto-emoji adwaita-icon-theme"
             )
             if (desktopResult != 0) throw IllegalStateException("Labwc package installation failed")
             onProgress(0.55, "Installing compact hacker and networking tools...")
