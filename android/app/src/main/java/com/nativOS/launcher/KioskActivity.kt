@@ -674,8 +674,13 @@ class KioskActivity : Activity() {
             }
             updateOverlay(0.05, "Root access confirmed", "")
 
-            // Step 2: Prepare the bundled rootfs only. Boot must never use the network.
-            if (!rootfsManager.isRootfsReady()) {
+            // Step 2: Ensure the bundled Debian 13 Trixie rootfs is installed.
+            // Existing Ubuntu installs are migrated once, with /home/metmc preserved.
+            if (rootfsManager.isRootfsReady() && !rootfsManager.isBundledDistroReady()) {
+                updateOverlay(0.05, "Switching Linux system to Debian 13...", "One-time migration; preserving /home/metmc")
+                chrootManager.stopSession()
+            }
+            if (!rootfsManager.isRootfsReady() || !rootfsManager.isBundledDistroReady()) {
                 val bundled = rootfsManager.stageBundledRootfs { progress, status ->
                     updateOverlay(0.05 + progress * 0.45, status, "Bundled in this APK — no network required")
                 }
@@ -703,8 +708,8 @@ class KioskActivity : Activity() {
                 updateOverlay(0.70, "Local Linux filesystem found", "Offline startup")
             }
 
-            if (!rootfsManager.isRootfsReady()) {
-                updateOverlay(-1.0, "ERROR: Rootfs setup failed", "The Linux filesystem could not be prepared")
+            if (!rootfsManager.isBundledDistroReady()) {
+                updateOverlay(-1.0, "ERROR: Debian rootfs setup failed", "The Debian 13 Trixie Linux filesystem could not be prepared")
                 return
             }
 
