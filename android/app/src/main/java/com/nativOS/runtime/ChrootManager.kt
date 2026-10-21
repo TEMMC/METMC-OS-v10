@@ -932,7 +932,7 @@ METMC_LAUNCH_EOF
         val command = """
             targets=''
             for proc in /proc/[0-9]*; do
-                [ "${'$'}proc/root" -ef '$root' ] 2>/dev/null || continue
+                [ "${'$'}proc/root" -ef '${' ] 2>/dev/null || continue
                 targets="${'$'}targets ${'$'}{proc#/proc/}"
             done
             if [ -n "${'$'}targets" ]; then
@@ -940,6 +940,51 @@ METMC_LAUNCH_EOF
                 sleep 1
                 for pid in ${'$'}targets; do
                     [ "/proc/${'$'}pid/root" -ef '$root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+}root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '${' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+}root' ] 2>/dev/null &&
                         kill -KILL "${'$'}pid" 2>/dev/null || true
                 done
             fi
