@@ -1,0 +1,15 @@
+* { font-family: "Noto Sans", "DejaVu Sans", sans-serif; font-size: 16px; min-height: 0; }
+window#waybar {
+  background: rgba(5, 11, 8, 0.97); color: #d6ffe8;
+  border: 1px solid #00ff88; border-radius: 14px;
+}
+#custom-menu, #taskbar button, #clock, #network, #pulseaudio, #battery, #tray {
+  padding: 8px 14px; margin: 4px 2px; min-height: 44px; border-radius: 10px;
+}
+#custom-menu { color: #050b08; background: #00ff88; font-size: 24px; min-width: 48px; font-weight: bold; }
+#taskbar button { background: #111d16; border: 1px solid #244333; }
+#taskbar button.active { background: #00552d; border-color: #00ff88; }
+#clock { color: #00ff88; font-weight: bold; }
+#network.disconnected, #battery.critical { color: #ff626e; }
+#battery.warning { color: #ffd166; }
+tooltip { background: #050b08; color: #d6ffe8; border: 1px solid #00ff88; border-radius: 8px; }
