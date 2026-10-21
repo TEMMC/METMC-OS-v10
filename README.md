@@ -40,25 +40,23 @@ Wi-Fi connectivity is normally shared from Android into Debian. Android 10+ rest
 
 ## Offline startup guarantee
 
-The Android boot path must never download a root filesystem, run `apt-get update`, install Linux packages, or contact update servers. GitHub Actions creates a fresh Debian 13 Trixie ARM64 rootfs with a minimal **Xfce + Xfwm4** desktop, a touch-sized panel/taskbar, Xfce Terminal, Thunar, the unprivileged `metmc` user, `sudo`, and essential tools. The prepared rootfs is embedded in the APK; first launch only copies and extracts the bundled asset. If the asset or required desktop files are missing, the app must show an actionable error and stop rather than attempting network recovery. Package management remains user-initiated.
+GitHub Actions prepares a compact Alpine Linux 3.22 ARM64 root filesystem with Labwc, Wayland/Xwayland support, Waybar, Fuzzel, Foot, Thunar, a non-root `metmc` user, `sudo`, and compact shell/network diagnostics tools. The root filesystem is compressed as a reproducible `.tgz` asset and bundled inside the APK. First launch copies and extracts that asset locally; boot must never run `apk update`, install packages, download a rootfs, or contact update servers. Package updates and new installs remain explicitly user-initiated.
 
 ## Windowed desktop and multitasking
 
-METMC uses the Android-hosted X11 display directly and starts Xfce as the `metmc` Linux user. **Xfwm4 is the Linux window manager**: Linux GUI applications can have independent decorated windows that can be moved, resized, minimized, maximized, and switched from the Xfce panel/taskbar. The touch layout is configured with larger panel controls and a dark theme while omitting a second desktop stack to keep the image lean.
+METMC's intended desktop is **Labwc + Wayland + Xwayland**, nested into the Android-hosted X11 display. Labwc provides stacking windows; Waybar provides the running-window taskbar; Fuzzel launches apps; Foot is the terminal; and Thunar is the file manager. The neon green-on-black METMC Hacker theme applies to window decorations, taskbar, launcher, GTK defaults and terminal. Large taskbar targets and four workspaces are intended to make multitasking usable on a phone. The nested compositor and touch/window behavior still require CI and on-device validation.
 
-Android apps remain Android activities. METMC can publish their launchers to the Linux app menu and request bounded/freeform launches, but movable Android app windows depend on Samsung's Android WindowManager and firmware support; Xfce cannot directly turn an Android activity into an X11 window. Linux multi-window support and Android freeform windows are therefore separate features and must be tested separately on the A04e.
+Android apps remain Android activities. METMC can publish their launchers to the Linux app menu and request bounded/freeform launches, but movable Android app windows depend on Samsung's Android WindowManager and firmware support; Labwc cannot directly turn an Android activity into a Linux window. Linux multi-window support and Android freeform windows are separate features.
 
 The chroot shares the Android kernel and does not install a separate Linux kernel. The app binds `/dev`, `/proc`, and `/sys` into the rootfs where permitted. Wi-Fi, Bluetooth, audio, camera, location, brightness, battery and other Android-owned hardware features use the Android bridge where implemented and authorized. Actual access remains subject to Android permissions, SELinux, Samsung vendor drivers, and supported APIs; it is not unrestricted hardware access. SELinux remains Enforcing by default.
 
-## Planned Alpine + Labwc touch desktop
+## Touch design and compact tools
 
-A touch-first Labwc design has been added under [docs/ALPINE_LABWC_TOUCH_DESIGN.md](docs/ALPINE_LABWC_TOUCH_DESIGN.md), with initial compositor, Waybar, launcher and autostart configuration in linux/config/labwc, linux/config/waybar and linux/config/fuzzel.ini. It targets a 64px taskbar, large touch targets, window task switching, four workspaces, Xwayland compatibility and the dark METMC theme.
-
-**Important:** those are design assets only at this stage. The current APK workflow and Android startup/readiness code still build and launch Debian/Xfce. The actual Alpine/Labwc migration must replace rootfs provisioning, the desktop launcher, runtime checks and package-management paths before this design can become the active desktop. Do not install a build expecting Labwc until that migration and CI validation are complete.
+The initial desktop configuration lives under `linux/config/skel/` and `linux/config/labwc/theme/METMC-Hacker/`. The default image includes a dark theme, neon terminal prompt, taskbar, app launcher, multi-window shortcuts, and small utilities such as `nano`, `less`, `htop`, `curl`, `wget`, `git`, `ssh`, `ip`, `ping`, `dig`, `traceroute`, `nc`, `nmap`, `whois`, `jq`, `python3`, `tmux`, `rsync`, `zip`, and `unzip`. The goal is a compressed, bundled image rather than package installation during first boot.
 
 ## Current status
 
-The Xfce windowed-desktop branch is an experimental development build. CI must pass and the APK must be tested on the Galaxy A04e before a release is considered verified. Touch input, keyboard behavior, window decorations, panel usability, Android freeform windows, hardware bridging, GPU behavior, RAM use, and boot time remain device-test items. No claim of full compatibility is made until those checks pass.
+The Alpine/Labwc migration has been committed to the draft pull request, but the new rootfs and Android session have not yet been confirmed by a successful CI build or tested on the Galaxy A04e. Do not treat it as a verified release until the build succeeds and the desktop is tested on-device. Touch input, keyboard behavior, window decorations, panel usability, Android freeform windows, hardware bridging, GPU behavior, RAM use, and boot time remain device-test items. No claim of full compatibility is made until those checks pass.
 
 ## Build requirements
 
