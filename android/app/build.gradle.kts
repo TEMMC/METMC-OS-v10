@@ -57,8 +57,8 @@ val verifyBundledRootfs by tasks.registering {
     inputs.dir(rootfsDirectory)
 
     doLast {
-        val asset = rootfsDirectory.file("nativos-rootfs-arm64.tgz").asFile
-        val checksumFile = rootfsDirectory.file("nativos-rootfs-arm64.tgz.sha256").asFile
+        val asset = rootfsDirectory.file("nativos-rootfs-arm64.tar").asFile
+        val checksumFile = rootfsDirectory.file("nativos-rootfs-arm64.tar.sha256").asFile
         check(asset.isFile && asset.length() > 100L * 1024L * 1024L) {
             "Bundled rootfs is missing or implausibly small. Run scripts/build-rootfs-asset.sh."
         }
@@ -147,9 +147,8 @@ android {
     }
 
     androidResources {
-        // The production rootfs is already gzip-compressed. Recompressing it
-        // wastes build memory and provides no meaningful size reduction.
-        noCompress += "tgz"
+        // Keep the uncompressed rootfs TAR stored verbatim in the APK.
+        noCompress += "tar"
     }
 }
 
