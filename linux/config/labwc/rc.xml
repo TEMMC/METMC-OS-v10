@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<labwc_config>
+  <core>
+    <decoration>server</decoration>
+    <gap>8</gap>
+    <reuseOutputMode>yes</reuseOutputMode>
+    <xwaylandPersistence>yes</xwaylandPersistence>
+  </core>
+  <keyboard>
+    <default />
+    <keybind key="W-d"><action name="Execute" command="fuzzel --show drun" /></keybind>
+    <keybind key="W-Return"><action name="Execute" command="foot" /></keybind>
+    <keybind key="A-Tab"><action name="NextWindow" /></keybind>
+    <keybind key="A-Shift-Tab"><action name="PreviousWindow" /></keybind>
+    <keybind key="A-F4"><action name="Close" /></keybind>
+    <keybind key="W-a"><action name="ToggleMaximize" /></keybind>
+    <keybind key="W-m"><action name="Iconify" /></keybind>
+    <keybind key="W-1"><action name="GoToDesktop"><to>1</to></action></keybind>
+    <keybind key="W-2"><action name="GoToDesktop"><to>2</to></action></keybind>
+    <keybind key="W-3"><action name="GoToDesktop"><to>3</to></action></keybind>
+    <keybind key="W-4"><action name="GoToDesktop"><to>4</to></action></keybind>
+  </keyboard>
+  <mouse>
+    <default />
+  </mouse>
+  <desktops><number>4</number><popupTime>1000</popupTime></desktops>
+</labwc_config>
