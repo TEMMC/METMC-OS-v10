@@ -341,7 +341,7 @@ class KioskActivity : Activity() {
             visibility = View.GONE
             addAssistiveAction("⌂", "Home") { showLinuxHome() }
             addAssistiveAction("‹", "Back") { goLinuxBack() }
-            addAssistiveAction("▦", "Recents") { showLinuxHome() }
+            addAssistiveAction("▦", "Switch windows") { sendLabwcChord(KeyEvent.KEYCODE_ALT_LEFT, KeyEvent.META_ALT_ON, KeyEvent.KEYCODE_TAB) }
             addAssistiveAction("□", "Maximize") { maximizeLinuxWindow() }
             addAssistiveAction("⌨", "Keyboard") {
                 MainActivity.toggleKeyboardVisibility(this@KioskActivity)
@@ -570,17 +570,20 @@ class KioskActivity : Activity() {
     }
 
     private fun toggleLabwcMenu() {
+        sendLabwcChord(KeyEvent.KEYCODE_META_LEFT, KeyEvent.META_META_ON, KeyEvent.KEYCODE_D)
+    }
+
+    /** Send a desktop shortcut through the embedded X11 input bridge. */
+    private fun sendLabwcChord(modifierKeyCode: Int, modifierMetaState: Int, keyCode: Int) {
         val view = desktopView ?: return
-        // Labwc binds Super+D to the app launcher. Send the chord rather than
-        // a bare Super key so the touch handle works without a physical keyboard.
-        view.sendKeyEvent(0, KeyEvent.KEYCODE_META_LEFT, true)
+        view.sendKeyEvent(0, modifierKeyCode, true)
         view.postDelayed({
             if (!view.isAttachedToWindow) return@postDelayed
-            view.sendKeyEvent(KeyEvent.META_META_ON, KeyEvent.KEYCODE_D, true)
+            view.sendKeyEvent(modifierMetaState, keyCode, true)
             view.postDelayed({
                 if (!view.isAttachedToWindow) return@postDelayed
-                view.sendKeyEvent(KeyEvent.META_META_ON, KeyEvent.KEYCODE_D, false)
-                view.sendKeyEvent(0, KeyEvent.KEYCODE_META_LEFT, false)
+                view.sendKeyEvent(modifierMetaState, keyCode, false)
+                view.sendKeyEvent(0, modifierKeyCode, false)
             }, 40)
         }, 40)
     }
@@ -615,13 +618,9 @@ class KioskActivity : Activity() {
         }, "LinuxBack").start()
     }
 
-    /** Resize unmanaged X11 apps directly; they have no X11 WM to handle Alt+F10. */
+    /** Ask Labwc to maximize the focused Linux window; it owns the nested desktop's windows. */
     private fun maximizeLinuxWindow() {
-        Thread({
-            if (!chrootManager.maximizeActiveX11Window()) {
-                Log.w(TAG, "No active X11 application could be maximized")
-            }
-        }, "MaximizeX11").start()
+        sendLabwcChord(KeyEvent.KEYCODE_META_LEFT, KeyEvent.META_META_ON, KeyEvent.KEYCODE_A)
     }
 
     private fun requestNotificationPermission() {
