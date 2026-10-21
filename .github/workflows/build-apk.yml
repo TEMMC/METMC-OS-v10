@@ -66,57 +66,59 @@ jobs:
       - name: Install Android SDK packages
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
-      - name: Download upstream rootfs from official NativOS APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK_URL="https://github.com/orailnoor/NativOS/releases/download/v0.1.0-alpha/NativOS-v0.1.0-alpha-arm64.apk"
-          curl --fail --location --retry 3 --output /tmp/nativos-upstream.apk "$APK_URL"
-          unzip -l /tmp/nativos-upstream.apk | grep -F "assets/rootfs/nativos-rootfs-arm64.tgz"
-          mkdir -p android/app/src/main/assets/rootfs
-          unzip -p /tmp/nativos-upstream.apk assets/rootfs/nativos-rootfs-arm64.tgz > android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz
-          test "$(stat -c %s android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz)" -gt 104857600
-          cd android/app/src/main/assets/rootfs
-          sha256sum nativos-rootfs-arm64.tgz > nativos-rootfs-arm64.tgz.sha256
-          sha256sum --check nativos-rootfs-arm64.tgz.sha256
-
-      - name: Prepare complete offline ARM64 rootfs on GitHub
+      - name: Build Debian 13 Trixie ARM64 rootfs offline-ready
         shell: bash
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y qemu-user-static binfmt-support
+          sudo apt-get install -y debootstrap qemu-user-static binfmt-support
           sudo update-binfmts --enable qemu-aarch64 || true
 
           ROOTFS="$RUNNER_TEMP/metmc-rootfs"
           mkdir -p "$ROOTFS"
-          sudo tar --numeric-owner -xzf android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz -C "$ROOTFS"
+          sudo debootstrap --arch=arm64 --foreign --variant=minbase \
+            --include=ca-certificates,apt,locales \
+            trixie "$ROOTFS" https://deb.debian.org/debian
           sudo cp /usr/bin/qemu-aarch64-static "$ROOTFS/usr/bin/qemu-aarch64-static"
-          sudo rm -f "$ROOTFS/etc/resolv.conf"
-          sudo cp -L /etc/resolv.conf "$ROOTFS/etc/resolv.conf"
-          sudo mkdir -p "$ROOTFS/dev" "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/dev/pts"
 
           cleanup_mounts() {
             sudo umount "$ROOTFS/sys" 2>/dev/null || true
             sudo umount "$ROOTFS/proc" 2>/dev/null || true
+            sudo umount "$ROOTFS/dev/pts" 2>/dev/null || true
             sudo umount "$ROOTFS/dev" 2>/dev/null || true
           }
           trap cleanup_mounts EXIT
+          sudo mkdir -p "$ROOTFS/dev/pts" "$ROOTFS/proc" "$ROOTFS/sys"
           sudo mount --bind /dev "$ROOTFS/dev"
+          sudo mount --bind /dev/pts "$ROOTFS/dev/pts"
           sudo mount -t proc proc "$ROOTFS/proc"
           sudo mount --bind /sys "$ROOTFS/sys"
 
-          # All downloads and package installation happen on this GitHub runner,
-          # never on the phone. The finished APK carries this complete ARM64 rootfs.
+          sudo chroot "$ROOTFS" /debootstrap/debootstrap --second-stage
+          sudo chroot "$ROOTFS" /bin/bash -eu -c '
+            cat > /etc/apt/sources.list <<EOF
+          deb https://deb.debian.org/debian trixie main
+          deb https://deb.debian.org/debian trixie-updates main
+          deb https://security.debian.org/debian-security trixie-security main
+          EOF
+            printf "metmc-os\n" > /etc/hostname
+            printf "127.0.0.1 localhost\n127.0.1.1 metmc-os\n" > /etc/hosts
+            rm -f /etc/resolv.conf
+            printf "nameserver 1.1.1.1\nnameserver 8.8.8.8\n" > /etc/resolv.conf
+          '
+
+          # All downloads and package installation happen on the GitHub runner.
+          # The finished APK embeds this complete Debian rootfs; Android startup
+          # never performs apt operations or downloads the rootfs.
           sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive apt-get update
           sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends \
             xfce4-session xfce4-panel xfwm4 xfce4-settings xfce4-terminal thunar \
-            xfce4-whiskermenu-plugin xfce4-pulseaudio-plugin dbus dbus-x11 \
-            policykit-1 x11-xserver-utils phosh=0.38.0-1 phoc=0.38.0-1 phosh-osk-stub=0.38.0-1 xwayland \
-            adwaita-icon-theme fonts-noto-core \
-            fonts-noto-color-emoji nano less htop file procps psmisc \
-            ca-certificates curl wget git openssh-client iproute2 iputils-ping \
-            net-tools dnsutils traceroute netcat-openbsd nmap whois sudo
+            xfce4-whiskermenu-plugin xfce4-pulseaudio-plugin dbus dbus-x11 dbus-user-session \
+            policykit-1 polkitd x11-xserver-utils phosh phoc phosh-osk-stub xwayland \
+            adwaita-icon-theme fonts-noto-core fonts-noto-color-emoji \
+            nano less htop file procps psmisc ca-certificates curl wget git \
+            openssh-client iproute2 iputils-ping net-tools dnsutils traceroute \
+            netcat-openbsd nmap whois sudo gcc libxcb1-dev
 
           sudo chroot "$ROOTFS" /bin/bash -eu -c '
             id -u metmc >/dev/null 2>&1 || useradd --create-home --shell /bin/bash metmc
@@ -131,9 +133,7 @@ jobs:
             test -x /usr/bin/phoc
             test -x /usr/bin/Xwayland
             install -d -m 0755 /etc/phosh
-            printf '%s\n' '[core]' 'xwayland=true' > /etc/phosh/phoc.ini
-            dpkg-query -W -f='${Version}\n' phosh | grep -Fx '0.38.0-1'
-            dpkg-query -W -f='${Version}\n' phoc | grep -Fx '0.38.0-1'
+            printf "%s\\n" "[core]" "xwayland=true" > /etc/phosh/phoc.ini
             test -x /usr/bin/xfce4-panel
             test -x /usr/bin/xfwm4
             test -x /usr/bin/xfce4-terminal
@@ -141,9 +141,7 @@ jobs:
             test -x /usr/bin/curl
             test -x /usr/bin/ip
             test -x /usr/bin/ping
-            # Flatpak is intentionally excluded: METMC uses the system package manager via sudo.
-            apt-get purge -y flatpak || true
-            apt-get purge -y flatpak-xdg-utils flatpak-builder gnome-software-plugin-flatpak || true
+            apt-get purge -y flatpak flatpak-xdg-utils flatpak-builder gnome-software-plugin-flatpak || true
             rm -rf /root/.local/share/flatpak /home/metmc/.local/share/flatpak /var/lib/flatpak /etc/flatpak /usr/share/flatpak
             apt-get clean
             rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
@@ -155,9 +153,6 @@ jobs:
           sudo chown -R "$USER":"$USER" "$ROOTFS"
           scripts/build-rootfs-asset.sh "$ROOTFS" android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz
           cd android/app/src/main/assets/rootfs
-          # The asset was rebuilt after the original upstream checksum was recorded.
-          # Regenerate its checksum so Gradle validates the final bundled archive,
-          # not the pre-provisioning upstream archive.
           sha256sum nativos-rootfs-arm64.tgz > nativos-rootfs-arm64.tgz.sha256
           sha256sum --check nativos-rootfs-arm64.tgz.sha256
 
