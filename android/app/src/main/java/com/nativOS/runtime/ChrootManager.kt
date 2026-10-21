@@ -802,7 +802,7 @@ METMC_LAUNCH_EOF
                 passwd -l root >/dev/null 2>&1 || true
                 rm -rf /root/.local/share/flatpak /home/metmc/.local/share/flatpak /var/lib/flatpak /etc/flatpak /usr/share/flatpak
                 rm -f /usr/local/bin/bwrap /usr/local/bin/nativos-flatpak-drop /run/nativos-flatpak-drop
-                chown -R metmc:metmc /home/metmc
+            chown -R metmc:metmc "${'$'}METMC_HOME" /tmp/runtime-metmc
                 chmod 0750 /home/metmc
             """.trimIndent()
         )
@@ -856,18 +856,18 @@ METMC_LAUNCH_EOF
             chmod 0644 /run/metmc/hardware-status.txt
             id metmc >/dev/null 2>&1 || adduser -D -s /bin/bash metmc
             METMC_HOME=$(getent passwd metmc | cut -d: -f6)
-            mkdir -p "${'METMC_HOME" /tmp/runtime-metmc}METMC_HOME" /tmp/runtime-metmc
-            chown -R metmc:metmc "${'METMC_HOME" /tmp/runtime-metmc}METMC_HOME" /tmp/runtime-metmc
+            mkdir -p "${'$'}METMC_HOME" /tmp/runtime-metmc
+            chown -R metmc:metmc "${'$'}METMC_HOME" /tmp/runtime-metmc
             chmod 0700 /tmp/runtime-metmc
             PRELOAD=""
             for lib in /usr/local/lib/libsocket_hook.so /usr/local/lib/libnativos-close-range.so /usr/local/lib/libandroid-shmem.so; do
-                if [ -f "${'lib" ]; then PRELOAD="${'$' }{PRELOAD:+${'$' }PRELOAD:}${'$' }lib"; fi}lib" ]; then PRELOAD="${'{PRELOAD:+${'$' }PRELOAD:}${'$' }lib"; fi}{PRELOAD:+${'PRELOAD:}${'$' }lib"; fi}PRELOAD:}${'lib"; fi}lib"; fi
+                if [ -f "${'$'}lib" ]; then PRELOAD="${'$'}{PRELOAD:+${'$'}PRELOAD:}${'$'}lib"; fi
             done
             export METMC_HOME PRELOAD
             runuser -u metmc --preserve-environment -- /bin/bash -c '
-                export HOME="${'METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
+                export HOME="${'$'}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
                 export TMPDIR=/tmp XDG_RUNTIME_DIR=/tmp/runtime-metmc WAYLAND_DISPLAY=wayland-0
-                export LD_PRELOAD="${'PRELOAD"}PRELOAD"
+                export LD_PRELOAD="${'$'}PRELOAD"
                 export WLR_BACKENDS=x11 WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
                 export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
                 export GDK_BACKEND=wayland,x11 QT_QPA_PLATFORM='wayland;xcb' MOZ_ENABLE_WAYLAND=1 SDL_VIDEODRIVER=wayland,x11
@@ -1036,9 +1036,9 @@ METMC_LAUNCH_EOF
             done
             export METMC_HOME PRELOAD
             runuser -u metmc --preserve-environment -- /bin/bash -c '
-                export HOME="${'METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
+                export HOME="${'$'}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
                 export TMPDIR=/tmp XDG_RUNTIME_DIR=/tmp/runtime-metmc WAYLAND_DISPLAY=wayland-0
-                export LD_PRELOAD="${'PRELOAD"}PRELOAD"
+                export LD_PRELOAD="${'$'}PRELOAD"
                 export WLR_BACKENDS=x11 WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
                 export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
                 export GDK_BACKEND=wayland,x11 QT_QPA_PLATFORM='wayland;xcb' MOZ_ENABLE_WAYLAND=1 SDL_VIDEODRIVER=wayland,x11
@@ -1207,9 +1207,9 @@ METMC_LAUNCH_EOF
             done
             export METMC_HOME PRELOAD
             runuser -u metmc --preserve-environment -- /bin/bash -c '
-                export HOME="${'METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
+                export HOME="${'$'}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
                 export TMPDIR=/tmp XDG_RUNTIME_DIR=/tmp/runtime-metmc WAYLAND_DISPLAY=wayland-0
-                export LD_PRELOAD="${'PRELOAD"}PRELOAD"
+                export LD_PRELOAD="${'$'}PRELOAD"
                 export WLR_BACKENDS=x11 WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
                 export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
                 export GDK_BACKEND=wayland,x11 QT_QPA_PLATFORM='wayland;xcb' MOZ_ENABLE_WAYLAND=1 SDL_VIDEODRIVER=wayland,x11
@@ -1378,9 +1378,9 @@ METMC_LAUNCH_EOF
             done
             export METMC_HOME PRELOAD
             runuser -u metmc --preserve-environment -- /bin/bash -c '
-                export HOME="${'METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
+                export HOME="${'$'}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
                 export TMPDIR=/tmp XDG_RUNTIME_DIR=/tmp/runtime-metmc WAYLAND_DISPLAY=wayland-0
-                export LD_PRELOAD="${'PRELOAD"}PRELOAD"
+                export LD_PRELOAD="${'$'}PRELOAD"
                 export WLR_BACKENDS=x11 WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
                 export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
                 export GDK_BACKEND=wayland,x11 QT_QPA_PLATFORM='wayland;xcb' MOZ_ENABLE_WAYLAND=1 SDL_VIDEODRIVER=wayland,x11
