@@ -16,9 +16,6 @@ class ChrootManager(private val context: Context) {
 
     companion object {
         private const val TAG = "NativOS.ChrootManager"
-        private const val TURNIP_VERSION = "25.0.7"
-        private const val TURNIP_ASSET = "gpu/mesa-vulkan-drivers-kgsl-25.0.7-arm64.deb"
-        private const val TURNIP_SHA256 = "66b11a94835f66e80efc8556477334a14dc68456a76e31ada3cd2d440869c5d5"
         private val mountLock = Any()
 
         @Volatile private var sessionProcess: Process? = null
@@ -37,8 +34,6 @@ class ChrootManager(private val context: Context) {
     // SharedFolderProvider exposes this directory to Android's Files UI.
     private val androidSharedDir: File
         get() = File(baseDir, "shared")
-    private val turnipRoot: File get() = File(rootfsDir, "opt/nativos-gpu/turnip-$TURNIP_VERSION")
-    private val turnipIcd: File get() = File(turnipRoot, "usr/share/vulkan/icd.d/freedreno_icd.aarch64.json")
 
     // ── Status ──
 
@@ -299,77 +294,6 @@ class ChrootManager(private val context: Context) {
         } else {
             Log.e(TAG, "Failed to bind host X11 socket directory; mount result=$result")
         }
-    }
-
-    /** Install and validate the bundled KGSL Turnip driver on Adreno devices. */
-    private fun prepareHardwareGpu(): Boolean {
-        if (!File("/dev/kgsl-3d0").exists()) {
-            Log.i(TAG, "No KGSL device; using portable software rendering")
-            return false
-        }
-
-        return try {
-            val archive = File(baseDir, "gpu/mesa-vulkan-drivers-kgsl-$TURNIP_VERSION-arm64.deb")
-            if (!archive.exists() || sha256(archive) != TURNIP_SHA256) {
-                archive.parentFile?.mkdirs()
-                context.assets.open(TURNIP_ASSET).use { input ->
-                    archive.outputStream().use { output -> input.copyTo(output) }
-                }
-            }
-            if (sha256(archive) != TURNIP_SHA256) {
-                Log.e(TAG, "Bundled Turnip archive failed checksum validation")
-                return false
-            }
-
-            val library = File(turnipRoot, "usr/lib/aarch64-linux-gnu/libvulkan_freedreno.so")
-            if (!library.exists() || !turnipIcd.exists()) {
-                val root = turnipRoot.absolutePath.removePrefix(rootfsDir.absolutePath)
-                val archiveInChroot = archive.absolutePath
-                val installCommand = """
-                    mkdir -p $root &&
-                    dpkg-deb -x $archiveInChroot $root &&
-                    sed -i 's#/usr/lib/aarch64-linux-gnu/libvulkan_freedreno.so#$root/usr/lib/aarch64-linux-gnu/libvulkan_freedreno.so#' $root/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json
-                """.trimIndent().replace("\n", " ")
-                if (execChroot(installCommand) != 0) {
-                    Log.e(TAG, "Could not extract bundled Turnip driver")
-                    return false
-                }
-            }
-
-            val available = library.exists() && turnipIcd.exists()
-            if (!available) {
-                Log.w(TAG, "Turnip driver unavailable; using software")
-                return false
-            }
-
-            val icd = turnipIcd.absolutePath.removePrefix(rootfsDir.absolutePath)
-            val probe = "command -v vulkaninfo >/dev/null 2>&1 && " +
-                "VK_ICD_FILENAMES=$icd TU_DEBUG=noconform " +
-                "timeout 10s vulkaninfo --summary >/dev/null 2>&1"
-            if (execChroot(probe) != 0) {
-                Log.w(TAG, "Turnip Vulkan probe failed; using software rendering")
-                return false
-            }
-
-            Log.i(TAG, "Turnip KGSL driver ready")
-            true
-        } catch (error: Throwable) {
-            Log.w(TAG, "GPU setup failed; using software rendering", error)
-            false
-        }
-    }
-
-    private fun sha256(file: File): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        file.inputStream().use { input ->
-            val buffer = ByteArray(64 * 1024)
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                digest.update(buffer, 0, count)
-            }
-        }
-        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     /** Make modern GLib app launching work on kernels with partial close_range support. */
@@ -910,14 +834,8 @@ METMC_LAUNCH_EOF
         ensureDefaultLinuxUser()
         bindX11Socket()
         prepareCloseRangeCompatibility()
-        val hardwareGpu = prepareHardwareGpu()
-        val gpuEnvironment = if (hardwareGpu) """
-            export NATIVOS_GPU=turnip
-            unset LIBGL_ALWAYS_SOFTWARE GBM_ALWAYS_SOFTWARE
-            export GALLIUM_DRIVER=zink MESA_LOADER_DRIVER_OVERRIDE=zink
-            export VK_ICD_FILENAMES=${turnipIcd.absolutePath.removePrefix(rootfsDir.absolutePath)}
-            export TU_DEBUG=noconform ZINK_DESCRIPTORS=lazy MESA_VK_WSI_DEBUG=sw
-        """.trimIndent() else """
+        // The A04e uses PowerVR, not Adreno KGSL. Phoc is configured for Pixman.
+        val gpuEnvironment = """
             export NATIVOS_GPU=software LIBGL_ALWAYS_SOFTWARE=1 GBM_ALWAYS_SOFTWARE=1
             export GALLIUM_DRIVER=llvmpipe MESA_LOADER_DRIVER_OVERRIDE=swrast
         """.trimIndent()
