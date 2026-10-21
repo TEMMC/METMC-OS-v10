@@ -1,0 +1,61 @@
+name: Publish existing APK artifact as v10.8.0
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Find latest successful APK build
+        id: build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_ID="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/build-apk.yml/runs?branch=main&status=success&per_page=20" --jq '.workflow_runs[0].id')"
+          test -n "$RUN_ID" && test "$RUN_ID" != "null"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "Using successful build run: $RUN_ID"
+
+      - name: Download existing APK artifact (no rebuild)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact
+          gh run download "${{ steps.build.outputs.run_id }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "METMC-OS-v10-Android-APK" \
+            --dir artifact
+          APK="$(find artifact -type f -name '*.apk' -print -quit)"
+          test -n "$APK"
+          mkdir -p release
+          cp "$APK" release/METMC-OS-V10.8.0-arm64.apk
+          ls -lh release/METMC-OS-V10.8.0-arm64.apk
+          echo "APK_PATH=release/METMC-OS-V10.8.0-arm64.apk" >> "$GITHUB_ENV"
+
+      - name: Publish release v10.8.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          NOTES="$(printf '%s\n\n' \
+            'Publishes the already-built METMC OS APK artifact without rebuilding or modifying its contents.' \
+            'Release label: v10.8.0. The APK internal version metadata is unchanged from the source build.')"
+          if gh release view v10.8.0 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload v10.8.0 "$APK_PATH" \
+              --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create v10.8.0 "$APK_PATH" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "METMC OS V10.8.0" \
+              --notes "$NOTES"
+          fi
