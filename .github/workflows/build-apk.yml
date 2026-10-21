@@ -112,7 +112,7 @@ jobs:
           sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends \
             xfce4-session xfce4-panel xfwm4 xfce4-settings xfce4-terminal thunar \
             xfce4-whiskermenu-plugin xfce4-pulseaudio-plugin dbus dbus-x11 \
-            policykit-1 x11-xserver-utils phosh=0.38.0-1 phoc=0.38.0-1 phosh-osk-stub=0.38.0-1 \
+            policykit-1 x11-xserver-utils phosh=0.38.0-1 phoc=0.38.0-1 phosh-osk-stub=0.38.0-1 xwayland \
             adwaita-icon-theme fonts-noto-core \
             fonts-noto-color-emoji nano less htop file procps psmisc \
             ca-certificates curl wget git openssh-client iproute2 iputils-ping \
@@ -124,11 +124,14 @@ jobs:
             install -d -m 0755 /etc/sudoers.d
             printf "%s\\n" "Defaults !requiretty" "metmc ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/metmc
             chmod 0440 /etc/sudoers.d/metmc
-            echo "root:metmc" | chpasswd
+            passwd -l root >/dev/null 2>&1 || true
             command -v sudo >/dev/null
             test -x /usr/bin/startxfce4
             test -x /usr/bin/phosh-session
             test -x /usr/bin/phoc
+            test -x /usr/bin/Xwayland
+            install -d -m 0755 /etc/phosh
+            printf '%s\\n' '[core]' 'xwayland=true' > /etc/phosh/phoc.ini
             dpkg-query -W -f='${Version}\n' phosh | grep -Fx '0.38.0-1'
             dpkg-query -W -f='${Version}\n' phoc | grep -Fx '0.38.0-1'
             test -x /usr/bin/xfce4-panel
@@ -138,6 +141,9 @@ jobs:
             test -x /usr/bin/curl
             test -x /usr/bin/ip
             test -x /usr/bin/ping
+            # Flatpak is intentionally excluded: METMC uses the system package manager via sudo.
+            apt-get purge -y flatpak flatpak-xdg-utils flatpak-builder gnome-software-plugin-flatpak || true
+            rm -rf /root/.local/share/flatpak /home/metmc/.local/share/flatpak /var/lib/flatpak /etc/flatpak /usr/share/flatpak
             apt-get clean
             rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
           '
