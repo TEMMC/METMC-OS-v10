@@ -84,7 +84,7 @@ class ChrootManager(private val context: Context) {
         File(rootfsDir, "usr/bin/waybar").exists() &&
         File(rootfsDir, "usr/bin/fuzzel").exists() &&
         File(rootfsDir, "usr/bin/foot").exists() &&
-        File(rootfsDir, "usr/bin/xwayland").exists()
+        (File(rootfsDir, "usr/bin/Xwayland").exists() || File(rootfsDir, "usr/bin/xwayland").exists())
 
     fun isRunning(): Boolean = sessionProcess?.isAlive == true
 
@@ -260,7 +260,7 @@ class ChrootManager(private val context: Context) {
 
         // /tmp is a chroot tmpfs, so the Android socket directory must be
         // bind-mounted after ensureMounts() creates that tmpfs. Keep an existing
-        // correct bind mount in place; repeatedly unmounting it can race Xfce.
+        // correct bind mount in place; repeatedly unmounting it can race the desktop session.
         var mounts = rootShell.exec("mount").lines()
         val currentMount = mounts.firstOrNull { it.contains(" on $chrootX11 ") }
         if (currentMount != null && currentMount.startsWith("${x11HostDir.absolutePath} ")) {
@@ -817,10 +817,6 @@ METMC_LAUNCH_EOF
     // ── Session management ──
 
     /**
-     * Start Xfce as the unprivileged Linux user on the Android-hosted X11 display.
-     * Xfce/KWin runs directly on DISPLAY=:0; Android remains the physical display owner.
-     */
-    /**
      * Start Labwc as the unprivileged Alpine user on the Android-hosted X11 display.
      * Labwc's wlroots X11 backend renders the Wayland desktop into the existing Android X server.
      */
@@ -875,7 +871,7 @@ METMC_LAUNCH_EOF
                 export LD_PRELOAD="$PRELOAD"
                 export WLR_BACKENDS=x11 WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
                 export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
-                export GDK_BACKEND=wayland,x11 QT_QPA_PLATFORM=wayland;xcb MOZ_ENABLE_WAYLAND=1 SDL_VIDEODRIVER=wayland,x11
+                export GDK_BACKEND=wayland,x11 QT_QPA_PLATFORM='wayland;xcb' MOZ_ENABLE_WAYLAND=1 SDL_VIDEODRIVER=wayland,x11
                 if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
                     echo "Starting nested Labwc Wayland desktop on Android X11"
                     exec dbus-run-session -- labwc
