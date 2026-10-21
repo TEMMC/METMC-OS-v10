@@ -275,7 +275,9 @@ class ChrootManager(private val context: Context) {
             return
         }
         if (currentMount != null) {
-            val unmountResult = rootShell.exec("umount $chrootX11")
+            val unmountResult = rootShell.exec("umount $chrootX11") { output ->
+                if (output.isNotBlank()) Log.d(TAG, output.trim())
+            }
             if (unmountResult != 0) {
                 Log.e(TAG, "Could not remove stale X11 mount at $chrootX11")
                 return
@@ -285,7 +287,9 @@ class ChrootManager(private val context: Context) {
         val result = rootShell.exec(
             "mkdir -p $chrootX11 && chmod 0777 ${x11HostDir.absolutePath} $chrootX11 " +
                 "&& mount --bind ${x11HostDir.absolutePath} $chrootX11"
-        )
+        ) { output ->
+            if (output.isNotBlank()) Log.d(TAG, output.trim())
+        }
         mounts = rootShell.exec("mount").lines()
         val bound = mounts.any {
             it.startsWith("${x11HostDir.absolutePath} ") && it.contains(" on $chrootX11 ")
