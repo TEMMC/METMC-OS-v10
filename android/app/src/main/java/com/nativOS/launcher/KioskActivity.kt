@@ -723,21 +723,21 @@ class KioskActivity : Activity() {
             // configure online repositories during startup; the bundled rootfs must
             // already contain the complete desktop and essential tools.
             updateOverlay(0.74, "Checking offline desktop...", "")
-            if (!chrootManager.isPhoshInstalled()) {
+            if (!chrootManager.isXfceInstalled()) {
                 updateOverlay(
                     -1.0,
                     "Offline desktop components missing",
-                    "The bundled Linux rootfs is incomplete. Rebuild the APK on GitHub with the prepared desktop; boot will not install packages."
+                    "The bundled Linux rootfs is missing Xfce, xfwm4, or its panel. Rebuild the APK with the windowed desktop; boot will not install packages."
                 )
                 return
             }
 
             updateOverlay(0.95, "Validating local desktop components...", "No downloads or updates")
-            if (!rootfsManager.ensurePhoshRuntime(chrootManager)) {
+            if (!rootfsManager.ensureXfceRuntime(chrootManager)) {
                 updateOverlay(
                     -1.0,
                     "Offline desktop components missing",
-                    "Phosh runtime is incomplete in the bundled rootfs. Rebuild the APK with the minimal Phosh packages included."
+                    "Xfce runtime is incomplete in the bundled rootfs. Rebuild the APK with xfwm4, the panel, and terminal included."
                 )
                 return
             }
@@ -851,10 +851,10 @@ class KioskActivity : Activity() {
             val screenHeight = lorieView.height
             Log.i(TAG, "Detected screen: ${screenWidth}x${screenHeight}")
 
-            chrootManager.startPhoshSession(screenWidth, screenHeight)
-            updateOverlay(0.98, "Starting Phosh...", "Waiting for mobile shell")
-            if (!chrootManager.awaitPhoshReady()) {
-                throw IllegalStateException("Phosh/Phoc/Xwayland did not become ready")
+            chrootManager.startXfceSession(screenWidth, screenHeight)
+            updateOverlay(0.98, "Starting Xfce desktop...", "Starting window manager and taskbar")
+            if (!chrootManager.awaitXfceReady()) {
+                throw IllegalStateException("Xfce window manager and taskbar did not become ready")
             }
             runOnUiThread {
                 overlayLayout?.visibility = View.GONE
