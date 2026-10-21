@@ -115,21 +115,13 @@ class RootfsManager(private val context: Context) {
         }
     }
 
-    /** Ensure the lightweight Xfce X11 desktop runtime exists. */
-    fun ensureXfceRuntime(chrootManager: ChrootManager): Boolean {
-        val session = File(rootfsDir, "usr/bin/startxfce4")
-        val panel = File(rootfsDir, "usr/bin/xfce4-panel")
-        val wm = File(rootfsDir, "usr/bin/xfwm4")
-        if (session.exists() && panel.exists() && wm.exists()) return true
-
-        Log.e(TAG, "Xfce runtime is incomplete; offline startup will not install or repair packages")
-        return false
-    }
-
-    /** Keep a small terminal and essential diagnostics/networking tools available. */
-    fun ensureEssentialTools(chrootManager: ChrootManager): Boolean {
+    /** Verify the minimal Phosh stack and only the essential bundled utilities. */
+    fun ensurePhoshRuntime(chrootManager: ChrootManager): Boolean {
         val required = listOf(
-            "usr/bin/xfce4-terminal",
+            "usr/bin/phosh-session",
+            "usr/bin/phoc",
+            "usr/bin/Xwayland",
+            "usr/bin/foot",
             "usr/bin/thunar",
             "usr/bin/curl",
             "usr/bin/ip",
@@ -137,10 +129,10 @@ class RootfsManager(private val context: Context) {
         )
         val missing = required.filterNot { File(rootfsDir, it).exists() }
         if (missing.isEmpty()) {
-            Log.i(TAG, "Essential desktop and networking tools are present in the bundled rootfs")
+            Log.i(TAG, "Minimal Phosh desktop and essential tools are present in the bundled rootfs")
             return true
         }
-        Log.w(TAG, "Offline rootfs is missing required tools: ${missing.joinToString()}")
+        Log.w(TAG, "Offline Phosh rootfs is missing required files: ${missing.joinToString()}")
         return false
     }
 
