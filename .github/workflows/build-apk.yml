@@ -99,8 +99,8 @@ jobs:
           EOF
           sudo chroot "$ROOTFS" /sbin/apk update
           sudo chroot "$ROOTFS" /sbin/apk add --no-cache \
-            bash sudo shadow dbus dbus-x11 labwc waybar fuzzel foot thunar xwayland swaybg wl-clipboard \
-            nano less htop file procps psmisc ca-certificates curl wget git openssh-client \
+            bash sudo shadow util-linux-login dbus dbus-x11 labwc waybar fuzzel foot thunar xwayland swaybg wl-clipboard \
+            nano less htop file procps psmisc ca-certificates curl wget git openssh-client-default \
             iproute2 iputils bind-tools traceroute netcat-openbsd nmap whois jq python3 tmux rsync \
             tar gzip unzip zip tree util-linux coreutils findutils grep sed gawk \
             font-noto font-noto-emoji adwaita-icon-theme hicolor-icon-theme
