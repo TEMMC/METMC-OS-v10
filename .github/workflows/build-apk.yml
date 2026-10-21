@@ -108,7 +108,8 @@ jobs:
           sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends \
             xfce4-session xfce4-panel xfwm4 xfce4-settings xfce4-terminal thunar \
             xfce4-whiskermenu-plugin xfce4-pulseaudio-plugin dbus dbus-x11 \
-            policykit-1 x11-xserver-utils adwaita-icon-theme fonts-noto-core \
+            policykit-1 x11-xserver-utils phosh phoc phosh-osk-stub \
+            adwaita-icon-theme fonts-noto-core \
             fonts-noto-color-emoji nano less htop file procps psmisc \
             ca-certificates curl wget git openssh-client iproute2 iputils-ping \
             net-tools dnsutils traceroute netcat-openbsd nmap whois sudo
@@ -122,6 +123,8 @@ jobs:
             echo "root:metmc" | chpasswd
             command -v sudo >/dev/null
             test -x /usr/bin/startxfce4
+            test -x /usr/bin/phosh-session
+            test -x /usr/bin/phoc
             test -x /usr/bin/xfce4-panel
             test -x /usr/bin/xfwm4
             test -x /usr/bin/xfce4-terminal
