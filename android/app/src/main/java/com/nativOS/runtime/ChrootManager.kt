@@ -1072,7 +1072,13 @@ METMC_LAUNCH_EOF
     fun unmountAll() {
         if (!hasRoot()) return
         val mounts = rootShell.exec("mount").lines()
-        val targets = listOf(
+        // Unmount every nested bind mount under the rootfs (including removable
+        // storage), deepest first, so a distro migration can safely rename it.
+        val mountedTargets = mounts.mapNotNull { line ->
+            val target = line.substringAfter(" on ", "").substringBefore(" type ")
+            if (target == rootfsDir.absolutePath || target.startsWith(rootfsDir.absolutePath + "/")) target else null
+        }
+        val targets = (mountedTargets + listOf(
             File(rootfsDir, "mnt/android").absolutePath,
             File(rootfsDir, "run/nativOS").absolutePath,
             File(rootfsDir, "tmp/.X11-unix").absolutePath,
@@ -1084,7 +1090,7 @@ METMC_LAUNCH_EOF
             File(rootfsDir, "run").absolutePath,
             File(rootfsDir, "tmp").absolutePath,
             rootfsDir.absolutePath
-        )
+        )).distinct().sortedByDescending { it.length }
         targets.forEach { target ->
             if (mounts.any { it.contains(" on $target ") }) {
                 try {
