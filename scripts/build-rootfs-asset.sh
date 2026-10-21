@@ -2,7 +2,7 @@
 set -eu
 
 if [ "$#" -ne 2 ]; then
-    echo "usage: $0 PREPARED_ALPINE_ROOTFS OUTPUT_TAR_GZ" >&2
+    echo "usage: $0 PREPARED_ALPINE_ROOTFS OUTPUT_TAR" >&2
     exit 2
 fi
 rootfs=$1
@@ -52,10 +52,9 @@ source_date_epoch=$source_date_epoch
 EOF
 
 mkdir -p "$(dirname "$output")"
-archive="$staging/rootfs.tar"
+archive="$output"
 "$tar_bin" --sort=name --mtime="@$source_date_epoch" --owner=0 --group=0 --numeric-owner --xattrs --acls --pax-option=delete=atime,delete=ctime --exclude='./dev/*' --exclude='./proc/*' --exclude='./sys/*' --exclude='./rootfs.tar' -C "$staging" -cf "$archive" .
-gzip -n -9 -c "$archive" > "$output"
 checksum=$(sha256sum "$output" | awk '{print $1}')
 printf '%s  %s\n' "$checksum" "$(basename "$output")" > "$output.sha256"
-echo "Created compressed Alpine rootfs: $output"
+echo "Created uncompressed Alpine rootfs: $output"
 echo "Created checksum: $output.sha256"
