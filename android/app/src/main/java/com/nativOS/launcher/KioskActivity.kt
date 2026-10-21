@@ -54,7 +54,7 @@ import java.lang.ref.WeakReference
  *   1. Initialize X11 surface (LorieView)
  *   2. Download Linux rootfs (if first boot)
  *   3. Extract and configure rootfs
- *   4. Install Xfce desktop (if not installed)
+ *   4. Validate the bundled Alpine Labwc desktop (offline)
  *   5. Start the Linux desktop session
  *
  * Escape hatch: press Volume Up 5 times rapidly to show Android.
@@ -597,9 +597,9 @@ class KioskActivity : Activity() {
     }
 
     private fun showLinuxHome() {
-        // Xfce owns the Linux desktop and its window manager. The Super key
-        // opens Xfce's launcher; avoid Phoc-specific X11 window manipulation.
-        toggleXfceMenu()
+        // Labwc owns the Linux desktop and its window manager.
+        // Open the app launcher using the touch-friendly Super+D shortcut.
+        toggleLabwcMenu()
         desktopView?.postDelayed({
             desktopView?.triggerCallback()
             MainActivity.getInstance().lorieView?.triggerCallback()
@@ -851,7 +851,7 @@ class KioskActivity : Activity() {
 
             Log.i(TAG, "Starting test session...")
 
-            // Match the Xfce session to the current Android X11 surface dimensions.
+            // Match the Labwc session to the current Android X11 surface dimensions.
             val screenWidth = lorieView.width
             val screenHeight = lorieView.height
             Log.i(TAG, "Detected screen: ${screenWidth}x${screenHeight}")
@@ -937,7 +937,7 @@ class KioskActivity : Activity() {
         if (returningFromAndroid) {
             rootLayout?.postDelayed({
                 if (hasWindowFocus() && desktopView?.isAttachedToWindow == true) {
-                    toggleXfceMenu()
+                    toggleLabwcMenu()
                 }
             }, 400)
         }
@@ -970,7 +970,7 @@ class KioskActivity : Activity() {
         enterImmersiveMode()
 
         // The activity is retained across rotation so the X11 connection and
-        // Xfce session stay alive. Recalculate Android's cutout/navigation
+        // Labwc session stay alive. Recalculate Android's cutout/navigation
         // safe area, then notify X11 after SurfaceView has its new dimensions.
         assistiveMenu?.visibility = View.GONE
         rootLayout?.requestApplyInsets()
