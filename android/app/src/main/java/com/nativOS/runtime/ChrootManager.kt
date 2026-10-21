@@ -6,7 +6,7 @@ import java.io.File
 import java.security.MessageDigest
 
 /**
- * Manages the chroot Ubuntu filesystem: mounting, session lifecycle,
+ * Manages the chroot Debian filesystem: mounting, session lifecycle,
  * and command execution inside the chroot.
  *
  * Adapted from DroidDesk's ChrootRuntime for NativOS —
