@@ -1410,323 +1410,23 @@ METMC_LAUNCH_EOF
             # Use runuser's built-in environment options and exec the session
             # through bash, avoiding a separate env executable.
             runuser -u metmc --preserve-environment -- /bin/bash -c '
-                export HOME="${'
-            '
-        """.trimIndent()
-        Log.i(TAG, "Starting Xfce X11 session")
-        val su = rootShell.findSuPath() ?: return
-        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/bash -c ${shellQuote(runScript)}"
-        val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
-        sessionProcess = process
-        Thread {
-            try {
-                process.inputStream.bufferedReader().useLines { lines ->
-                    lines.forEach { Log.d(TAG, "SESSION: $it") }
-                }
-            } catch (_: java.io.IOException) {
-                Log.d(TAG, "Session output stream closed")
-            }
-        }.start()
-    }
-
-    /** Wait for KWin and Xfce Shell to appear on the embedded X11 display. */
-    fun awaitXfceReady(timeoutMs: Long = 45_000): Boolean {
-        val deadline = System.currentTimeMillis() + timeoutMs
-        while (System.currentTimeMillis() < deadline) {
-            if (sessionProcess?.isAlive != true) return false
-            if (execChroot("pgrep -x xfce4-panel >/dev/null 2>&1 && pgrep -f 'xfwm4' >/dev/null 2>&1") == 0) {
-                Log.i(TAG, "Xfce readiness check passed")
-                Thread.sleep(700)
-                return true
-            }
-            try { Thread.sleep(300) } catch (_: InterruptedException) {
-                Thread.currentThread().interrupt()
-                return false
-            }
-        }
-        Log.e(TAG, "Xfce did not become ready within ${timeoutMs}ms")
-        return false
-    }
-
-    private fun stopTrackedSessionProcess() {
-        sessionProcess?.let { process ->
-            try {
-                process.destroyForcibly()
-                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
-            } catch (error: Exception) {
-                Log.w(TAG, "Error stopping tracked session: ${error.message}")
-            }
-        }
-        sessionProcess = null
-    }
-
-    /** Kill only processes whose filesystem root is this app's chroot. */
-    private fun killRootfsProcesses() {
-        val root = rootfsDir.absolutePath
-        val command = """
-            targets=''
-            for proc in /proc/[0-9]*; do
-                [ "${'$'}proc/root" -ef '$root' ] 2>/dev/null || continue
-                targets="${'$'}targets ${'$'}{proc#/proc/}"
-            done
-            if [ -n "${'$'}targets" ]; then
-                kill -TERM ${'$'}targets 2>/dev/null || true
-                sleep 1
-                for pid in ${'$'}targets; do
-                    [ "/proc/${'$'}pid/root" -ef '$root' ] 2>/dev/null &&
-                        kill -KILL "${'$'}pid" 2>/dev/null || true
-                done
-            fi
-        """.trimIndent()
-        try {
-            val result = rootShell.exec(command) { output ->
-                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
-            }
-            if (result == 0) {
-                Log.i(TAG, "Cleared stale chroot processes")
-            } else {
-                Log.w(TAG, "Stale chroot cleanup exited with code $result")
-            }
-        } catch (error: Exception) {
-            Log.w(TAG, "Could not clear stale chroot processes", error)
-        }
-    }
-
-    /** Stop the chroot session and unmount bind mounts. */
-    fun stopSession() {
-        Log.i(TAG, "Stopping session...")
-        stopTrackedSessionProcess()
-        killRootfsProcesses()
-        unmountAll()
-        Log.i(TAG, "Session stopped")
-    }
-
-    /** Unmount all NativOS-related mounts. */
-    fun unmountAll() {
-        if (!hasRoot()) return
-        val mounts = rootShell.exec("mount").lines()
-        val targets = listOf(
-            File(rootfsDir, "mnt/android").absolutePath,
-            File(rootfsDir, "run/nativOS").absolutePath,
-            File(rootfsDir, "tmp/.X11-unix").absolutePath,
-            File(rootfsDir, "dev/pts").absolutePath,
-            File(rootfsDir, "dev/shm").absolutePath,
-            File(rootfsDir, "dev").absolutePath,
-            File(rootfsDir, "proc").absolutePath,
-            File(rootfsDir, "sys").absolutePath,
-            File(rootfsDir, "run").absolutePath,
-            File(rootfsDir, "tmp").absolutePath,
-            rootfsDir.absolutePath
-        )
-        targets.forEach { target ->
-            if (mounts.any { it.contains(" on $target ") }) {
-                try {
-                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
-                    Log.i(TAG, "Unmounted $target")
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
-                }
-            }
-        }
-    }
-
-    // ── Command execution ──
-
-    /** Execute a command inside the chroot as root. */
-    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
-        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
-        // does not exist inside the chroot and breaks GPG/Flatpak temporary dirs.
-        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
-            "export TMPDIR=/tmp HOME=/root; $command"
-        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
-            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
-            onLog(chunk)
-        }
-        return output
-    }
-
-    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
-        if (alreadyMounted()) return
-        val target = File(rootfsDir, relative).absolutePath
-        try {
-            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
-            Log.i(TAG, "Mounted $target")
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to mount $target: ${e.message}")
-        }
-    }
-
-    private fun shellQuote(input: String): String {
-        return "'" + input.replace("'", "'\"'\"'") + "'"
-    }
-}
-}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
+                export HOME="${'$'}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
                 export TMPDIR=/tmp XDG_RUNTIME_DIR=/tmp/runtime-metmc
-                export WLR_BACKENDS=x11 WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1
-                export LD_PRELOAD="${'
-            '
-        """.trimIndent()
-        Log.i(TAG, "Starting Xfce X11 session")
-        val su = rootShell.findSuPath() ?: return
-        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/bash -c ${shellQuote(runScript)}"
-        val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
-        sessionProcess = process
-        Thread {
-            try {
-                process.inputStream.bufferedReader().useLines { lines ->
-                    lines.forEach { Log.d(TAG, "SESSION: $it") }
-                }
-            } catch (_: java.io.IOException) {
-                Log.d(TAG, "Session output stream closed")
-            }
-        }.start()
-    }
-
-    /** Wait for KWin and Xfce Shell to appear on the embedded X11 display. */
-    fun awaitXfceReady(timeoutMs: Long = 45_000): Boolean {
-        val deadline = System.currentTimeMillis() + timeoutMs
-        while (System.currentTimeMillis() < deadline) {
-            if (sessionProcess?.isAlive != true) return false
-            if (execChroot("pgrep -x xfce4-panel >/dev/null 2>&1 && pgrep -f 'xfwm4' >/dev/null 2>&1") == 0) {
-                Log.i(TAG, "Xfce readiness check passed")
-                Thread.sleep(700)
-                return true
-            }
-            try { Thread.sleep(300) } catch (_: InterruptedException) {
-                Thread.currentThread().interrupt()
-                return false
-            }
-        }
-        Log.e(TAG, "Xfce did not become ready within ${timeoutMs}ms")
-        return false
-    }
-
-    private fun stopTrackedSessionProcess() {
-        sessionProcess?.let { process ->
-            try {
-                process.destroyForcibly()
-                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
-            } catch (error: Exception) {
-                Log.w(TAG, "Error stopping tracked session: ${error.message}")
-            }
-        }
-        sessionProcess = null
-    }
-
-    /** Kill only processes whose filesystem root is this app's chroot. */
-    private fun killRootfsProcesses() {
-        val root = rootfsDir.absolutePath
-        val command = """
-            targets=''
-            for proc in /proc/[0-9]*; do
-                [ "${'$'}proc/root" -ef '$root' ] 2>/dev/null || continue
-                targets="${'$'}targets ${'$'}{proc#/proc/}"
-            done
-            if [ -n "${'$'}targets" ]; then
-                kill -TERM ${'$'}targets 2>/dev/null || true
-                sleep 1
-                for pid in ${'$'}targets; do
-                    [ "/proc/${'$'}pid/root" -ef '$root' ] 2>/dev/null &&
-                        kill -KILL "${'$'}pid" 2>/dev/null || true
-                done
-            fi
-        """.trimIndent()
-        try {
-            val result = rootShell.exec(command) { output ->
-                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
-            }
-            if (result == 0) {
-                Log.i(TAG, "Cleared stale chroot processes")
-            } else {
-                Log.w(TAG, "Stale chroot cleanup exited with code $result")
-            }
-        } catch (error: Exception) {
-            Log.w(TAG, "Could not clear stale chroot processes", error)
-        }
-    }
-
-    /** Stop the chroot session and unmount bind mounts. */
-    fun stopSession() {
-        Log.i(TAG, "Stopping session...")
-        stopTrackedSessionProcess()
-        killRootfsProcesses()
-        unmountAll()
-        Log.i(TAG, "Session stopped")
-    }
-
-    /** Unmount all NativOS-related mounts. */
-    fun unmountAll() {
-        if (!hasRoot()) return
-        val mounts = rootShell.exec("mount").lines()
-        val targets = listOf(
-            File(rootfsDir, "mnt/android").absolutePath,
-            File(rootfsDir, "run/nativOS").absolutePath,
-            File(rootfsDir, "tmp/.X11-unix").absolutePath,
-            File(rootfsDir, "dev/pts").absolutePath,
-            File(rootfsDir, "dev/shm").absolutePath,
-            File(rootfsDir, "dev").absolutePath,
-            File(rootfsDir, "proc").absolutePath,
-            File(rootfsDir, "sys").absolutePath,
-            File(rootfsDir, "run").absolutePath,
-            File(rootfsDir, "tmp").absolutePath,
-            rootfsDir.absolutePath
-        )
-        targets.forEach { target ->
-            if (mounts.any { it.contains(" on $target ") }) {
-                try {
-                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
-                    Log.i(TAG, "Unmounted $target")
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
-                }
-            }
-        }
-    }
-
-    // ── Command execution ──
-
-    /** Execute a command inside the chroot as root. */
-    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
-        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
-        // does not exist inside the chroot and breaks GPG/Flatpak temporary dirs.
-        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
-            "export TMPDIR=/tmp HOME=/root; $command"
-        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
-            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
-            onLog(chunk)
-        }
-        return output
-    }
-
-    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
-        if (alreadyMounted()) return
-        val target = File(rootfsDir, relative).absolutePath
-        try {
-            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
-            Log.i(TAG, "Mounted $target")
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to mount $target: ${e.message}")
-        }
-    }
-
-    private fun shellQuote(input: String): String {
-        return "'" + input.replace("'", "'\"'\"'") + "'"
-    }
-}
-}PRELOAD"
+                export LD_PRELOAD="${'$'}PRELOAD"
                 if [ -x /usr/bin/phosh-session ] && [ -x /usr/bin/phoc ]; then
+                    export WLR_BACKENDS=x11 WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1
                     export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh
                     export DESKTOP_SESSION=phosh XDG_DATA_DIRS=/usr/local/share:/usr/share QT_QPA_PLATFORM=wayland
                     echo "Starting Phosh in nested Wayland mode on X11"
                     if dbus-run-session -- phosh-session; then exit 0; fi
-                    echo "Phosh session failed; falling back to Xfce"
+                    echo "Phosh session exited; falling back to Xfce"
                 fi
                 export XDG_SESSION_TYPE=x11 XDG_CURRENT_DESKTOP=Xfce XDG_SESSION_DESKTOP=xfce
-                export DESKTOP_SESSION=xfce XDG_DATA_DIRS=/usr/local/share:/usr/share QT_QPA_PLATFORM=xcb KWIN_COMPOSE=N
+                export DESKTOP_SESSION=xfce XDG_DATA_DIRS=/run/nativOS/android-apps/share:/usr/local/share:/usr/share QT_QPA_PLATFORM=xcb KWIN_COMPOSE=N
                 exec dbus-run-session -- startxfce4
             '
         """.trimIndent()
-        Log.i(TAG, "Starting Xfce X11 session")
+        Log.i(TAG, "Starting Phosh mobile session with Xfce fallback")
         val su = rootShell.findSuPath() ?: return
         val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/bash -c ${shellQuote(runScript)}"
         val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
@@ -1742,13 +1442,13 @@ METMC_LAUNCH_EOF
         }.start()
     }
 
-    /** Wait for KWin and Xfce Shell to appear on the embedded X11 display. */
+    /** Wait for the Phosh mobile shell or Xfce fallback to appear on the embedded X11 display. */
     fun awaitXfceReady(timeoutMs: Long = 45_000): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
             if (sessionProcess?.isAlive != true) return false
-            if (execChroot("pgrep -x xfce4-panel >/dev/null 2>&1 && pgrep -f 'xfwm4' >/dev/null 2>&1") == 0) {
-                Log.i(TAG, "Xfce readiness check passed")
+            if (execChroot("(pgrep -x phosh >/dev/null 2>&1 && pgrep -x phoc >/dev/null 2>&1) || (pgrep -x xfce4-panel >/dev/null 2>&1 && pgrep -f 'xfwm4' >/dev/null 2>&1)") == 0) {
+                Log.i(TAG, "Phosh/Xfce readiness check passed")
                 Thread.sleep(700)
                 return true
             }
@@ -1757,7 +1457,7 @@ METMC_LAUNCH_EOF
                 return false
             }
         }
-        Log.e(TAG, "Xfce did not become ready within ${timeoutMs}ms")
+        Log.e(TAG, "Phosh/Xfce did not become ready within ${timeoutMs}ms")
         return false
     }
 
