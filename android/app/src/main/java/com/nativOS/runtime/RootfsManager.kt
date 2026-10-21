@@ -119,7 +119,7 @@ class RootfsManager(private val context: Context) {
         val required = listOf(
             "usr/bin/labwc", "usr/bin/waybar", "usr/bin/fuzzel",
             "usr/bin/foot", "usr/bin/thunar", "usr/bin/apk",
-            "usr/bin/curl", "usr/sbin/ip", "usr/bin/htop"
+            "usr/bin/curl", "sbin/ip", "usr/bin/htop"
         )
         val missing = required.filterNot { File(rootfsDir, it).exists() }
         if (missing.isNotEmpty()) {
@@ -262,7 +262,7 @@ class RootfsManager(private val context: Context) {
             }
 
             // Keep the previous installation until the new rootfs validates.
-            // This allows an upgrade from Ubuntu to Debian without immediately
+            // This allows a Linux distribution migration without immediately
             // destroying the old system if extraction or validation fails.
             if (rootfsDir.exists()) {
                 val backup = File(baseDir, "rootfs-previous-${System.currentTimeMillis()}")
@@ -342,8 +342,6 @@ class RootfsManager(private val context: Context) {
             parentFile?.mkdirs()
             writeText("nameserver 8.8.8.8\nnameserver 8.8.4.4\nnameserver 1.1.1.1\n")
         }
-        File(rootfsDir, "etc/apt/apt.conf.d").mkdirs()
-        File(rootfsDir, "etc/apt/apt.conf.d/99-disable-sandbox").writeText("APT::Sandbox::User \"root\";\n")
         File(rootfsDir, "etc/hostname").writeText("metmc-os\n")
         File(rootfsDir, "etc/hosts").apply {
             parentFile?.mkdirs()
