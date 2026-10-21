@@ -95,6 +95,7 @@ jobs:
 
           sudo chroot "$ROOTFS" /debootstrap/debootstrap --second-stage
           sudo chroot "$ROOTFS" /bin/bash -eu -c '
+            rm -f /etc/apt/sources.list.d/debian.sources
             cat > /etc/apt/sources.list <<EOF
           deb https://deb.debian.org/debian trixie main
           deb https://deb.debian.org/debian trixie-updates main
@@ -113,7 +114,7 @@ jobs:
           sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends \
             xfce4-session xfce4-panel xfwm4 xfce4-settings xfce4-terminal thunar \
             xfce4-whiskermenu-plugin xfce4-pulseaudio-plugin dbus dbus-x11 dbus-user-session \
-            policykit-1 polkitd x11-xserver-utils phosh phoc phosh-osk-stub xwayland \
+            polkitd pkexec gnome-session-bin gnome-session-common x11-xserver-utils phosh phoc phosh-osk-stub phosh-mobile-tweaks xwayland \
             adwaita-icon-theme fonts-noto-core fonts-noto-color-emoji \
             nano less htop file procps psmisc ca-certificates curl wget git \
             openssh-client iproute2 iputils-ping net-tools dnsutils traceroute \
