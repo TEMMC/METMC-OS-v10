@@ -77,7 +77,7 @@ class ChrootManager(private val context: Context) {
         }
     }
 
-    fun isRootfsReady(): Boolean = File(rootfsDir, "usr/bin/bash").exists()
+    fun isRootfsReady(): Boolean = File(rootfsDir, "bin/bash").exists()
 
     fun isLabwcInstalled(): Boolean =
         File(rootfsDir, "usr/bin/labwc").exists() &&
