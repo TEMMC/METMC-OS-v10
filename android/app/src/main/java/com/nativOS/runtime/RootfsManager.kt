@@ -23,10 +23,11 @@ class RootfsManager(private val context: Context) {
             "alpine" to "https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/aarch64/alpine-minirootfs-3.20.0-aarch64.tar.gz"
         )
         val DISTRO_NAMES = mapOf(
+            "debian" to "Debian 13 Trixie (bundled)",
             "ubuntu" to "Ubuntu 24.04 Base",
             "alpine" to "Alpine Linux 3.20"
         )
-        const val DEFAULT_DISTRO = "ubuntu"
+        const val DEFAULT_DISTRO = "debian"
     }
 
     private val baseDir: File get() = context.filesDir
@@ -43,6 +44,17 @@ class RootfsManager(private val context: Context) {
     fun isRootfsReady(): Boolean =
         rootfsDir.exists() && File(rootfsDir, "bin").exists() &&
         File(rootfsDir, "usr").exists() && File(rootfsDir, "etc").exists()
+
+    /** The APK's default system is Debian 13 Trixie; old Ubuntu installs need migration. */
+    fun isBundledDistroReady(): Boolean = isRootfsReady() && isDebianTrixieRootfs()
+
+    private fun isDebianTrixieRootfs(): Boolean {
+        val release = File(rootfsDir, "etc/os-release")
+        if (!release.exists()) return false
+        val contents = runCatching { release.readText() }.getOrDefault("")
+        return Regex("(?m)^ID=debian$").containsMatchIn(contents) &&
+            Regex("(?m)^VERSION_CODENAME=trixie$").containsMatchIn(contents)
+    }
 
     fun isSetupComplete(): Boolean = setupCompleteFile.exists()
 
@@ -255,6 +267,12 @@ EOF
         distro: String = DEFAULT_DISTRO,
         onProgress: (progress: Double, status: String) -> Unit
     ) {
+        if (distro == "debian") {
+            if (!stageBundledRootfs(onProgress)) {
+                onProgress(-1.0, "Bundled Debian Trixie rootfs is missing from this APK")
+            }
+            return
+        }
         try {
             val url = DISTRO_URLS[distro] ?: throw IllegalArgumentException("Unknown distro: $distro")
             val distroName = DISTRO_NAMES[distro] ?: distro
@@ -320,6 +338,7 @@ EOF
     }
 
     fun extractRootfs(onProgress: (progress: Double, status: String) -> Unit) {
+        var previousRootfs: File? = null
         try {
             val distro = getInstalledDistro().ifEmpty { DEFAULT_DISTRO }
             val tarball = File(downloadDir, "${distro}-rootfs.tar.gz")
@@ -327,12 +346,23 @@ EOF
                 onProgress(-1.0, "Rootfs tarball not found.")
                 return
             }
-            if (rootfsDir.exists()) rootfsDir.deleteRecursively()
-            rootfsDir.mkdirs()
+
+            // Keep the previous installation until the new rootfs validates.
+            // This allows an upgrade from Ubuntu to Debian without immediately
+            // destroying the old system if extraction or validation fails.
+            if (rootfsDir.exists()) {
+                val backup = File(baseDir, "rootfs-previous-${System.currentTimeMillis()}")
+                if (!rootfsDir.renameTo(backup)) {
+                    throw IllegalStateException("Could not safely move the previous Linux rootfs")
+                }
+                previousRootfs = backup
+            }
+            if (!rootfsDir.mkdirs() && !rootfsDir.isDirectory) {
+                throw IllegalStateException("Could not create the new Linux rootfs directory")
+            }
 
             onProgress(0.1, "Extracting Linux filesystem...")
             Log.i(TAG, "Extracting rootfs from ${tarball.absolutePath}")
-
             val process = ProcessBuilder("tar", "zxf", tarball.absolutePath, "-C", rootfsDir.absolutePath)
                 .redirectErrorStream(true).start()
             val reader = process.inputStream.bufferedReader()
@@ -345,16 +375,49 @@ EOF
                 if (lineCount % 500 == 0) onProgress(0.1 + (lineCount % 5000) / 10000.0, "Extracting files...")
             }
             val exitCode = process.waitFor()
-            val binDir = File(rootfsDir, "bin")
-            if (exitCode != 0 && (!binDir.exists() || binDir.list()?.isEmpty() == true))
-                throw RuntimeException("tar failed (code $exitCode): $lastLine")
+            if (exitCode != 0) throw RuntimeException("tar failed (code $exitCode): $lastLine")
 
             onProgress(0.7, "Configuring Linux environment...")
             configureRootfs()
+            if (distro == "debian" && !isDebianTrixieRootfs()) {
+                throw IllegalStateException("Bundled rootfs is not Debian 13 Trixie")
+            }
             setupCompleteFile.writeText("done")
+
+            // Preserve the user's Linux home directory when replacing an older distro.
+            previousRootfs?.let { backup ->
+                val oldHome = File(backup, "home/metmc")
+                if (oldHome.exists()) {
+                    val newHome = File(rootfsDir, "home/metmc")
+                    if (newHome.exists() && !newHome.deleteRecursively()) {
+                        throw IllegalStateException("Could not prepare the new metmc home directory")
+                    }
+                    newHome.parentFile?.mkdirs()
+                    if (!oldHome.renameTo(newHome)) {
+                        oldHome.copyRecursively(newHome, overwrite = true)
+                        if (!oldHome.deleteRecursively()) {
+                            Log.w(TAG, "Old metmc home remains in the previous-rootfs backup")
+                        }
+                    }
+                }
+            }
+
+            previousRootfs?.let { backup ->
+                if (backup.exists() && !backup.deleteRecursively()) {
+                    Log.w(TAG, "Could not remove previous rootfs backup: ${backup.absolutePath}")
+                }
+            }
             tarball.delete()
             onProgress(1.0, "Linux filesystem ready")
         } catch (e: Exception) {
+            previousRootfs?.let { backup ->
+                if (backup.exists()) {
+                    rootfsDir.deleteRecursively()
+                    if (!backup.renameTo(rootfsDir)) {
+                        Log.e(TAG, "Failed to restore previous rootfs from ${backup.absolutePath}")
+                    }
+                }
+            }
             Log.e(TAG, "Extraction failed: ${e.message}", e)
             onProgress(-1.0, "Extraction failed: ${e.message}")
         }
@@ -367,20 +430,22 @@ EOF
         }
         File(rootfsDir, "etc/apt/apt.conf.d").mkdirs()
         File(rootfsDir, "etc/apt/apt.conf.d/99-disable-sandbox").writeText("APT::Sandbox::User \"root\";\n")
-        File(rootfsDir, "etc/hostname").writeText("nativOS\n")
+        File(rootfsDir, "etc/hostname").writeText("metmc-os\n")
         File(rootfsDir, "etc/hosts").apply {
             parentFile?.mkdirs()
-            writeText("127.0.0.1 localhost\n127.0.0.1 nativOS\n::1 localhost\n")
+            writeText("127.0.0.1 localhost\n127.0.1.1 metmc-os\n::1 localhost\n")
         }
-        File(rootfsDir, "etc/profile.d/nativOS.sh").apply {
+        File(rootfsDir, "etc/profile.d/nativOS.sh").delete()
+        File(rootfsDir, "etc/profile.d/metmc-os.sh").apply {
             parentFile?.mkdirs()
-            writeText("#!/bin/bash\nexport DISPLAY=:0\nexport XDG_RUNTIME_DIR=/tmp/runtime-root\nmkdir -p /tmp/runtime-root 2>/dev/null\n")
+            writeText("#!/bin/bash\nexport DISPLAY=:0\n")
         }
-        File(rootfsDir, "etc/sudoers.d/nativOS").apply {
+        File(rootfsDir, "etc/sudoers.d/nativOS").delete()
+        File(rootfsDir, "etc/sudoers.d/metmc").apply {
             parentFile?.mkdirs()
-            writeText("Defaults !requiretty\nroot ALL=(ALL) NOPASSWD: ALL\n")
+            writeText("Defaults !requiretty\nmetmc ALL=(ALL:ALL) NOPASSWD: ALL\n")
         }
-        listOf("tmp", "tmp/runtime-root", "run", "var/run", "dev/shm").forEach { File(rootfsDir, it).mkdirs() }
+        listOf("tmp", "tmp/runtime-root", "tmp/runtime-metmc", "run", "var/run", "dev/shm").forEach { File(rootfsDir, it).mkdirs() }
     }
 
     fun installXfceDesktop(chrootManager: ChrootManager, onProgress: (Double, String) -> Unit) {
