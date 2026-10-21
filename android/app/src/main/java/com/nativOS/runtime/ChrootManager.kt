@@ -932,14 +932,14 @@ METMC_LAUNCH_EOF
         val command = """
             targets=''
             for proc in /proc/[0-9]*; do
-                [ "${'$'}proc/root" -ef '${' ] 2>/dev/null || continue
+                [ "${'$'}proc/root" -ef '${'$'}root' ] 2>/dev/null || continue
                 targets="${'$'}targets ${'$'}{proc#/proc/}"
             done
             if [ -n "${'$'}targets" ]; then
                 kill -TERM ${'$'}targets 2>/dev/null || true
                 sleep 1
                 for pid in ${'$'}targets; do
-                    [ "/proc/${'$'}pid/root" -ef '$root' ] 2>/dev/null &&
+                    [ "/proc/${'$'}pid/root" -ef '${'$'}root' ] 2>/dev/null &&
                         kill -KILL "${'$'}pid" 2>/dev/null || true
                 done
             fi
@@ -965,7 +965,7 @@ METMC_LAUNCH_EOF
                 kill -TERM ${'$'}targets 2>/dev/null || true
                 sleep 1
                 for pid in ${'$'}targets; do
-                    [ "/proc/${'$'}pid/root" -ef '${' ] 2>/dev/null &&
+                    [ "/proc/${'$'}pid/root" -ef '${'$'}root' ] 2>/dev/null &&
                         kill -KILL "${'$'}pid" 2>/dev/null || true
                 done
             fi
