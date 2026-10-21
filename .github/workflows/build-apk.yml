@@ -247,19 +247,19 @@ jobs:
             - Package commands run inside the Linux root filesystem only; they do not update Android's host packages. Package upgrades are not automatically reversible.
             - Clipboard bridge hooks and improved touch-focus handling.
             - Live CPU/RAM/battery/storage monitor, shared-folder picker and Linux configuration backup with SHA-256.
-            - Linux rootfs validation and update-center link; Linux software center uses guarded apt/dpkg.
+            - Linux rootfs validation and update-center link; Linux package manager uses guarded Alpine apk.
             - Quick-access Tools menu, shorter METMC OS V10 app name, NativOS upstream attribution retained.
             - Default Home mode is configured to launch METMC OS V10 at boot.
             - Keyboard no longer opens on ordinary taps near the bottom of the desktop; use a three-finger tap to toggle it.
             - Improved Android/Linux clipboard text synchronization, including mixed plain-text and HTML clipboard items.
             - Removed the legacy root-shell redirect that could interfere with opening the terminal; the Linux root account is locked and administrative commands use `sudo` as `metmc`.
-            - Uses a slim Debian 13 Trixie ARM64 rootfs with Xfce, xfwm4 overlapping windows, the panel/taskbar, Xfce Terminal, Thunar, and essential tools. Phosh/Phoc and Xwayland are omitted because the embedded Android display is already X11.
+            - Uses a compressed Alpine Linux 3.22 ARM64 rootfs with Labwc Wayland stacked windows, Xwayland compatibility, Waybar taskbar, Fuzzel launcher, Foot terminal, Thunar, and compact shell/network tools.
             - Retains METMC launchers for Bluetooth, display, sound, location, and Android system settings; Android remains the owner of physical radios.
             - Uses the Android-hosted X11 display directly; no Adreno-specific Turnip driver or nested Phoc compositor is bundled.
             - Removed developer and network-scanning packages from the default image; install optional tools manually when needed.
-            - This is an alpha build. Xfce multi-window behavior, touch-friendly panel sizing, keyboard, Android app freeform windows, GPU behavior, RAM use, and first-boot extraction time still need testing on the A04e.
+            - This is an alpha build. Labwc multi-window behavior, touch-friendly panel sizing, keyboard, Android app freeform windows, GPU behavior, RAM use, and first-boot extraction time still need testing on the A04e.
             - APK is signed with the METMC OS V10 release keystore; this does not imply Play Store certification.
-            - The bundled rootfs is a slim Debian 13 Trixie ARM64 image; boot and first launch require no package downloads. Manual package operations require root access, a provisioned Linux rootfs, and an internet connection. Review the operation log and close the Linux desktop before upgrades.
+            - The bundled rootfs is a compressed Alpine Linux 3.22 ARM64 image; boot and first launch require no package downloads. Manual package operations require root access, a provisioned Linux rootfs, and an internet connection. Review the operation log and close the Linux desktop before upgrades.
           files: |
             METMC-OS-V10.7.0-arm64.apk
             METMC-OS-V10.7.0-arm64.apk.sha256
