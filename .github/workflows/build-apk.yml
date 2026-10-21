@@ -123,7 +123,7 @@ jobs:
             id -u metmc >/dev/null 2>&1 || useradd --create-home --shell /bin/bash metmc
             usermod -aG sudo metmc
             install -d -m 0755 /etc/sudoers.d
-            printf "%s\\n" "Defaults !requiretty" "metmc ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/metmc
+            printf "%s\n" "Defaults !requiretty" "metmc ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/metmc
             chmod 0440 /etc/sudoers.d/metmc
             passwd -l root >/dev/null 2>&1 || true
             command -v sudo >/dev/null
@@ -132,7 +132,7 @@ jobs:
             test -x /usr/bin/phoc
             test -x /usr/bin/Xwayland
             install -d -m 0755 /etc/phosh
-            printf "%s\\n" "[core]" "xwayland=true" > /etc/phosh/phoc.ini
+            printf "%s\n" "[core]" "xwayland=true" > /etc/phosh/phoc.ini
             test -x /usr/bin/xfce4-panel
             test -x /usr/bin/xfwm4
             test -x /usr/bin/xfce4-terminal
