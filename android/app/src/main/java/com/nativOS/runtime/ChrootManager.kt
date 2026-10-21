@@ -1001,8 +1001,8 @@ METMC_LAUNCH_EOF
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
             if (sessionProcess?.isAlive != true) return false
-            if (execChroot("(pgrep -x phosh >/dev/null 2>&1 && pgrep -x phoc >/dev/null 2>&1) || (pgrep -x xfce4-panel >/dev/null 2>&1 && pgrep -f 'xfwm4' >/dev/null 2>&1)") == 0) {
-                Log.i(TAG, "Phosh/Xfce readiness check passed")
+            if (execChroot("(pgrep -x phosh >/dev/null 2>&1 && pgrep -x phoc >/dev/null 2>&1 && pgrep -x Xwayland >/dev/null 2>&1) || (pgrep -x xfce4-panel >/dev/null 2>&1 && pgrep -f 'xfwm4' >/dev/null 2>&1)") == 0) {
+                Log.i(TAG, "Phosh/Phoc/Xwayland or Xfce readiness check passed")
                 Thread.sleep(700)
                 return true
             }
