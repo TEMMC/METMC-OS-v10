@@ -254,14 +254,46 @@ class ChrootManager(private val context: Context) {
         }.onFailure { Log.w(TAG, "Could not expose Android storage to Linux", it) }
     }
 
-    /** Bind-mount the host X11 socket directory into the chroot. */
+    /** Bind the Android-hosted X11 socket into Linux so DISPLAY=:0 can connect. */
     fun bindX11Socket() {
-        if (!hasRoot()) return
-        val chrootX11 = File(rootfsDir, "tmp/.X11-unix").absolutePath
+        if (!hasRoot()) {
+            Log.e(TAG, "Cannot bind X11 socket: root access unavailable")
+            return
+        }
 
-        val mounts = rootShell.exec("mount").lines()
-        if (mounts.any { it.contains(" on $chrootX11 ") }) {
-            rootShell.exec("umount $chrootX11")
+        x11HostDir.mkdirs()
+        val chrootX11 = File(rootfsDir, "tmp/.X11-unix").absolutePath
+        rootShell.exec("mkdir -p $chrootX11")
+
+        // /tmp is a chroot tmpfs, so the Android socket directory must be
+        // bind-mounted after ensureMounts() creates that tmpfs. Keep an existing
+        // correct bind mount in place; repeatedly unmounting it can race Xfce.
+        var mounts = rootShell.exec("mount").lines()
+        val currentMount = mounts.firstOrNull { it.contains(" on $chrootX11 ") }
+        if (currentMount != null && currentMount.startsWith("${x11HostDir.absolutePath} ")) {
+            Log.i(TAG, "X11 socket directory already bound: $chrootX11")
+            return
+        }
+        if (currentMount != null) {
+            val unmountResult = rootShell.exec("umount $chrootX11")
+            if (unmountResult != 0) {
+                Log.e(TAG, "Could not remove stale X11 mount at $chrootX11")
+                return
+            }
+        }
+
+        val result = rootShell.exec(
+            "mkdir -p $chrootX11 && chmod 0777 ${x11HostDir.absolutePath} $chrootX11 " +
+                "&& mount --bind ${x11HostDir.absolutePath} $chrootX11"
+        )
+        mounts = rootShell.exec("mount").lines()
+        val bound = mounts.any {
+            it.startsWith("${x11HostDir.absolutePath} ") && it.contains(" on $chrootX11 ")
+        }
+        if (result == 0 && bound) {
+            Log.i(TAG, "Bound host X11 socket directory ${x11HostDir.absolutePath} -> $chrootX11")
+        } else {
+            Log.e(TAG, "Failed to bind host X11 socket directory; mount result=$result")
         }
     }
 
