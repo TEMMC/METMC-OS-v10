@@ -24,6 +24,12 @@ It is based on the open-source [NativOS project](https://github.com/orailnoor/Na
 
 METMC runs in a chroot and shares the **Android device's existing kernel**; it does not boot or install a separate Linux kernel. The app bind-mounts `/dev`, `/proc`, and `/sys` into the Linux rootfs and exposes the Android graphics device nodes needed by the embedded display. SELinux remains **Enforcing by default**; actual access is limited by the Android kernel, SELinux policy, device-node permissions, and drivers present in Samsung firmware. We will inspect specific AVC denials before considering temporary permissive-mode diagnostics. This does **not** mean arbitrary kernel-module loading, flashing, or unrestricted control of every hardware device is available from the chroot.
 
+### Android hardware bridge
+
+The Android app is the hardware owner; Linux requests supported operations through the app's local bridge rather than trying to replace Samsung's vendor services. The bridge currently has handlers for Wi-Fi status and Android Wi-Fi controls, Bluetooth state/discovery, audio volume and microphone, camera, location, sensors, flashlight, haptics, battery, brightness, clipboard, notifications, and Android-app launching. The Settings screen requests the Android runtime permissions needed by these features, including nearby Wi-Fi and Bluetooth permissions on Android 13/12+, plus optional call/SMS permissions. Every request remains subject to the user's grant and Android's API restrictions.
+
+Wi-Fi connectivity is normally shared from Android into Debian. Android 10+ restricts ordinary apps from silently toggling Wi-Fi, so the bridge opens Android's own Wi-Fi panel where needed; Bluetooth and other restricted controls may similarly require Android confirmation. A declared permission is not a guarantee of direct hardware access. External USB devices, monitor mode, hotspot creation, modem control, NFC, biometrics, system-wide notification reading, and other privileged operations require additional device-specific implementation or Android special access, and are not claimed as fully working yet.
+
 ## Goals
 
 - Establish an independently branded and reproducible build.
