@@ -3,10 +3,14 @@ name: Build METMC OS v10 APK
 # METMC OS V10 v10.7.0 X11 socket bind fix; rebuild and republish the verified APK.
 # Publish METMC OS V10 v10.7.0 only after the Xfce build passes.
 # Release publishing is gated on the commit message so only verified builds are published.
-# Xfce X11 session, touch-friendly panel, dark hacker theme, compact networking tools, and package metadata are verified before release.
+# Phosh 0.38.0 release pin: https://github.com/PhoshMobi/phosh/commit/db3a4cb8cba9e9bb19d1e905a487e72ffee5da26
+# Phoc 0.38.0 release pin: https://github.com/PhoshMobi/phoc/commit/aca1b40c9e78369f583c429439d0549ff79d44b6
+# Phosh is attempted first in a nested Wayland/X11 session; Xfce remains a safe fallback.
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
     paths:
@@ -108,7 +112,7 @@ jobs:
           sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends \
             xfce4-session xfce4-panel xfwm4 xfce4-settings xfce4-terminal thunar \
             xfce4-whiskermenu-plugin xfce4-pulseaudio-plugin dbus dbus-x11 \
-            policykit-1 x11-xserver-utils phosh phoc phosh-osk-stub \
+            policykit-1 x11-xserver-utils phosh=0.38.0-1 phoc=0.38.0-1 phosh-osk-stub=0.38.0-1 \
             adwaita-icon-theme fonts-noto-core \
             fonts-noto-color-emoji nano less htop file procps psmisc \
             ca-certificates curl wget git openssh-client iproute2 iputils-ping \
@@ -125,6 +129,8 @@ jobs:
             test -x /usr/bin/startxfce4
             test -x /usr/bin/phosh-session
             test -x /usr/bin/phoc
+            dpkg-query -W -f='${Version}\n' phosh | grep -Fx '0.38.0-1'
+            dpkg-query -W -f='${Version}\n' phoc | grep -Fx '0.38.0-1'
             test -x /usr/bin/xfce4-panel
             test -x /usr/bin/xfwm4
             test -x /usr/bin/xfce4-terminal
