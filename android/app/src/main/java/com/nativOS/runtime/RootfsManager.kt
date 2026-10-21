@@ -119,7 +119,8 @@ class RootfsManager(private val context: Context) {
         val required = listOf(
             "usr/bin/labwc", "usr/bin/waybar", "usr/bin/fuzzel",
             "usr/bin/foot", "usr/bin/thunar", "sbin/apk",
-            "usr/bin/curl", "sbin/ip", "usr/bin/htop"
+            "usr/bin/curl", "sbin/ip", "usr/bin/htop",
+            "usr/local/bin/nativOS-bridge", "usr/local/bin/metmc-settings", "usr/local/bin/metmc-wifi"
         )
         val missing = required.filterNot { File(rootfsDir, it).exists() }
         if (missing.isNotEmpty()) {
