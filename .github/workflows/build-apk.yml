@@ -97,7 +97,18 @@ jobs:
           https://dl-cdn.alpinelinux.org/alpine/v3.22/main
           https://dl-cdn.alpinelinux.org/alpine/v3.22/community
           EOF
-          sudo chroot "$ROOTFS" /sbin/apk update
+          # The minirootfs may not inherit the runner's resolver configuration.
+          sudo rm -f "$ROOTFS/etc/resolv.conf"
+          sudo tee "$ROOTFS/etc/resolv.conf" >/dev/null <<'EOF'
+          nameserver 1.1.1.1
+          nameserver 8.8.8.8
+          EOF
+          updated=0
+          for attempt in 1 2 3 4 5; do
+            if sudo chroot "$ROOTFS" /sbin/apk update; then updated=1; break; fi
+            sleep "$((attempt * 2))"
+          done
+          test "$updated" -eq 1
           sudo chroot "$ROOTFS" /sbin/apk add --no-cache \
             bash sudo shadow util-linux-login dbus dbus-x11 labwc waybar fuzzel foot thunar xwayland swaybg wl-clipboard \
             nano less htop file procps psmisc ca-certificates curl wget git openssh-client-default \
