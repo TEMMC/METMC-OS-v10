@@ -65,7 +65,7 @@ jobs:
       - name: Install Android SDK packages
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
-      - name: Build Alpine 3.22 ARM64 Labwc rootfs offline-ready
+      - name: Build uncompressed Alpine 3.22 ARM64 Labwc rootfs offline-ready
         shell: bash
         run: |
           set -euo pipefail
@@ -150,10 +150,10 @@ jobs:
           cleanup_mounts
           trap - EXIT
           sudo chown -R "$USER":"$USER" "$ROOTFS"
-          scripts/build-rootfs-asset.sh "$ROOTFS" android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz
+          scripts/build-rootfs-asset.sh "$ROOTFS" android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tar
           cd android/app/src/main/assets/rootfs
-          sha256sum nativos-rootfs-arm64.tgz > nativos-rootfs-arm64.tgz.sha256
-          sha256sum --check nativos-rootfs-arm64.tgz.sha256
+          sha256sum nativos-rootfs-arm64.tar > nativos-rootfs-arm64.tar.sha256
+          sha256sum --check nativos-rootfs-arm64.tar.sha256
 
       - name: Build and verify APK
         working-directory: android
