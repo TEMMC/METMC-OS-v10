@@ -120,6 +120,10 @@ jobs:
           sudo mkdir -p "$ROOTFS/etc/skel" "$ROOTFS/usr/share/themes/METMC-Hacker/openbox-3" "$ROOTFS/usr/share/metmc"
           sudo cp -a linux/config/skel/. "$ROOTFS/etc/skel/"
           sudo cp linux/config/labwc/theme/METMC-Hacker/openbox-3/themerc "$ROOTFS/usr/share/themes/METMC-Hacker/openbox-3/themerc"
+          # Bundle the existing Android hardware bridge clients into Alpine.
+          sudo install -m 0755 linux/bridge-client/nativOS-bridge.py "$ROOTFS/usr/local/bin/nativOS-bridge"
+          sudo install -m 0755 linux/bridge-client/metmc-settings.py "$ROOTFS/usr/local/bin/metmc-settings"
+          sudo install -m 0755 linux/bridge-client/metmc-wifi.py "$ROOTFS/usr/local/bin/metmc-wifi"
           sudo chmod 0755 "$ROOTFS/etc/skel/.config/labwc/autostart"
           sudo chroot "$ROOTFS" /bin/sh -eu -c '
             printf "nameserver 1.1.1.1\nnameserver 8.8.8.8\n" > /etc/resolv.conf
