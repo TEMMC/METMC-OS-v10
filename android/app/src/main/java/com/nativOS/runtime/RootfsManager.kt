@@ -115,13 +115,13 @@ class RootfsManager(private val context: Context) {
         }
     }
 
-    /** Verify the minimal Phosh stack and only the essential bundled utilities. */
-    fun ensurePhoshRuntime(chrootManager: ChrootManager): Boolean {
+    /** Verify the window manager, taskbar, terminal, and essential bundled utilities. */
+    fun ensureXfceRuntime(chrootManager: ChrootManager): Boolean {
         val required = listOf(
-            "usr/bin/phosh-session",
-            "usr/bin/phoc",
-            "usr/bin/Xwayland",
-            "usr/bin/foot",
+            "usr/bin/startxfce4",
+            "usr/bin/xfwm4",
+            "usr/bin/xfce4-panel",
+            "usr/bin/xfce4-terminal",
             "usr/bin/thunar",
             "usr/bin/curl",
             "usr/bin/ip",
@@ -129,10 +129,10 @@ class RootfsManager(private val context: Context) {
         )
         val missing = required.filterNot { File(rootfsDir, it).exists() }
         if (missing.isEmpty()) {
-            Log.i(TAG, "Minimal Phosh desktop and essential tools are present in the bundled rootfs")
-            return true
+            Log.i(TAG, "Xfce windowed desktop and essential tools are present in the bundled rootfs")
+            return configureXfceTouchLayout(chrootManager)
         }
-        Log.w(TAG, "Offline Phosh rootfs is missing required files: ${missing.joinToString()}")
+        Log.w(TAG, "Offline Xfce rootfs is missing required files: ${missing.joinToString()}")
         return false
     }
 
