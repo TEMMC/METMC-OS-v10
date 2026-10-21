@@ -3,10 +3,14 @@ window.active.title.bg: Flat Solid
 window.active.title.bg.color: #07130f
 window.active.label.text.color: #00ff88
 window.active.label.text.font: Noto Sans Bold 11
+window.active.label.padding.width: 12
+window.active.label.padding.height: 8
 window.inactive.title.bg: Flat Solid
 window.inactive.title.bg.color: #151d1a
 window.inactive.label.text.color: #8ea99a
 window.inactive.label.text.font: Noto Sans 11
+window.inactive.label.padding.width: 12
+window.inactive.label.padding.height: 8
 window.active.button.unpressed.image.color: #00ff88
 window.active.button.pressed.image.color: #07130f
 window.inactive.button.unpressed.image.color: #8ea99a
