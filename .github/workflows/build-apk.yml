@@ -253,8 +253,8 @@ jobs:
             - Default Home mode is configured to launch METMC OS V10 at boot.
             - Keyboard no longer opens on ordinary taps near the bottom of the desktop; use a three-finger tap to toggle it.
             - Improved Android/Linux clipboard text synchronization, including mixed plain-text and HTML clipboard items.
-            - Removed the legacy root-shell redirect that could interfere with opening the terminal; Linux root password defaults to `metmc`.
-            - Attempts Debian Trixie's Phosh/Phoc mobile shell through Phoc's nested Wayland/X11 backend as the unprivileged Linux user `metmc`; falls back to Xfce/Xfwm4 if the Phosh session exits. This nested path is experimental and requires device testing.
+            - Removed the legacy root-shell redirect that could interfere with opening the terminal; the Linux root account is locked and administrative commands use `sudo` as `metmc`.
+            - Uses Debian 13 Trixie's packaged Phosh/Phoc 0.46 series through Phoc's nested Wayland/X11 backend as the unprivileged Linux user `metmc`; falls back to Xfce/Xfwm4 if the Phosh session exits. This nested path is experimental and requires device testing.
             - Retains METMC launchers for Bluetooth, display, sound, location, and Android system settings; Android remains the owner of physical radios.
             - Uses Xfce Terminal and Thunar, with a touch-sized taskbar, large panel icons, movable/resizable windows, and minimized-window task buttons.
             - Adds BlueZ/rfkill diagnostic utilities without starting a competing Linux radio manager.
