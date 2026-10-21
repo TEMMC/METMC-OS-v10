@@ -88,10 +88,10 @@ class ChrootManager(private val context: Context) {
 
     fun isRootfsReady(): Boolean = File(rootfsDir, "usr/bin/bash").exists()
 
-    fun isXfceInstalled(): Boolean =
-        File(rootfsDir, "usr/bin/startxfce4").exists() &&
-        File(rootfsDir, "usr/bin/xfce4-panel").exists() &&
-        File(rootfsDir, "usr/bin/xfwm4").exists()
+    fun isPhoshInstalled(): Boolean =
+        File(rootfsDir, "usr/bin/phosh-session").exists() &&
+        File(rootfsDir, "usr/bin/phoc").exists() &&
+        File(rootfsDir, "usr/bin/Xwayland").exists()
 
     fun isRunning(): Boolean = sessionProcess?.isAlive == true
 
@@ -895,13 +895,13 @@ METMC_LAUNCH_EOF
     // ── Session management ──
 
     /**
-     * Start Xfce as the unprivileged Linux user on the Android-hosted X11 display.
+     * Start Phosh/Phoc as the unprivileged Linux user on the Android-hosted X11 display.
      * Xfce/KWin runs directly on DISPLAY=:0; Android remains the physical display owner.
      */
     @Synchronized
-    fun startXfceSession(screenWidth: Int = 1080, screenHeight: Int = 2160) {
+    fun startPhoshSession(screenWidth: Int = 1080, screenHeight: Int = 2160) {
         if (!hasRoot() || !isRootfsReady()) {
-            Log.e(TAG, "Cannot start Xfce: root or rootfs unavailable")
+            Log.e(TAG, "Cannot start Phosh: root or rootfs unavailable")
             return
         }
         if (isRunning()) stopTrackedSessionProcess()
@@ -926,9 +926,9 @@ METMC_LAUNCH_EOF
             set -u
             export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
             export TMPDIR=${tmpPath} DISPLAY=:0 LANG=C.UTF-8 LC_ALL=C.UTF-8
-            export QT_QPA_PLATFORM=xcb XDG_SESSION_TYPE=x11
-            export XDG_CURRENT_DESKTOP=Xfce XDG_SESSION_DESKTOP=xfce DESKTOP_SESSION=xfce
-            export XDG_DATA_DIRS=/run/nativOS/android-apps/share:/usr/local/share:/usr/share
+            export QT_QPA_PLATFORM=wayland XDG_SESSION_TYPE=wayland
+            export XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh DESKTOP_SESSION=phosh
+            export XDG_DATA_DIRS=/usr/local/share:/usr/share
             ${gpuEnvironment}
             mkdir -p /run/dbus /run/metmc
             rm -f /run/dbus/pid /run/dbus/system_bus_socket
@@ -971,16 +971,14 @@ METMC_LAUNCH_EOF
                 export GDK_BACKEND=wayland,x11 SDL_VIDEODRIVER=wayland,x11 MOZ_ENABLE_WAYLAND=1
                     export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh
                     export DESKTOP_SESSION=phosh XDG_DATA_DIRS=/usr/local/share:/usr/share QT_QPA_PLATFORM=wayland
-                    echo "Starting Phosh/Phoc with Xwayland in nested Wayland mode on Android X11"
-                    if dbus-run-session -- phosh-session; then exit 0; fi
-                    echo "Phosh session exited; falling back to Xfce"
+                    echo "Starting lean Phosh/Phoc with Xwayland on Android X11"
+                    exec dbus-run-session -- phosh-session
                 fi
-                export XDG_SESSION_TYPE=x11 XDG_CURRENT_DESKTOP=Xfce XDG_SESSION_DESKTOP=xfce
-                export DESKTOP_SESSION=xfce XDG_DATA_DIRS=/run/nativOS/android-apps/share:/usr/local/share:/usr/share QT_QPA_PLATFORM=xcb KWIN_COMPOSE=N
-                exec dbus-run-session -- startxfce4
+                echo "ERROR: Phosh/Phoc/Xwayland packages are missing from the bundled Debian rootfs" >&2
+                exit 127
             '
         """.trimIndent()
-        Log.i(TAG, "Starting Phosh mobile session with Xfce fallback")
+        Log.i(TAG, "Starting Phosh-only mobile session (no secondary desktop)")
         val su = rootShell.findSuPath() ?: return
         val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/bash -c ${shellQuote(runScript)}"
         val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
@@ -996,13 +994,13 @@ METMC_LAUNCH_EOF
         }.start()
     }
 
-    /** Wait for the Phosh mobile shell or Xfce fallback to appear on the embedded X11 display. */
-    fun awaitXfceReady(timeoutMs: Long = 45_000): Boolean {
+    /** Wait for Phosh/Phoc and Xwayland to appear on the embedded X11 display. */
+    fun awaitPhoshReady(timeoutMs: Long = 45_000): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
             if (sessionProcess?.isAlive != true) return false
-            if (execChroot("(pgrep -x phosh >/dev/null 2>&1 && pgrep -x phoc >/dev/null 2>&1 && pgrep -x Xwayland >/dev/null 2>&1) || (pgrep -x xfce4-panel >/dev/null 2>&1 && pgrep -f 'xfwm4' >/dev/null 2>&1)") == 0) {
-                Log.i(TAG, "Phosh/Phoc/Xwayland or Xfce readiness check passed")
+            if (execChroot("pgrep -x phosh >/dev/null 2>&1 && pgrep -x phoc >/dev/null 2>&1 && pgrep -x Xwayland >/dev/null 2>&1") == 0) {
+                Log.i(TAG, "Phosh/Phoc/Xwayland readiness check passed")
                 Thread.sleep(700)
                 return true
             }
@@ -1011,7 +1009,7 @@ METMC_LAUNCH_EOF
                 return false
             }
         }
-        Log.e(TAG, "Phosh/Xfce did not become ready within ${timeoutMs}ms")
+        Log.e(TAG, "Phosh/Phoc/Xwayland did not become ready within ${timeoutMs}ms")
         return false
     }
 
