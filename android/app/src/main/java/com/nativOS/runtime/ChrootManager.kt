@@ -1404,6 +1404,7 @@ METMC_LAUNCH_EOF
             for lib in /usr/local/lib/libsocket_hook.so /usr/local/lib/libnativos-close-range.so /usr/local/lib/libandroid-shmem.so; do
                 if [ -f "${'$'}lib" ]; then PRELOAD="${'$'}{PRELOAD:+${'$'}PRELOAD:}${'$'}lib"; fi
             done
+            export METMC_HOME PRELOAD
             # Some Android app-data mounts are noexec. runuser's attempt to
             # execute /usr/bin/env can fail even though the shell itself runs.
             # Use runuser's built-in environment options and exec the session
