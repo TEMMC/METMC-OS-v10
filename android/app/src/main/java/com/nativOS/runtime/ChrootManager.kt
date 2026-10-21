@@ -856,16 +856,16 @@ METMC_LAUNCH_EOF
             chmod 0644 /run/metmc/hardware-status.txt
             id metmc >/dev/null 2>&1 || adduser -D -s /bin/bash metmc
             METMC_HOME=$(getent passwd metmc | cut -d: -f6)
-            mkdir -p "${'METMC_HOME"}METMC_HOME" /tmp/runtime-metmc
-            chown -R metmc:metmc "${'METMC_HOME"}METMC_HOME" /tmp/runtime-metmc
+            mkdir -p "${'METMC_HOME" /tmp/runtime-metmc}METMC_HOME" /tmp/runtime-metmc
+            chown -R metmc:metmc "${'METMC_HOME" /tmp/runtime-metmc}METMC_HOME" /tmp/runtime-metmc
             chmod 0700 /tmp/runtime-metmc
             PRELOAD=""
             for lib in /usr/local/lib/libsocket_hook.so /usr/local/lib/libnativos-close-range.so /usr/local/lib/libandroid-shmem.so; do
-                if [ -f "$lib" ]; then PRELOAD="${'{PRELOAD:+${'; fi
+                if [ -f "${'lib" ]; then PRELOAD="${'$' }{PRELOAD:+${'$' }PRELOAD:}${'$' }lib"; fi}lib" ]; then PRELOAD="${'{PRELOAD:+${'$' }PRELOAD:}${'$' }lib"; fi}{PRELOAD:+${'PRELOAD:}${'$' }lib"; fi}PRELOAD:}${'lib"; fi}lib"; fi
             done
             export METMC_HOME PRELOAD
             runuser -u metmc --preserve-environment -- /bin/bash -c '
-                export HOME="${'METMC_HOME"}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
+                export HOME="${'METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
                 export TMPDIR=/tmp XDG_RUNTIME_DIR=/tmp/runtime-metmc WAYLAND_DISPLAY=wayland-0
                 export LD_PRELOAD="${'PRELOAD"}PRELOAD"
                 export WLR_BACKENDS=x11 WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
@@ -1036,7 +1036,7 @@ METMC_LAUNCH_EOF
             done
             export METMC_HOME PRELOAD
             runuser -u metmc --preserve-environment -- /bin/bash -c '
-                export HOME="${'METMC_HOME"}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
+                export HOME="${'METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
                 export TMPDIR=/tmp XDG_RUNTIME_DIR=/tmp/runtime-metmc WAYLAND_DISPLAY=wayland-0
                 export LD_PRELOAD="${'PRELOAD"}PRELOAD"
                 export WLR_BACKENDS=x11 WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
@@ -1207,7 +1207,7 @@ METMC_LAUNCH_EOF
             done
             export METMC_HOME PRELOAD
             runuser -u metmc --preserve-environment -- /bin/bash -c '
-                export HOME="${'METMC_HOME"}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
+                export HOME="${'METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
                 export TMPDIR=/tmp XDG_RUNTIME_DIR=/tmp/runtime-metmc WAYLAND_DISPLAY=wayland-0
                 export LD_PRELOAD="${'PRELOAD"}PRELOAD"
                 export WLR_BACKENDS=x11 WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
@@ -1378,7 +1378,7 @@ METMC_LAUNCH_EOF
             done
             export METMC_HOME PRELOAD
             runuser -u metmc --preserve-environment -- /bin/bash -c '
-                export HOME="${'METMC_HOME"}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
+                export HOME="${'METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
                 export TMPDIR=/tmp XDG_RUNTIME_DIR=/tmp/runtime-metmc WAYLAND_DISPLAY=wayland-0
                 export LD_PRELOAD="${'PRELOAD"}PRELOAD"
                 export WLR_BACKENDS=x11 WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
