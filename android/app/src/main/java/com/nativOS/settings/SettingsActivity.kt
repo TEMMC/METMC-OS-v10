@@ -175,7 +175,7 @@ class SettingsActivity : Activity() {
             addView(PremiumUi.separator(this@SettingsActivity))
             addView(row(
                 title = "Request hardware permissions",
-                subtitle = "Camera, microphone, location, Bluetooth and notifications",
+                subtitle = "Camera, mic, GPS, Wi-Fi discovery, Bluetooth, sensors, calls, SMS and notifications",
                 trailingText = "Review"
             ) { requestHardwarePermissions() })
             addView(PremiumUi.separator(this@SettingsActivity))
@@ -574,17 +574,30 @@ class SettingsActivity : Activity() {
     }
 
     private fun requestHardwarePermissions() {
+        // Ask Android for user-approved access to the hardware APIs exposed by
+        // the Linux bridge. These grants do not bypass Android's system-service
+        // restrictions or SELinux; unsupported actions still fall back to Android UI.
         val requested = mutableListOf(
             Manifest.permission.CAMERA,
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.ACCESS_COARSE_LOCATION,
-            Manifest.permission.ACCESS_FINE_LOCATION
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.CALL_PHONE,
+            Manifest.permission.READ_PHONE_STATE,
+            Manifest.permission.ANSWER_PHONE_CALLS,
+            Manifest.permission.SEND_SMS,
+            Manifest.permission.RECEIVE_SMS,
+            Manifest.permission.READ_SMS,
+            Manifest.permission.READ_CALL_LOG,
+            Manifest.permission.BODY_SENSORS
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             requested += Manifest.permission.BLUETOOTH_CONNECT
             requested += Manifest.permission.BLUETOOTH_SCAN
+            requested += Manifest.permission.BLUETOOTH_ADVERTISE
         }
         if (Build.VERSION.SDK_INT >= 33) {
+            requested += Manifest.permission.NEARBY_WIFI_DEVICES
             requested += Manifest.permission.POST_NOTIFICATIONS
         }
         val missing = requested.distinct().filter {

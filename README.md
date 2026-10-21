@@ -13,13 +13,22 @@ It is based on the open-source [NativOS project](https://github.com/orailnoor/Na
 - **Android application ID:** `com.temmc.metmcosv10`
 - **Current development version:** 10.7.0
 
-## 🔐 Default Linux root password
+## Linux user and privilege model
 
-> **DEFAULT ROOT PASSWORD: `metmc`**
+- The desktop and interactive terminal run as the unprivileged **`metmc`** Linux user.
+- Administrative commands must be invoked explicitly with **`sudo`**. The Linux root account is locked for direct password login; no default root password is configured.
+- Android's rooted bridge remains responsible for mounting and managing the private chroot. This is separate from the Linux desktop user's privileges.
+- Flatpak and its stored runtimes are removed from the bundled rootfs. Linux applications are managed through the normal package manager when the user explicitly requests it.
 
-The Linux chroot sets the **root** account password to **`metmc`**. This is the Linux password inside METMC OS, not your Android lock-screen password. Change it after setup if you need stronger local security. The Android-side root bridge manages the chroot independently of this password.
+## Kernel and hardware access
 
-**Terminal troubleshooting:** the previous global Bash startup redirect to `su - metmc` could replace the interactive shell and leave a blank terminal if the handoff failed. The app now removes that legacy redirect instead of injecting it into `/etc/bash.bashrc`. This makes the shell-handoff regression a stronger explanation for the black terminal than the root password itself; the password change alone is not evidence that the terminal is fixed.
+METMC runs in a chroot and shares the **Android device's existing kernel**; it does not boot or install a separate Linux kernel. The app bind-mounts `/dev`, `/proc`, and `/sys` into the Linux rootfs and exposes the Android graphics device nodes needed by the embedded display. SELinux remains **Enforcing by default**; actual access is limited by the Android kernel, SELinux policy, device-node permissions, and drivers present in Samsung firmware. We will inspect specific AVC denials before considering temporary permissive-mode diagnostics. This does **not** mean arbitrary kernel-module loading, flashing, or unrestricted control of every hardware device is available from the chroot.
+
+### Android hardware bridge
+
+The Android app is the hardware owner; Linux requests supported operations through the app's local bridge rather than trying to replace Samsung's vendor services. The bridge currently has handlers for Wi-Fi status and Android Wi-Fi controls, Bluetooth state/discovery, audio volume and microphone, camera, location, sensors, flashlight, haptics, battery, brightness, clipboard, notifications, and Android-app launching. The Settings screen requests the Android runtime permissions needed by these features, including nearby Wi-Fi and Bluetooth permissions on Android 13/12+, plus optional call/SMS permissions. Every request remains subject to the user's grant and Android's API restrictions.
+
+Wi-Fi connectivity is normally shared from Android into Debian. Android 10+ restricts ordinary apps from silently toggling Wi-Fi, so the bridge opens Android's own Wi-Fi panel where needed; Bluetooth and other restricted controls may similarly require Android confirmation. A declared permission is not a guarantee of direct hardware access. External USB devices, monitor mode, hotspot creation, modem control, NFC, biometrics, system-wide notification reading, and other privileged operations require additional device-specific implementation or Android special access, and are not claimed as fully working yet.
 
 ## Goals
 
@@ -31,19 +40,23 @@ The Linux chroot sets the **root** account password to **`metmc`**. This is the 
 
 ## Offline startup guarantee
 
-The Android boot path must never download a root filesystem, run `apt-get update`, install Linux packages, or contact Flathub/update servers. The GitHub Actions build downloads the upstream rootfs, provisions Xfce and essential tools inside the ARM64 rootfs on the runner, validates the required binaries, and embeds the prepared archive in the APK; first launch only copies and extracts that bundled asset. The bundled rootfs must already contain Xfce, the essential tools, and `sudo`. If the asset or required desktop files are missing, the app must show an actionable error and stop rather than attempting network recovery. Manual package management from the Linux desktop remains user-initiated.
+GitHub Actions prepares a compact Alpine Linux 3.22 ARM64 root filesystem with Labwc, Wayland/Xwayland support, Waybar, Fuzzel, Foot, Thunar, a non-root `metmc` user, `sudo`, and compact shell/network diagnostics tools. The root filesystem is compressed as a reproducible `.tgz` asset and bundled inside the APK. First launch copies and extracts that asset locally; boot must never run `apk update`, install packages, download a rootfs, or contact update servers. Package updates and new installs remain explicitly user-initiated.
+
+## Windowed desktop and multitasking
+
+METMC's intended desktop is **Labwc + Wayland + Xwayland**, nested into the Android-hosted X11 display. Labwc provides stacking windows; Waybar provides the running-window taskbar; Fuzzel launches apps; Foot is the terminal; and Thunar is the file manager. The neon green-on-black METMC Hacker theme applies to window decorations, taskbar, launcher, GTK defaults and terminal. Large taskbar targets and four workspaces are intended to make multitasking usable on a phone. The nested compositor and touch/window behavior still require CI and on-device validation.
+
+Android apps remain Android activities. METMC can publish their launchers to the Linux app menu and request bounded/freeform launches, but movable Android app windows depend on Samsung's Android WindowManager and firmware support; Labwc cannot directly turn an Android activity into a Linux window. Linux multi-window support and Android freeform windows are separate features.
+
+The chroot shares the Android kernel and does not install a separate Linux kernel. The app binds `/dev`, `/proc`, and `/sys` into the rootfs where permitted. Wi-Fi, Bluetooth, audio, camera, location, brightness, battery and other Android-owned hardware features use the Android bridge where implemented and authorized. Actual access remains subject to Android permissions, SELinux, Samsung vendor drivers, and supported APIs; it is not unrestricted hardware access. SELinux remains Enforcing by default.
+
+## Touch design and compact tools
+
+The initial desktop configuration lives under `linux/config/skel/` and `linux/config/labwc/theme/METMC-Hacker/`. The default image includes a dark theme, neon terminal prompt, taskbar, app launcher, multi-window shortcuts, and small utilities such as `nano`, `less`, `htop`, `curl`, `wget`, `git`, `ssh`, `ip`, `ping`, `dig`, `traceroute`, `nc`, `nmap`, `whois`, `jq`, `python3`, `tmux`, `rsync`, `zip`, and `unzip`. The goal is a compressed, bundled image rather than package installation during first boot.
 
 ## Current status
 
-The NativOS source has been imported and rebranded as METMC OS v10. The app includes Android hardware controls, CPU/RAM status, and an opt-in system diagnostics export. v10.7.0 uses lightweight Xfce/Xfwm4 on the embedded X11 display, with a dark green hacker-style theme, a touch-sized panel/taskbar, and Xfce Terminal. It retains the guarded Linux package manager with quick-access desktop controls, a live system monitor, shared-folder access, update-center links, Linux configuration backup and rootfs validation. The app is labelled METMC OS V10. Selecting METMC OS V10 as Android's default Home app lets Android open it after boot. Package upgrades affect only the Linux rootfs. Includes compact network diagnostics (iproute2, ping, DNS tools, traceroute, netcat, nmap, whois, curl, wget and SSH client). Desktop performance and touch behavior still need on-device testing.
-
-This project runs a Linux desktop within an Android-rooted environment. It is **not** a native Linux ROM and does not replace the Android kernel.
-
-## Android apps in the Xfce desktop
-
-METMC OS publishes installed Android launchers in the Linux application menu. Selecting one asks Android to launch that app as a separate Android task with a preferred window size, and startup tries to enable Android's `enable_freeform_support` and `force_resizable_activities` settings. **This is best-effort only**: Android must support freeform windows in its framework/SystemUI for the app to appear as a movable, resizable floating window.
-
-Android apps are still rendered and managed by Android's WindowManager, not by Xfce's `xfwm4`. Xfce cannot directly adopt an existing Android activity surface as an X11 window. If this Samsung firmware ignores freeform mode, Android apps may take over the screen; the launch-bounds request cannot force a floating window by itself. METMC logs the freeform feature/settings probe for diagnostics. No package downloads are performed to enable this feature.
+The Alpine/Labwc migration has been committed to the draft pull request, but the new rootfs and Android session have not yet been confirmed by a successful CI build or tested on the Galaxy A04e. Do not treat it as a verified release until the build succeeds and the desktop is tested on-device. Touch input, keyboard behavior, window decorations, panel usability, Android freeform windows, hardware bridging, GPU behavior, RAM use, and boot time remain device-test items. No claim of full compatibility is made until those checks pass.
 
 ## Build requirements
 

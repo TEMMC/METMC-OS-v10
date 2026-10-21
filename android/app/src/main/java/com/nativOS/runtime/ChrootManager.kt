@@ -6,19 +6,12 @@ import java.io.File
 import java.security.MessageDigest
 
 /**
- * Manages the chroot Ubuntu filesystem: mounting, session lifecycle,
- * and command execution inside the chroot.
- *
- * Adapted from DroidDesk's ChrootRuntime for NativOS —
- * focused on Xfce's X11 session inside the Android-hosted X server.
+ * Manages the Alpine Linux chroot: mounting, Labwc session lifecycle, and command execution.\n * Labwc runs nested on METMC's Android-hosted X11 display.
  */
 class ChrootManager(private val context: Context) {
 
     companion object {
         private const val TAG = "NativOS.ChrootManager"
-        private const val TURNIP_VERSION = "25.0.7"
-        private const val TURNIP_ASSET = "gpu/mesa-vulkan-drivers-kgsl-25.0.7-arm64.deb"
-        private const val TURNIP_SHA256 = "66b11a94835f66e80efc8556477334a14dc68456a76e31ada3cd2d440869c5d5"
         private val mountLock = Any()
 
         @Volatile private var sessionProcess: Process? = null
@@ -37,8 +30,6 @@ class ChrootManager(private val context: Context) {
     // SharedFolderProvider exposes this directory to Android's Files UI.
     private val androidSharedDir: File
         get() = File(baseDir, "shared")
-    private val turnipRoot: File get() = File(rootfsDir, "opt/nativos-gpu/turnip-$TURNIP_VERSION")
-    private val turnipIcd: File get() = File(turnipRoot, "usr/share/vulkan/icd.d/freedreno_icd.aarch64.json")
 
     // ── Status ──
 
@@ -86,12 +77,14 @@ class ChrootManager(private val context: Context) {
         }
     }
 
-    fun isRootfsReady(): Boolean = File(rootfsDir, "usr/bin/bash").exists()
+    fun isRootfsReady(): Boolean = File(rootfsDir, "bin/bash").exists()
 
-    fun isXfceInstalled(): Boolean =
-        File(rootfsDir, "usr/bin/startxfce4").exists() &&
-        File(rootfsDir, "usr/bin/xfce4-panel").exists() &&
-        File(rootfsDir, "usr/bin/xfwm4").exists()
+    fun isLabwcInstalled(): Boolean =
+        File(rootfsDir, "usr/bin/labwc").exists() &&
+        File(rootfsDir, "usr/bin/waybar").exists() &&
+        File(rootfsDir, "usr/bin/fuzzel").exists() &&
+        File(rootfsDir, "usr/bin/foot").exists() &&
+        (File(rootfsDir, "usr/bin/Xwayland").exists() || File(rootfsDir, "usr/bin/xwayland").exists())
 
     fun isRunning(): Boolean = sessionProcess?.isAlive == true
 
@@ -267,7 +260,7 @@ class ChrootManager(private val context: Context) {
 
         // /tmp is a chroot tmpfs, so the Android socket directory must be
         // bind-mounted after ensureMounts() creates that tmpfs. Keep an existing
-        // correct bind mount in place; repeatedly unmounting it can race Xfce.
+        // correct bind mount in place; repeatedly unmounting it can race the desktop session.
         var mounts = rootShell.exec("mount").lines()
         val currentMount = mounts.firstOrNull { it.contains(" on $chrootX11 ") }
         if (currentMount != null && currentMount.startsWith("${x11HostDir.absolutePath} ")) {
@@ -299,77 +292,6 @@ class ChrootManager(private val context: Context) {
         } else {
             Log.e(TAG, "Failed to bind host X11 socket directory; mount result=$result")
         }
-    }
-
-    /** Install and validate the bundled KGSL Turnip driver on Adreno devices. */
-    private fun prepareHardwareGpu(): Boolean {
-        if (!File("/dev/kgsl-3d0").exists()) {
-            Log.i(TAG, "No KGSL device; using portable software rendering")
-            return false
-        }
-
-        return try {
-            val archive = File(baseDir, "gpu/mesa-vulkan-drivers-kgsl-$TURNIP_VERSION-arm64.deb")
-            if (!archive.exists() || sha256(archive) != TURNIP_SHA256) {
-                archive.parentFile?.mkdirs()
-                context.assets.open(TURNIP_ASSET).use { input ->
-                    archive.outputStream().use { output -> input.copyTo(output) }
-                }
-            }
-            if (sha256(archive) != TURNIP_SHA256) {
-                Log.e(TAG, "Bundled Turnip archive failed checksum validation")
-                return false
-            }
-
-            val library = File(turnipRoot, "usr/lib/aarch64-linux-gnu/libvulkan_freedreno.so")
-            if (!library.exists() || !turnipIcd.exists()) {
-                val root = turnipRoot.absolutePath.removePrefix(rootfsDir.absolutePath)
-                val archiveInChroot = archive.absolutePath
-                val installCommand = """
-                    mkdir -p $root &&
-                    dpkg-deb -x $archiveInChroot $root &&
-                    sed -i 's#/usr/lib/aarch64-linux-gnu/libvulkan_freedreno.so#$root/usr/lib/aarch64-linux-gnu/libvulkan_freedreno.so#' $root/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json
-                """.trimIndent().replace("\n", " ")
-                if (execChroot(installCommand) != 0) {
-                    Log.e(TAG, "Could not extract bundled Turnip driver")
-                    return false
-                }
-            }
-
-            val available = library.exists() && turnipIcd.exists()
-            if (!available) {
-                Log.w(TAG, "Turnip driver unavailable; using software")
-                return false
-            }
-
-            val icd = turnipIcd.absolutePath.removePrefix(rootfsDir.absolutePath)
-            val probe = "command -v vulkaninfo >/dev/null 2>&1 && " +
-                "VK_ICD_FILENAMES=$icd TU_DEBUG=noconform " +
-                "timeout 10s vulkaninfo --summary >/dev/null 2>&1"
-            if (execChroot(probe) != 0) {
-                Log.w(TAG, "Turnip Vulkan probe failed; using software rendering")
-                return false
-            }
-
-            Log.i(TAG, "Turnip KGSL driver ready")
-            true
-        } catch (error: Throwable) {
-            Log.w(TAG, "GPU setup failed; using software rendering", error)
-            false
-        }
-    }
-
-    private fun sha256(file: File): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        file.inputStream().use { input ->
-            val buffer = ByteArray(64 * 1024)
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                digest.update(buffer, 0, count)
-            }
-        }
-        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     /** Make modern GLib app launching work on kernels with partial close_range support. */
@@ -818,456 +740,6 @@ class ChrootManager(private val context: Context) {
     }
 
     /**
-     * Use Bubblewrap's privileged fallback on Android kernels that disable
-     * unprivileged user namespaces. Android mounts app data with nosuid, so a
-     * small setuid launcher prepares the mount sandbox, then drops the actual
-     * application and D-Bus proxy to a locked UID. The original distro binary
-     * remains preserved.
-     */
-    private fun prepareFlatpakCompatibility() {
-        val distroBwrap = File(rootfsDir, "usr/bin/bwrap")
-        val installedWrapper = File(rootfsDir, "usr/local/bin/bwrap")
-        if (!distroBwrap.exists() && !installedWrapper.exists()) return
-        val sandboxUid = context.applicationInfo.uid
-
-        try {
-            val source = File(baseDir, "compat/nativos_bwrap.c")
-            source.parentFile?.mkdirs()
-            source.writeText(
-                """
-                #define _GNU_SOURCE
-                #include <dirent.h>
-                #include <errno.h>
-                #include <fcntl.h>
-                #include <limits.h>
-                #include <stdio.h>
-                #include <stdlib.h>
-                #include <string.h>
-                #include <sys/mman.h>
-                #include <sys/stat.h>
-                #include <sys/types.h>
-                #include <unistd.h>
-
-                static int unsupported_namespace(const char *value) {
-                    return strcmp(value, "--unshare-pid") == 0 ||
-                           strcmp(value, "--unshare-ipc") == 0;
-                }
-
-                static int bind_option(const char *value) {
-                    return strcmp(value, "--bind") == 0 ||
-                           strcmp(value, "--ro-bind") == 0 ||
-                           strcmp(value, "--dev-bind") == 0 ||
-                           strcmp(value, "--bind-try") == 0 ||
-                           strcmp(value, "--ro-bind-try") == 0 ||
-                           strcmp(value, "--dev-bind-try") == 0;
-                }
-
-                static int unavailable_runtime_bind(const char *source) {
-                    return strncmp(source, "/tmp/runtime-root/doc/", 22) == 0 ||
-                           strncmp(source, "/tmp/runtime-root/.flatpak-helper/", 34) == 0;
-                }
-
-                static void run_flatpak_ldconfig_directly(int argc, char **argv) {
-                    for (int input = 1; input + 2 < argc; input++) {
-                        const char *command = strrchr(argv[input], '/');
-                        command = command == NULL ? argv[input] : command + 1;
-                        if (strcmp(command, "ldconfig") != 0) continue;
-                        for (int option = input + 1; option + 1 < argc; option++) {
-                            if (strcmp(argv[option], "-C") != 0) continue;
-                            const char *cache = argv[option + 1];
-                            if (strncmp(cache, "/run/ld-so-cache-dir/", 21) != 0 ||
-                                strstr(cache, "..") != NULL) return;
-                            execl("/sbin/ldconfig", "ldconfig", "-X", "-C", cache, NULL);
-                            perror("nativos-bwrap: ldconfig");
-                            _exit(1);
-                        }
-                    }
-                }
-
-                static void make_runtime_parents_traversable(const char *source) {
-                    const char *prefix = "/tmp/runtime-root/";
-                    if (strncmp(source, prefix, 18) != 0) return;
-                    char *path = strdup(source);
-                    if (path == NULL) return;
-                    for (char *cursor = path + 18; (cursor = strchr(cursor, '/')) != NULL; cursor++) {
-                        *cursor = '\0';
-                        chmod(path, 0711);
-                        *cursor = '/';
-                    }
-                    free(path);
-                }
-
-                static void make_root_parents_traversable(const char *source) {
-                    if (strncmp(source, "/root/", 6) != 0) return;
-                    char *path = strdup(source);
-                    if (path == NULL) return;
-                    for (char *cursor = path + 6; (cursor = strchr(cursor, '/')) != NULL; cursor++) {
-                        *cursor = '\0';
-                        chmod(path, 0755);
-                        *cursor = '/';
-                    }
-                    free(path);
-                }
-
-                static void make_runtime_tree_traversable(const char *path, int depth) {
-                    if (depth > 12) return;
-                    chmod(path, 0711);
-                    DIR *directory = opendir(path);
-                    if (directory == NULL) return;
-                    struct dirent *entry;
-                    while ((entry = readdir(directory)) != NULL) {
-                        if (strcmp(entry->d_name, ".") == 0 ||
-                            strcmp(entry->d_name, "..") == 0) continue;
-                        char child[PATH_MAX];
-                        if (snprintf(child, sizeof(child), "%s/%s", path, entry->d_name) >=
-                            (int) sizeof(child)) continue;
-                        struct stat info;
-                        if (lstat(child, &info) == 0 && S_ISDIR(info.st_mode)) {
-                            make_runtime_tree_traversable(child, depth + 1);
-                        }
-                    }
-                    closedir(directory);
-                }
-
-                static void make_app_tree_writable(const char *path, int depth,
-                                                   uid_t sandbox_uid) {
-                    if (depth > 24) return;
-                    struct stat info;
-                    if (lstat(path, &info) != 0 || S_ISLNK(info.st_mode)) return;
-                    lchown(path, sandbox_uid, 0);
-                    mode_t mode = info.st_mode | S_IRUSR | S_IWUSR;
-                    if (S_ISDIR(info.st_mode)) mode |= S_IXUSR;
-                    chmod(path, mode);
-                    if (!S_ISDIR(info.st_mode)) return;
-                    DIR *directory = opendir(path);
-                    if (directory == NULL) return;
-                    struct dirent *entry;
-                    while ((entry = readdir(directory)) != NULL) {
-                        if (strcmp(entry->d_name, ".") == 0 ||
-                            strcmp(entry->d_name, "..") == 0) continue;
-                        char child[PATH_MAX];
-                        if (snprintf(child, sizeof(child), "%s/%s", path, entry->d_name) >=
-                            (int) sizeof(child)) continue;
-                        make_app_tree_writable(child, depth + 1, sandbox_uid);
-                    }
-                    closedir(directory);
-                }
-
-                static void prepare_writable_bind(const char *source,
-                                                  const char *destination,
-                                                  uid_t sandbox_uid) {
-                    if (strcmp(destination, "/app/extra") == 0 ||
-                        strcmp(destination, "/run/ld-so-cache-dir") == 0 ||
-                        strncmp(source, "/root/.var/app/", 15) == 0 ||
-                        strncmp(source, "/root/.config/", 14) == 0 ||
-                        strncmp(source, "/tmp/runtime-root/", 18) == 0) {
-                        int ownership_result = chown(source, sandbox_uid, 0);
-                        (void) ownership_result;
-                        struct stat info;
-                        chmod(source,
-                              lstat(source, &info) == 0 && S_ISDIR(info.st_mode) ? 0775 : 0664);
-                    }
-                    if (strncmp(source, "/root/.var/app/", 15) == 0) {
-                        make_app_tree_writable(source, 0, sandbox_uid);
-                    }
-                    make_runtime_parents_traversable(source);
-                    make_root_parents_traversable(source);
-                }
-
-                static int filtered_args_fd(int source_fd, uid_t sandbox_uid) {
-                    off_t size = lseek(source_fd, 0, SEEK_END);
-                    if (size < 0 || lseek(source_fd, 0, SEEK_SET) < 0) return -1;
-
-                    char *buffer = malloc((size_t) size);
-                    if (buffer == NULL) return -1;
-                    size_t received = 0;
-                    while (received < (size_t) size) {
-                        ssize_t count = read(source_fd, buffer + received, (size_t) size - received);
-                        if (count <= 0) {
-                            free(buffer);
-                            return -1;
-                        }
-                        received += (size_t) count;
-                    }
-                    int target_fd = memfd_create("nativos-bwrap-args", 0);
-                    if (target_fd < 0) {
-                        free(buffer);
-                        return -1;
-                    }
-                    size_t offset = 0;
-                    while (offset < received) {
-                        size_t remaining = received - offset;
-                        size_t length = strnlen(buffer + offset, remaining);
-                        if (length == remaining) break;
-                        if (bind_option(buffer + offset)) {
-                            size_t source_offset = offset + length + 1;
-                            if (source_offset < received) {
-                                size_t source_length = strnlen(
-                                    buffer + source_offset, received - source_offset);
-                                size_t destination_offset = source_offset + source_length + 1;
-                                if (source_length < received - source_offset &&
-                                    destination_offset < received) {
-                                    size_t destination_length = strnlen(
-                                        buffer + destination_offset, received - destination_offset);
-                                    if (destination_length < received - destination_offset) {
-                                        if (unavailable_runtime_bind(buffer + source_offset) ||
-                                            strcmp(buffer + destination_offset,
-                                                   "/run/host/monitor") == 0) {
-                                            offset = destination_offset + destination_length + 1;
-                                            continue;
-                                        }
-                                        prepare_writable_bind(
-                                            buffer + source_offset,
-                                            buffer + destination_offset,
-                                            sandbox_uid);
-                                    }
-                                }
-                            }
-                        }
-                        if (strcmp(buffer + offset, "0600") == 0 &&
-                            offset + length + 1 < received) {
-                            size_t action_offset = offset + length + 1;
-                            size_t action_length = strnlen(
-                                buffer + action_offset, received - action_offset);
-                            size_t fd_offset = action_offset + action_length + 1;
-                            if ((strcmp(buffer + action_offset, "--file") == 0 ||
-                                 strcmp(buffer + action_offset, "--ro-bind-data") == 0) &&
-                                action_length < received - action_offset &&
-                                fd_offset < received) {
-                                size_t fd_length = strnlen(
-                                    buffer + fd_offset, received - fd_offset);
-                                size_t destination_offset = fd_offset + fd_length + 1;
-                                if (fd_length < received - fd_offset &&
-                                    destination_offset < received) {
-                                    size_t destination_length = strnlen(
-                                        buffer + destination_offset,
-                                        received - destination_offset);
-                                    if (destination_length < received - destination_offset &&
-                                        strcmp(buffer + destination_offset,
-                                               "/.flatpak-info") == 0) {
-                                        static const char readable[] = "0644";
-                                        if (write(target_fd, readable, sizeof(readable)) !=
-                                            (ssize_t) sizeof(readable)) {
-                                            close(target_fd);
-                                            free(buffer);
-                                            return -1;
-                                        }
-                                        offset += length + 1;
-                                        continue;
-                                    }
-                                }
-                            }
-                        }
-                        if (strcmp(buffer + offset, "--ro-bind-data") == 0 &&
-                            offset + length + 1 < received) {
-                            size_t fd_offset = offset + length + 1;
-                            size_t fd_length = strnlen(
-                                buffer + fd_offset, received - fd_offset);
-                            size_t destination_offset = fd_offset + fd_length + 1;
-                            if (fd_length < received - fd_offset &&
-                                destination_offset < received) {
-                                size_t destination_length = strnlen(
-                                    buffer + destination_offset,
-                                    received - destination_offset);
-                                if (destination_length < received - destination_offset &&
-                                    strcmp(buffer + destination_offset,
-                                           "/.flatpak-info") == 0) {
-                                    static const char permissions[] = "--perms";
-                                    static const char readable[] = "0644";
-                                    if (write(target_fd, permissions, sizeof(permissions)) !=
-                                            (ssize_t) sizeof(permissions) ||
-                                        write(target_fd, readable, sizeof(readable)) !=
-                                            (ssize_t) sizeof(readable)) {
-                                        close(target_fd);
-                                        free(buffer);
-                                        return -1;
-                                    }
-                                }
-                            }
-                        }
-                        if (!unsupported_namespace(buffer + offset) &&
-                            write(target_fd, buffer + offset, length + 1) != (ssize_t) (length + 1)) {
-                            close(target_fd);
-                            free(buffer);
-                            return -1;
-                        }
-                        offset += length + 1;
-                    }
-                    free(buffer);
-                    if (lseek(target_fd, 0, SEEK_SET) < 0) {
-                        close(target_fd);
-                        return -1;
-                    }
-                    return target_fd;
-                }
-
-                int main(int argc, char **argv) {
-                    const char *program_name = strrchr(argv[0], '/');
-                    program_name = program_name == NULL ? argv[0] : program_name + 1;
-                    if (strcmp(program_name, "nativos-flatpak-drop") == 0) {
-                        chmod("/", 0755);
-                        chmod("/etc", 0755);
-                        chmod("/usr", 0755);
-                        // Flatpak replaces parts of /root with private mounts.
-                        // Allow the Android app UID to traverse GIMP and other
-                        // applications' per-user configuration directories.
-                        chmod("/root", 0755);
-                        chmod("/root/.config", 0755);
-                        chmod("/root/.var", 0755);
-                        chmod("/root/.var/app", 0755);
-                        chmod("/tmp", 01777);
-                        chmod("/dev/shm", 01777);
-                        chmod("/run", 0755);
-                        chmod("/run/dbus", 0755);
-                        chmod("/run/flatpak", 0755);
-                        chmod("/run/user", 0755);
-                        chmod("/run/user/0", 0700);
-                        chmod("/.flatpak-info", 0644);
-                        if (argc < 2 || setgid($sandboxUid) != 0 || setuid($sandboxUid) != 0) {
-                            perror("nativos-flatpak-drop");
-                            return 1;
-                        }
-                        execvp(argv[1], argv + 1);
-                        perror("nativos-flatpak-drop: execvp");
-                        return errno == ENOENT ? 127 : 126;
-                    }
-
-                    // Flatpak generates a runtime linker cache through a tiny
-                    // Bubblewrap sandbox. That helper deadlocks on some Android
-                    // kernels. Generate the same cache from the chroot; apps use
-                    // the explicit runtime LD_LIBRARY_PATH added below.
-                    run_flatpak_ldconfig_directly(argc, argv);
-
-                    uid_t sandbox_uid = getuid() == 0 ? $sandboxUid : getuid();
-                    if (geteuid() == 0) {
-                        // The desktop currently stores its per-user Flatpaks
-                        // below /root. Let the sandbox UID traverse the runtime,
-                        // and own the one writable apply-extra destination.
-                        chmod("/root", 0755);
-                        chmod("/root/.local/share/flatpak", 0755);
-                        chmod("/tmp", 01777);
-                        make_runtime_tree_traversable("/tmp/runtime-root", 0);
-                        for (int input = 1; input + 2 < argc; input++) {
-                            if (bind_option(argv[input])) {
-                                prepare_writable_bind(
-                                    argv[input + 1], argv[input + 2], sandbox_uid);
-                            }
-                        }
-                    }
-                    // Several Android kernels disable PID and IPC namespaces.
-                    // Flatpak remains isolated by Bubblewrap's mount namespace;
-                    // omit only the flags the kernel explicitly cannot create.
-                    char **filtered = calloc((size_t) argc + 96, sizeof(char *));
-                    if (filtered == NULL) {
-                        perror("nativos-bwrap: calloc");
-                        return 1;
-                    }
-                    int output = 0;
-                    for (int input = 0; input < argc; input++) {
-                        if (bind_option(argv[input]) && input + 2 < argc &&
-                            unavailable_runtime_bind(argv[input + 1])) {
-                            input += 2;
-                            continue;
-                        }
-                        if (unsupported_namespace(argv[input])) {
-                            continue;
-                        }
-                        if (geteuid() == 0 && strcmp(argv[input], "--") == 0) {
-                            // Android cannot create the user namespace required
-                            // by bwrap's --uid option. Bind this launcher into the
-                            // completed mount sandbox and drop IDs immediately
-                            // before the application process is executed instead.
-                            filtered[output++] = "--ro-bind";
-                            filtered[output++] = "/usr/local/bin/bwrap";
-                            filtered[output++] = "/run/nativos-flatpak-drop";
-                            filtered[output++] = "--dir";
-                            filtered[output++] = "/run/nativos";
-                            filtered[output++] = "--ro-bind-try";
-                            filtered[output++] = "/usr/local/lib/libsocket_hook.so";
-                            filtered[output++] = "/run/nativos/libsocket_hook.so";
-                            filtered[output++] = "--ro-bind-try";
-                            filtered[output++] = "/usr/local/lib/libnativos-close-range.so";
-                            filtered[output++] = "/run/nativos/libnativos-close-range.so";
-                            filtered[output++] = "--setenv";
-                            filtered[output++] = "LD_PRELOAD";
-                            filtered[output++] = "/run/nativos/libsocket_hook.so:/run/nativos/libnativos-close-range.so";
-                            filtered[output++] = "--setenv";
-                            filtered[output++] = "ZYPAK_LD_PRELOAD";
-                            filtered[output++] = "/run/nativos/libsocket_hook.so:/run/nativos/libnativos-close-range.so";
-                            filtered[output++] = "--setenv";
-                            filtered[output++] = "TMPDIR";
-                            filtered[output++] = "${tmpDir.absolutePath}";
-                            // Flatpak's generated ld cache is unreliable on Android's
-                            // kernel/mount layout. Supply the application, runtime and
-                            // Mesa extension paths directly so Store apps can start.
-                            filtered[output++] = "--setenv";
-                            filtered[output++] = "LD_LIBRARY_PATH";
-                            filtered[output++] = "/app/lib:/app/lib/aarch64-linux-gnu:/usr/lib/aarch64-linux-gnu/GL/default/lib:/usr/lib/aarch64-linux-gnu:/usr/lib";
-                            filtered[output++] = "--setenv";
-                            filtered[output++] = "__EGL_VENDOR_LIBRARY_DIRS";
-                            filtered[output++] = "/usr/lib/aarch64-linux-gnu/GL/default/share/glvnd/egl_vendor.d";
-                            // The nested Android X11 display cannot expose a usable
-                            // DRI fd inside Bubblewrap. Softpipe is slower but reliable
-                            // and makes GTK, Qt and Flutter Flatpaks render everywhere.
-                            filtered[output++] = "--setenv";
-                            filtered[output++] = "LIBGL_ALWAYS_SOFTWARE";
-                            filtered[output++] = "1";
-                            filtered[output++] = "--setenv";
-                            filtered[output++] = "GALLIUM_DRIVER";
-                            filtered[output++] = "softpipe";
-                            filtered[output++] = "--setenv";
-                            filtered[output++] = "MESA_LOADER_DRIVER_OVERRIDE";
-                            filtered[output++] = "swrast";
-                            filtered[output++] = "--setenv";
-                            filtered[output++] = "FONTCONFIG_FILE";
-                            filtered[output++] = "/etc/fonts/fonts.conf";
-                        }
-                        if (strcmp(argv[input], "--args") == 0 && input + 1 < argc) {
-                            int source_fd = atoi(argv[input + 1]);
-                            int target_fd = filtered_args_fd(source_fd, sandbox_uid);
-                            if (target_fd < 0) {
-                                perror("nativos-bwrap: filter args");
-                                return 1;
-                            }
-                            char *fd_value = malloc(24);
-                            if (fd_value == NULL) return 1;
-                            snprintf(fd_value, 24, "%d", target_fd);
-                            filtered[output++] = argv[input];
-                            filtered[output++] = fd_value;
-                            input++;
-                            continue;
-                        }
-                        filtered[output++] = argv[input];
-                        if (geteuid() == 0 && strcmp(argv[input], "--") == 0) {
-                            filtered[output++] = "/run/nativos-flatpak-drop";
-                        }
-                    }
-                    filtered[output] = NULL;
-
-                    execv("/usr/bin/bwrap", filtered);
-                    perror("nativos-bwrap: execv");
-                    return errno == ENOENT ? 127 : 126;
-                }
-                """.trimIndent()
-            )
-            val result = execChroot(
-                "mkdir -p /usr/local/bin && " +
-                    "gcc -O2 -o /usr/local/bin/bwrap ${source.absolutePath} && " +
-                    "chown root:root /usr/local/bin/bwrap && chmod 4755 /usr/local/bin/bwrap && " +
-                    "/usr/local/bin/bwrap --ro-bind / / --proc /proc --dev /dev /bin/true"
-            )
-            if (result == 0) {
-                Log.i(TAG, "Flatpak Bubblewrap compatibility ready")
-            } else {
-                Log.w(TAG, "Could not prepare Flatpak Bubblewrap compatibility (exit $result)")
-            }
-        } catch (error: Throwable) {
-            Log.w(TAG, "Could not prepare Flatpak Bubblewrap compatibility", error)
-        }
-    }
-
-
-    /**
      * Provision a regular Linux user for interactive terminals. Android still
      * uses its root bridge to manage mounts and the private chroot, but terminal
      * shells default to metmc; privileged commands go through sudo.
@@ -1286,7 +758,8 @@ class ChrootManager(private val context: Context) {
                     echo "Offline rootfs is missing sudo; rebuild the bundled rootfs with sudo preinstalled." >&2
                     exit 127
                 fi
-                usermod -aG sudo metmc
+                # Root account is locked; admin actions must be explicit sudo commands.
+                passwd -l root >/dev/null 2>&1 || true
                 install -d -m 0755 /etc/sudoers.d
                 printf '%s\n' 'Defaults !requiretty' 'metmc ALL=(ALL:ALL) NOPASSWD: ALL' > /etc/sudoers.d/metmc
                 chmod 0440 /etc/sudoers.d/metmc
@@ -1309,7 +782,7 @@ shift
 [ "${'$'}#" -gt 0 ] || usage
 BASE=${'$'}{${'$'}1##*/}
 case "${'$'}BASE" in
-  apt|apt-get|dpkg|dpkg-reconfigure|mount|umount|parted|mkfs*|fsck*|useradd|usermod|userdel|groupadd|groupdel|passwd|chpasswd|systemctl|service|reboot|poweroff|shutdown|fwupdmgr)
+  apk|rc-service|rc-update|mount|umount|parted|mkfs*|fsck*|useradd|usermod|userdel|groupadd|groupdel|passwd|chpasswd|systemctl|service|reboot|poweroff|shutdown|fwupdmgr)
     [ "${'$'}MODE" = auto ] && MODE=root ;;
 esac
 if [ "${'$'}MODE" = root ]; then
@@ -1325,14 +798,16 @@ done
 exec sudo -E -u metmc -- env "${'$'}{ENVARGS[@]}" "${'$'}@"
 METMC_LAUNCH_EOF
                 chmod 0755 /usr/local/bin/metmc-launch
-                # Set the Linux root password used for chroot administration.
-                echo 'root:metmc' | chpasswd
-                chown -R metmc:metmc /home/metmc
+                # Lock direct root login; administrative work goes through sudo as metmc.
+                passwd -l root >/dev/null 2>&1 || true
+                rm -rf /root/.local/share/flatpak /home/metmc/.local/share/flatpak /var/lib/flatpak /etc/flatpak /usr/share/flatpak
+                rm -f /usr/local/bin/bwrap /usr/local/bin/nativos-flatpak-drop /run/nativos-flatpak-drop
+            chown -R metmc:metmc "${'$'}METMC_HOME" /tmp/runtime-metmc
                 chmod 0750 /home/metmc
             """.trimIndent()
         )
         if (result == 0) {
-            Log.i(TAG, "Linux user metmc is provisioned; root password is set")
+            Log.i(TAG, "Linux user metmc is provisioned; direct root login is locked and sudo is configured")
         } else {
             Log.w(TAG, "Could not fully provision metmc default Linux user (exit $result)")
         }
@@ -1341,13 +816,13 @@ METMC_LAUNCH_EOF
     // ── Session management ──
 
     /**
-     * Start Xfce as the unprivileged Linux user on the Android-hosted X11 display.
-     * Xfce/KWin runs directly on DISPLAY=:0; Android remains the physical display owner.
+     * Start Labwc as the unprivileged Alpine user on the Android-hosted X11 display.
+     * Labwc's wlroots X11 backend renders the Wayland desktop into the existing Android X server.
      */
     @Synchronized
-    fun startXfceSession(screenWidth: Int = 1080, screenHeight: Int = 2160) {
+    fun startLabwcSession(screenWidth: Int = 1080, screenHeight: Int = 2160) {
         if (!hasRoot() || !isRootfsReady()) {
-            Log.e(TAG, "Cannot start Xfce: root or rootfs unavailable")
+            Log.e(TAG, "Cannot start Labwc: root or rootfs unavailable")
             return
         }
         if (isRunning()) stopTrackedSessionProcess()
@@ -1356,34 +831,18 @@ METMC_LAUNCH_EOF
         ensureDefaultLinuxUser()
         bindX11Socket()
         prepareCloseRangeCompatibility()
-        prepareFlatpakCompatibility()
-        val hardwareGpu = prepareHardwareGpu()
-        val gpuEnvironment = if (hardwareGpu) """
-            export NATIVOS_GPU=turnip
-            unset LIBGL_ALWAYS_SOFTWARE GBM_ALWAYS_SOFTWARE
-            export GALLIUM_DRIVER=zink MESA_LOADER_DRIVER_OVERRIDE=zink
-            export VK_ICD_FILENAMES=${turnipIcd.absolutePath.removePrefix(rootfsDir.absolutePath)}
-            export TU_DEBUG=noconform ZINK_DESCRIPTORS=lazy MESA_VK_WSI_DEBUG=sw
-        """.trimIndent() else """
-            export NATIVOS_GPU=software LIBGL_ALWAYS_SOFTWARE=1 GBM_ALWAYS_SOFTWARE=1
-            export GALLIUM_DRIVER=llvmpipe MESA_LOADER_DRIVER_OVERRIDE=swrast
-        """.trimIndent()
         val tmpPath = tmpDir.absolutePath
         val runScript = """
             set -u
             export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
             export TMPDIR=${tmpPath} DISPLAY=:0 LANG=C.UTF-8 LC_ALL=C.UTF-8
-            export QT_QPA_PLATFORM=xcb XDG_SESSION_TYPE=x11
-            export XDG_CURRENT_DESKTOP=Xfce XDG_SESSION_DESKTOP=xfce DESKTOP_SESSION=xfce
-            export XDG_DATA_DIRS=/run/nativOS/android-apps/share:/usr/local/share:/usr/share
-            ${gpuEnvironment}
+            export WLR_BACKENDS=x11 WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
+            export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
+            export XDG_DATA_DIRS=/usr/local/share:/usr/share
             mkdir -p /run/dbus /run/metmc
             rm -f /run/dbus/pid /run/dbus/system_bus_socket
-            dbus-uuidgen --ensure=/etc/machine-id
-            if dbus-daemon --system --fork --nopidfile; then
-                [ -x /usr/lib/polkit-1/polkitd ] && /usr/lib/polkit-1/polkitd --no-debug >/tmp/polkit.log 2>&1 &
-                command -v upowerd >/dev/null 2>&1 && upowerd --no-debug >/tmp/upowerd.log 2>&1 &
-            fi
+            if command -v dbus-uuidgen >/dev/null 2>&1; then dbus-uuidgen --ensure=/etc/machine-id; fi
+            if command -v dbus-daemon >/dev/null 2>&1; then dbus-daemon --system --fork --nopidfile 2>/tmp/metmc-dbus.log || true; fi
             if [ -x /usr/local/bin/nativOS-bridge ]; then
                 /usr/local/bin/nativOS-bridge >/tmp/metmc-bridge.log 2>&1 &
             fi
@@ -1395,8 +854,8 @@ METMC_LAUNCH_EOF
                 echo '=== input ==='; ls -la /dev/input 2>/dev/null || true
             } > /run/metmc/hardware-status.txt
             chmod 0644 /run/metmc/hardware-status.txt
-            id metmc >/dev/null 2>&1 || useradd -m -s /bin/bash metmc
-            METMC_HOME=${'$'}(getent passwd metmc | cut -d: -f6)
+            id metmc >/dev/null 2>&1 || adduser -D -s /bin/bash metmc
+            METMC_HOME=$(getent passwd metmc | cut -d: -f6)
             mkdir -p "${'$'}METMC_HOME" /tmp/runtime-metmc
             chown -R metmc:metmc "${'$'}METMC_HOME" /tmp/runtime-metmc
             chmod 0700 /tmp/runtime-metmc
@@ -1405,22 +864,24 @@ METMC_LAUNCH_EOF
                 if [ -f "${'$'}lib" ]; then PRELOAD="${'$'}{PRELOAD:+${'$'}PRELOAD:}${'$'}lib"; fi
             done
             export METMC_HOME PRELOAD
-            # Some Android app-data mounts are noexec. runuser's attempt to
-            # execute /usr/bin/env can fail even though the shell itself runs.
-            # Use runuser's built-in environment options and exec the session
-            # through bash, avoiding a separate env executable.
             runuser -u metmc --preserve-environment -- /bin/bash -c '
-                export HOME="$METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
-                export TMPDIR="$TMPDIR" XDG_RUNTIME_DIR=/tmp/runtime-metmc
-                export XDG_SESSION_TYPE=x11 XDG_CURRENT_DESKTOP=Xfce XDG_SESSION_DESKTOP=xfce
-                export DESKTOP_SESSION=xfce XDG_DATA_DIRS="$XDG_DATA_DIRS" QT_QPA_PLATFORM=xcb KWIN_COMPOSE=N
-                export LD_PRELOAD="$PRELOAD"
-                exec dbus-run-session -- startxfce4
+                export HOME="${'$'}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
+                export TMPDIR=/tmp XDG_RUNTIME_DIR=/tmp/runtime-metmc WAYLAND_DISPLAY=wayland-0
+                export LD_PRELOAD="${'$'}PRELOAD"
+                export WLR_BACKENDS=x11 WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
+                export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
+                export GDK_BACKEND=wayland,x11 QT_QPA_PLATFORM='wayland;xcb' MOZ_ENABLE_WAYLAND=1 SDL_VIDEODRIVER=wayland,x11
+                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
+                    echo "Starting nested Labwc Wayland desktop on Android X11"
+                    exec dbus-run-session -- labwc
+                fi
+                echo "ERROR: Alpine Labwc, Waybar, or Fuzzel is missing from the bundled rootfs" >&2
+                exit 127
             '
         """.trimIndent()
-        Log.i(TAG, "Starting Xfce X11 session")
+        Log.i(TAG, "Starting Alpine Labwc Wayland multi-window desktop")
         val su = rootShell.findSuPath() ?: return
-        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/bash -c ${shellQuote(runScript)}"
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
         val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
         sessionProcess = process
         Thread {
@@ -1434,13 +895,13 @@ METMC_LAUNCH_EOF
         }.start()
     }
 
-    /** Wait for KWin and Xfce Shell to appear on the embedded X11 display. */
-    fun awaitXfceReady(timeoutMs: Long = 45_000): Boolean {
+    /** Verify that Labwc and its touch-sized taskbar are actually running. */
+    fun awaitLabwcReady(timeoutMs: Long = 45_000): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
             if (sessionProcess?.isAlive != true) return false
-            if (execChroot("pgrep -x xfce4-panel >/dev/null 2>&1 && pgrep -f 'xfwm4' >/dev/null 2>&1") == 0) {
-                Log.i(TAG, "Xfce readiness check passed")
+            if (execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0) {
+                Log.i(TAG, "Labwc compositor and Waybar taskbar readiness check passed")
                 Thread.sleep(700)
                 return true
             }
@@ -1449,7 +910,7 @@ METMC_LAUNCH_EOF
                 return false
             }
         }
-        Log.e(TAG, "Xfce did not become ready within ${timeoutMs}ms")
+        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
         return false
     }
 
@@ -1471,14 +932,14 @@ METMC_LAUNCH_EOF
         val command = """
             targets=''
             for proc in /proc/[0-9]*; do
-                [ "${'$'}proc/root" -ef '$root' ] 2>/dev/null || continue
+                [ "${'$'}proc/root" -ef '${'$'}root' ] 2>/dev/null || continue
                 targets="${'$'}targets ${'$'}{proc#/proc/}"
             done
             if [ -n "${'$'}targets" ]; then
                 kill -TERM ${'$'}targets 2>/dev/null || true
                 sleep 1
                 for pid in ${'$'}targets; do
-                    [ "/proc/${'$'}pid/root" -ef '$root' ] 2>/dev/null &&
+                    [ "/proc/${'$'}pid/root" -ef '${'$'}root' ] 2>/dev/null &&
                         kill -KILL "${'$'}pid" 2>/dev/null || true
                 done
             fi
@@ -1510,7 +971,13 @@ METMC_LAUNCH_EOF
     fun unmountAll() {
         if (!hasRoot()) return
         val mounts = rootShell.exec("mount").lines()
-        val targets = listOf(
+        // Unmount every nested bind mount under the rootfs (including removable
+        // storage), deepest first, so a distro migration can safely rename it.
+        val mountedTargets = mounts.mapNotNull { line ->
+            val target = line.substringAfter(" on ", "").substringBefore(" type ")
+            if (target == rootfsDir.absolutePath || target.startsWith(rootfsDir.absolutePath + "/")) target else null
+        }
+        val targets = (mountedTargets + listOf(
             File(rootfsDir, "mnt/android").absolutePath,
             File(rootfsDir, "run/nativOS").absolutePath,
             File(rootfsDir, "tmp/.X11-unix").absolutePath,
@@ -1522,7 +989,7 @@ METMC_LAUNCH_EOF
             File(rootfsDir, "run").absolutePath,
             File(rootfsDir, "tmp").absolutePath,
             rootfsDir.absolutePath
-        )
+        )).distinct().sortedByDescending { it.length }
         targets.forEach { target ->
             if (mounts.any { it.contains(" on $target ") }) {
                 try {
@@ -1540,7 +1007,7 @@ METMC_LAUNCH_EOF
     /** Execute a command inside the chroot as root. */
     fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
         // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
-        // does not exist inside the chroot and breaks GPG/Flatpak temporary dirs.
+        // does not exist inside the chroot and breaks package-management temporary directories.
         val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
             "export TMPDIR=/tmp HOME=/root; $command"
         val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->

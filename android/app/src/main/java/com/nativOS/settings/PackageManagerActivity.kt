@@ -16,7 +16,7 @@ import java.io.File
 
 /**
  * A deliberately limited package manager for the Linux chroot.
- * All apt/dpkg commands are executed inside filesDir/rootfs, never on Android.
+ * All apk package commands are executed inside the Alpine rootfs, never on Android.
  */
 // METMC OS V10 10.5.0: selectable package-operation logs.
 class PackageManagerActivity : Activity() {
@@ -59,12 +59,12 @@ class PackageManagerActivity : Activity() {
         })
         page.addView(warning, PremiumUi.matchWidth())
 
-        refreshButton = button("Refresh package lists", true) { runPackageCommand("Refresh package lists", "apt-get update") }
+        refreshButton = button("Refresh package lists", true) { runPackageCommand("Refresh package lists", "apk update") }
         page.addView(refreshButton, PremiumUi.matchWidth(dp(12)))
         checkButton = button("Check available updates") {
             runPackageCommand(
                 "Check available updates",
-                "apt-get update && apt-get -s upgrade --with-new-pkgs 2>&1 | sed -n '/^The following packages will be upgraded:/,/^[0-9].* upgraded,/p; /^0 upgraded,/p; /^Inst /p; /^Conf /p; /^E:/p; /^W:/p'"
+                "apk update && apk version -l '<'"
             )
         }
         page.addView(checkButton, PremiumUi.matchWidth(dp(8)))
@@ -129,13 +129,13 @@ class PackageManagerActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle("Upgrade Linux packages?")
             .setMessage(
-                "This runs apt-get upgrade only inside METMC OS's Linux root filesystem. It does not update Android itself. Close the Linux desktop first; package upgrades can break or restart Linux applications. Continue?"
+                "This runs apk upgrade only inside METMC OS's Alpine Linux root filesystem. It does not update Android itself. Close the Linux desktop first; package upgrades can break or restart Linux applications. Continue?"
             )
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Upgrade") { _, _ ->
                 runPackageCommand(
                     "Upgrade Linux packages",
-                    "dpkg --configure -a && apt-get upgrade -y --no-install-recommends"
+                    "apk upgrade"
                 )
             }
             .show()
@@ -144,7 +144,7 @@ class PackageManagerActivity : Activity() {
     private fun confirmInstall() {
         val name = packageInput.text.toString().trim()
         if (!name.matches(Regex("[a-z0-9][a-z0-9+.-]{0,99}"))) {
-            packageInput.error = "Enter one valid Debian package name"
+            packageInput.error = "Enter one valid Alpine package name"
             return
         }
         AlertDialog.Builder(this)
@@ -154,7 +154,7 @@ class PackageManagerActivity : Activity() {
             .setPositiveButton("Install") { _, _ ->
                 runPackageCommand(
                     "Install package: $name",
-                    "apt-get update && apt-get install -y --no-install-recommends -- $name"
+                    "apk add --no-cache -- $name"
                 )
             }
             .show()
@@ -162,8 +162,8 @@ class PackageManagerActivity : Activity() {
 
     private fun isRootfsReady(): Boolean =
         File(rootfs, "bin/bash").exists() &&
-            File(rootfs, "usr/bin/apt-get").exists() &&
-            File(rootfs, "var/lib/dpkg/status").exists()
+            (File(rootfs, "sbin/apk").exists() || File(rootfs, "usr/sbin/apk").exists()) &&
+            File(rootfs, "lib/apk/db/installed").exists()
 
     private fun runPackageCommand(label: String, command: String) {
         if (busy) return
@@ -174,14 +174,14 @@ class PackageManagerActivity : Activity() {
         }
         if (!isRootfsReady()) {
             Toast.makeText(this, "Linux root filesystem is not ready", Toast.LENGTH_LONG).show()
-            appendLog("ERROR: missing apt/dpkg rootfs at ${rootfs.absolutePath}")
+            appendLog("ERROR: missing Alpine apk rootfs at ${rootfs.absolutePath}")
             return
         }
         setBusy(true)
         appendLog("\n$ $label")
         Thread({
             val result = runCatching {
-                val env = "/usr/bin/env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin HOME=/root TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive"
+                val env = "/usr/bin/env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin HOME=/root TMPDIR=/tmp "
                 val fullCommand = "chroot ${shellQuote(rootfs.absolutePath)} $env /bin/bash -lc ${shellQuote(command)}"
                 rootShell.exec(fullCommand) { chunk ->
                     runOnUiThread { appendLog(chunk) }

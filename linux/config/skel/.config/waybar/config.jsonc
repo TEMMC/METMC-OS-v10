@@ -1,0 +1,15 @@
+{
+  "layer": "top", "position": "top", "height": 64, "spacing": 6,
+  "margin-top": 4, "margin-left": 6, "margin-right": 6,
+  "modules-left": ["custom/menu", "wlr/taskbar"],
+  "modules-center": ["clock"],
+  "modules-right": ["network", "custom/audio", "custom/display", "battery", "tray"],
+  "custom/menu": {"format": "⌘", "tooltip": "METMC OS — Applications", "on-click": "fuzzel --show drun"},
+  "wlr/taskbar": {"format": "{icon}", "icon-size": 28, "icon-theme": "Adwaita", "tooltip-format": "{title}", "on-click": "activate", "on-click-middle": "close"},
+  "clock": {"format": "⌁ {:%a %d %b  %H:%M}", "tooltip": true, "tooltip-format": "{:%A, %d %B %Y}"},
+  "network": {"format-wifi": "⌁ {essid}", "format-ethernet": "NET", "format-disconnected": "OFFLINE", "tooltip": true, "on-click": "metmc-wifi open"},
+"custom/audio": {"format": "SND", "tooltip": "Open Android sound settings", "on-click": "metmc-settings sound"},
+  "custom/display": {"format": "BRT", "tooltip": "Open Android display and brightness settings", "on-click": "metmc-settings display"},
+  "battery": {"format": "PWR {capacity}%", "format-charging": "CHG {capacity}%", "format-icons": ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"], "states": {"warning": 25, "critical": 10}, "tooltip": true},
+  "tray": {"spacing": 10}
+}

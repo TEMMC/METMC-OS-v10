@@ -54,7 +54,7 @@ import java.lang.ref.WeakReference
  *   1. Initialize X11 surface (LorieView)
  *   2. Download Linux rootfs (if first boot)
  *   3. Extract and configure rootfs
- *   4. Install Xfce desktop (if not installed)
+ *   4. Validate the bundled Alpine Labwc desktop (offline)
  *   5. Start the Linux desktop session
  *
  * Escape hatch: press Volume Up 5 times rapidly to show Android.
@@ -341,7 +341,7 @@ class KioskActivity : Activity() {
             visibility = View.GONE
             addAssistiveAction("⌂", "Home") { showLinuxHome() }
             addAssistiveAction("‹", "Back") { goLinuxBack() }
-            addAssistiveAction("▦", "Recents") { showLinuxHome() }
+            addAssistiveAction("▦", "Switch windows") { sendLabwcChord(KeyEvent.KEYCODE_ALT_LEFT, KeyEvent.META_ALT_ON, KeyEvent.KEYCODE_TAB) }
             addAssistiveAction("□", "Maximize") { maximizeLinuxWindow() }
             addAssistiveAction("⌨", "Keyboard") {
                 MainActivity.toggleKeyboardVisibility(this@KioskActivity)
@@ -358,14 +358,14 @@ class KioskActivity : Activity() {
             FrameLayout.LayoutParams.WRAP_CONTENT
         ))
 
-        // Xfce provides a Super-key launcher. Keep a small phone-friendly handle
-        // to invoke it with the Super_L shortcut.
+        // Labwc uses Super+D to open the application launcher. Keep a small phone-friendly handle
+        // to invoke the launcher shortcut.
         navigationHandle = FrameLayout(this).apply {
-            contentDescription = "Open Xfce app launcher"
+            contentDescription = "Open Linux app launcher"
             visibility = View.GONE
             isClickable = true
             isFocusable = true
-            setOnClickListener { toggleXfceMenu() }
+            setOnClickListener { toggleLabwcMenu() }
             addView(View(this@KioskActivity).apply {
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
@@ -515,7 +515,7 @@ class KioskActivity : Activity() {
      * Keep the Linux display inside Android's physical safe area. System bars
      * may be hidden, but their stable geometry still protects gesture handles,
      * navigation buttons and landscape side bars. The display cutout protects
-     * Xfce's centered clock from notches and hole-punch cameras.
+     * the desktop's centered clock from notches and hole-punch cameras.
      */
     private fun updateDesktopSafeInsets(insets: WindowInsets) {
         val cutout = insets.displayCutout
@@ -569,13 +569,22 @@ class KioskActivity : Activity() {
         view.requestLayout()
     }
 
-    private fun toggleXfceMenu() {
+    private fun toggleLabwcMenu() {
+        sendLabwcChord(KeyEvent.KEYCODE_META_LEFT, KeyEvent.META_META_ON, KeyEvent.KEYCODE_D)
+    }
+
+    /** Send a desktop shortcut through the embedded X11 input bridge. */
+    private fun sendLabwcChord(modifierKeyCode: Int, modifierMetaState: Int, keyCode: Int) {
         val view = desktopView ?: return
-        view.sendKeyEvent(0, KeyEvent.KEYCODE_META_LEFT, true)
+        view.sendKeyEvent(0, modifierKeyCode, true)
         view.postDelayed({
-            if (view.isAttachedToWindow) {
-                view.sendKeyEvent(0, KeyEvent.KEYCODE_META_LEFT, false)
-            }
+            if (!view.isAttachedToWindow) return@postDelayed
+            view.sendKeyEvent(modifierMetaState, keyCode, true)
+            view.postDelayed({
+                if (!view.isAttachedToWindow) return@postDelayed
+                view.sendKeyEvent(modifierMetaState, keyCode, false)
+                view.sendKeyEvent(0, modifierKeyCode, false)
+            }, 40)
         }, 40)
     }
 
@@ -588,9 +597,9 @@ class KioskActivity : Activity() {
     }
 
     private fun showLinuxHome() {
-        // Xfce owns the Linux desktop and its window manager. The Super key
-        // opens Xfce's launcher; avoid Phoc-specific X11 window manipulation.
-        toggleXfceMenu()
+        // Labwc owns the Linux desktop and its window manager.
+        // Open the app launcher using the touch-friendly Super+D shortcut.
+        toggleLabwcMenu()
         desktopView?.postDelayed({
             desktopView?.triggerCallback()
             MainActivity.getInstance().lorieView?.triggerCallback()
@@ -609,13 +618,9 @@ class KioskActivity : Activity() {
         }, "LinuxBack").start()
     }
 
-    /** Resize unmanaged X11 apps directly; they have no X11 WM to handle Alt+F10. */
+    /** Ask Labwc to maximize the focused Linux window; it owns the nested desktop's windows. */
     private fun maximizeLinuxWindow() {
-        Thread({
-            if (!chrootManager.maximizeActiveX11Window()) {
-                Log.w(TAG, "No active X11 application could be maximized")
-            }
-        }, "MaximizeX11").start()
+        sendLabwcChord(KeyEvent.KEYCODE_META_LEFT, KeyEvent.META_META_ON, KeyEvent.KEYCODE_A)
     }
 
     private fun requestNotificationPermission() {
@@ -674,8 +679,13 @@ class KioskActivity : Activity() {
             }
             updateOverlay(0.05, "Root access confirmed", "")
 
-            // Step 2: Prepare the bundled rootfs only. Boot must never use the network.
-            if (!rootfsManager.isRootfsReady()) {
+            // Step 2: Ensure the bundled Alpine ARM64 rootfs is installed.
+            // Existing Linux installations are migrated once, preserving /home/metmc where possible.
+            if (rootfsManager.isRootfsReady() && !rootfsManager.isBundledDistroReady()) {
+                updateOverlay(0.05, "Switching Linux system to Alpine Linux...", "One-time migration; preserving /home/metmc")
+                chrootManager.stopSession()
+            }
+            if (!rootfsManager.isRootfsReady() || !rootfsManager.isBundledDistroReady()) {
                 val bundled = rootfsManager.stageBundledRootfs { progress, status ->
                     updateOverlay(0.05 + progress * 0.45, status, "Bundled in this APK — no network required")
                 }
@@ -703,8 +713,8 @@ class KioskActivity : Activity() {
                 updateOverlay(0.70, "Local Linux filesystem found", "Offline startup")
             }
 
-            if (!rootfsManager.isRootfsReady()) {
-                updateOverlay(-1.0, "ERROR: Rootfs setup failed", "The Linux filesystem could not be prepared")
+            if (!rootfsManager.isBundledDistroReady()) {
+                updateOverlay(-1.0, "ERROR: Alpine rootfs setup failed", "The Alpine Linux filesystem could not be prepared")
                 return
             }
 
@@ -714,32 +724,28 @@ class KioskActivity : Activity() {
             chrootManager.bindX11Socket()
             AndroidAppIntegration.sync(this)
 
-            // Step 4: Validate preinstalled desktop components. Never run apt or
-            // configure online repositories during startup; the bundled rootfs must
-            // already contain the complete desktop and essential tools.
+            // Step 4: Validate the offline Labwc Wayland desktop. Never run apk or
+            // install packages during startup; the bundled rootfs must contain
+            // the complete desktop and essential tools.
             updateOverlay(0.74, "Checking offline desktop...", "")
-            if (!chrootManager.isXfceInstalled()) {
+            if (!chrootManager.isLabwcInstalled()) {
                 updateOverlay(
                     -1.0,
                     "Offline desktop components missing",
-                    "The bundled Linux rootfs is incomplete. Rebuild the APK on GitHub with the prepared desktop; boot will not install packages."
+                    "The bundled Alpine rootfs is missing Labwc, Waybar or Xwayland. Rebuild the APK with the windowed desktop; boot will not install packages."
                 )
                 return
             }
 
             updateOverlay(0.95, "Validating local desktop components...", "No downloads or updates")
-            if (!rootfsManager.ensureXfceRuntime(chrootManager)) {
+            if (!rootfsManager.ensureLabwcRuntime(chrootManager)) {
                 updateOverlay(
                     -1.0,
                     "Offline desktop components missing",
-                    "Xfce is incomplete in the bundled rootfs. Rebuild the APK with all desktop packages included."
+                    "Labwc runtime is incomplete in the bundled rootfs. Rebuild the APK with Labwc, Waybar, Xwayland and the basic tools included."
                 )
                 return
             }
-
-            // Keep startup limited to local configuration and launch operations.
-            updateOverlay(0.95, "Preparing touch-friendly desktop...", "Offline startup")
-            rootfsManager.configureXfceTouchLayout(chrootManager)
 
             // Step 5: Attach the display surface to the bundled X11 service process.
             updateOverlay(0.95, "Getting GUI ready...", "Preparing your desktop")
@@ -845,21 +851,21 @@ class KioskActivity : Activity() {
 
             Log.i(TAG, "Starting test session...")
 
-            // Match the Xfce session to the current Android X11 surface dimensions.
+            // Match the Labwc session to the current Android X11 surface dimensions.
             val screenWidth = lorieView.width
             val screenHeight = lorieView.height
             Log.i(TAG, "Detected screen: ${screenWidth}x${screenHeight}")
 
-            chrootManager.startXfceSession(screenWidth, screenHeight)
-            updateOverlay(0.98, "Starting Linux desktop...", "Waiting for Xfce")
-            if (!chrootManager.awaitXfceReady()) {
-                throw IllegalStateException("Xfce did not become ready")
+            chrootManager.startLabwcSession(screenWidth, screenHeight)
+            updateOverlay(0.98, "Starting Labwc Wayland desktop...", "Starting window manager and taskbar")
+            if (!chrootManager.awaitLabwcReady()) {
+                throw IllegalStateException("Labwc compositor and taskbar did not become ready")
             }
             runOnUiThread {
                 overlayLayout?.visibility = View.GONE
                 keyboardButton?.visibility = View.VISIBLE
                 keyboardButton?.bringToFront()
-                // Xfce has its own panel; keep the extra Android navigation handle hidden.
+                // Keep the METMC taskbar and Linux windows unobstructed.
                 navigationHandle?.visibility = View.GONE
             }
 
@@ -924,14 +930,14 @@ class KioskActivity : Activity() {
             }, delay)
         }
 
-        // Launching an Android shortcut closes Xfce's overview before Android
-        // takes focus. Returning would therefore show Xfce's valid but empty
+        // Launching an Android shortcut may hide Labwc's app launcher before Android
+        // takes focus. Returning would therefore show Labwc's valid but empty
         // black home layer, which looks like a frozen renderer. Reopen the
         // overview after the recreated Surface has received its first frames.
         if (returningFromAndroid) {
             rootLayout?.postDelayed({
                 if (hasWindowFocus() && desktopView?.isAttachedToWindow == true) {
-                    toggleXfceMenu()
+                    toggleLabwcMenu()
                 }
             }, 400)
         }
@@ -964,7 +970,7 @@ class KioskActivity : Activity() {
         enterImmersiveMode()
 
         // The activity is retained across rotation so the X11 connection and
-        // Xfce session stay alive. Recalculate Android's cutout/navigation
+        // Labwc session stay alive. Recalculate Android's cutout/navigation
         // safe area, then notify X11 after SurfaceView has its new dimensions.
         assistiveMenu?.visibility = View.GONE
         rootLayout?.requestApplyInsets()

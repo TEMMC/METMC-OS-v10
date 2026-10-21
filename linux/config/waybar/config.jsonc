@@ -1,0 +1,29 @@
+{
+  "layer": "top", "position": "top", "height": 64, "spacing": 6,
+  "margin-top": 4, "margin-left": 6, "margin-right": 6,
+  "modules-left": ["custom/menu", "wlr/taskbar"],
+  "modules-center": ["clock"],
+  "modules-right": ["network", "pulseaudio", "battery", "tray"],
+  "custom/menu": {"format": "☰", "tooltip": "Open applications", "on-click": "fuzzel --show drun"},
+  "wlr/taskbar": {
+    "format": "{icon}", "icon-size": 28, "icon-theme": "Adwaita",
+    "tooltip-format": "{title}", "on-click": "activate", "on-click-middle": "close",
+    "ignore-list": []
+  },
+  "clock": {"format": "{:%a %d %b  %H:%M}", "tooltip": true, "tooltip-format": "{:%A, %d %B %Y}"},
+  "network": {
+    "format-wifi": "Wi-Fi {essid}", "format-ethernet": "Connected",
+    "format-disconnected": "Offline", "tooltip": true, "on-click": "metmc-wifi open"
+  },
+  "pulseaudio": {
+    "format": "Volume {volume}%", "format-muted": "Muted",
+    "on-click": "pavucontrol", "on-click-right": "pactl set-sink-mute @DEFAULT_SINK@ toggle",
+    "scroll-step": 5
+  },
+  "battery": {
+    "format": "Battery {capacity}%", "format-charging": "Charging {capacity}%",
+    "format-icons": ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"],
+    "states": {"warning": 25, "critical": 10}, "tooltip": true
+  },
+  "tray": {"spacing": 10}
+}

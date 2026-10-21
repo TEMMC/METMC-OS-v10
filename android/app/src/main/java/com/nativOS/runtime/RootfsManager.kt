@@ -19,14 +19,14 @@ class RootfsManager(private val context: Context) {
         private const val BUNDLED_ROOTFS_ASSET = "rootfs/nativos-rootfs-arm64.tgz"
 
         val DISTRO_URLS = mapOf(
-            "ubuntu" to "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.4-base-arm64.tar.gz",
-            "alpine" to "https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/aarch64/alpine-minirootfs-3.20.0-aarch64.tar.gz"
+            "alpine" to "https://dl-cdn.alpinelinux.org/alpine/v3.22/releases/aarch64/alpine-minirootfs-3.22.0-aarch64.tar.gz",
+            "ubuntu" to "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.4-base-arm64.tar.gz"
         )
         val DISTRO_NAMES = mapOf(
-            "ubuntu" to "Ubuntu 24.04 Base",
-            "alpine" to "Alpine Linux 3.20"
+            "alpine" to "Alpine Linux 3.22 (bundled)",
+            "ubuntu" to "Ubuntu 24.04 Base"
         )
-        const val DEFAULT_DISTRO = "ubuntu"
+        const val DEFAULT_DISTRO = "alpine"
     }
 
     private val baseDir: File get() = context.filesDir
@@ -43,6 +43,17 @@ class RootfsManager(private val context: Context) {
     fun isRootfsReady(): Boolean =
         rootfsDir.exists() && File(rootfsDir, "bin").exists() &&
         File(rootfsDir, "usr").exists() && File(rootfsDir, "etc").exists()
+
+    /** The APK bundles Alpine ARM64; startup never bootstraps Linux over the network. */
+    fun isBundledDistroReady(): Boolean = isRootfsReady() && isAlpineRootfs()
+
+    private fun isAlpineRootfs(): Boolean {
+        val release = File(rootfsDir, "etc/os-release")
+        if (!release.exists()) return false
+        val contents = runCatching { release.readText() }.getOrDefault("")
+        return Regex("(?m)^ID=alpine$").containsMatchIn(contents) &&
+            Regex("(?m)^VERSION_ID=3\\.22(?:\\.|$)").containsMatchIn(contents)
+    }
 
     fun isSetupComplete(): Boolean = setupCompleteFile.exists()
 
@@ -103,128 +114,44 @@ class RootfsManager(private val context: Context) {
         }
     }
 
-    /** Ensure the lightweight Xfce X11 desktop runtime exists. */
-    fun ensureXfceRuntime(chrootManager: ChrootManager): Boolean {
-        val session = File(rootfsDir, "usr/bin/startxfce4")
-        val panel = File(rootfsDir, "usr/bin/xfce4-panel")
-        val wm = File(rootfsDir, "usr/bin/xfwm4")
-        if (session.exists() && panel.exists() && wm.exists()) return true
-
-        Log.e(TAG, "Xfce runtime is incomplete; offline startup will not install or repair packages")
-        return false
-    }
-
-    /** Keep a small terminal and essential diagnostics/networking tools available. */
-    fun ensureEssentialTools(chrootManager: ChrootManager): Boolean {
+    /** Verify the bundled Labwc desktop and compact basic-tool set without networking. */
+    fun ensureLabwcRuntime(chrootManager: ChrootManager): Boolean {
         val required = listOf(
-            "usr/bin/xfce4-terminal",
-            "usr/bin/thunar",
-            "usr/bin/curl",
-            "usr/bin/ip",
-            "usr/bin/ping"
+            "usr/bin/labwc", "usr/bin/waybar", "usr/bin/fuzzel",
+            "usr/bin/foot", "usr/bin/thunar", "sbin/apk",
+            "usr/bin/curl", "sbin/ip", "usr/bin/htop",
+            "usr/local/bin/nativOS-bridge", "usr/local/bin/metmc-settings", "usr/local/bin/metmc-wifi"
         )
         val missing = required.filterNot { File(rootfsDir, it).exists() }
-        if (missing.isEmpty()) {
-            Log.i(TAG, "Essential desktop and networking tools are present in the bundled rootfs")
-            return true
+        if (missing.isNotEmpty()) {
+            Log.w(TAG, "Offline Alpine/Labwc rootfs is missing: ${missing.joinToString()}")
+            return false
         }
-        Log.w(TAG, "Offline rootfs is missing required tools: ${missing.joinToString()}")
-        return false
+        Log.i(TAG, "Alpine Labwc desktop and compact tools are present")
+        return configureLabwcTouchLayout(chrootManager)
     }
 
-    /** Apply a compact dark hacker-style Xfce layout for touch use. */
-    /** Apply a compact dark hacker-style Xfce layout with touch-sized panel controls. */
-    fun configureXfceTouchLayout(chrootManager: ChrootManager): Boolean {
+    /** Seed the neon hacker theme and touch-first desktop config without downloads. */
+    fun configureLabwcTouchLayout(chrootManager: ChrootManager): Boolean {
         val result = chrootManager.execChroot(
             """
                 set -e
                 id metmc >/dev/null 2>&1 || exit 1
-                install -d -o metmc -g metmc /home/metmc/.config/xfce4/xfconf/xfce-perchannel-xml /home/metmc/.config/gtk-3.0 /home/metmc/.config/xfce4/terminal
-                cat > /home/metmc/.config/gtk-3.0/settings.ini <<'EOF'
-[Settings]
-gtk-theme-name=Adwaita-dark
-gtk-icon-theme-name=Adwaita
-gtk-font-name=Noto Sans 11
-gtk-cursor-theme-name=Adwaita
-gtk-toolbar-style=GTK_TOOLBAR_BOTH_HORIZ
-gtk-button-images=1
-gtk-menu-images=1
-EOF
-                cat > /home/metmc/.config/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml <<'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<channel name="xsettings" version="1.0">
-  <property name="Net" type="empty">
-    <property name="ThemeName" type="string" value="Adwaita-dark"/>
-    <property name="IconThemeName" type="string" value="Adwaita"/>
-  </property>
-  <property name="Gtk" type="empty">
-    <property name="FontName" type="string" value="Noto Sans 11"/>
-    <property name="CursorThemeName" type="string" value="Adwaita"/>
-  </property>
-</channel>
-EOF
-                cat > /home/metmc/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml <<'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<channel name="xfwm4" version="1.0">
-  <property name="general" type="empty">
-    <property name="theme" type="string" value="Adwaita-dark"/>
-    <property name="title_font" type="string" value="Noto Sans Bold 11"/>
-    <property name="button_layout" type="string" value="O|HMC"/>
-    <property name="use_compositing" type="bool" value="false"/>
-    <property name="workspace_count" type="int" value="1"/>
-  </property>
-</channel>
-EOF
-                cat > /home/metmc/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml <<'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<channel name="xfce4-panel" version="1.0">
-  <property name="panels" type="array">
-    <value type="int" value="1"/>
-    <property name="panel-1" type="empty">
-      <property name="position" type="string" value="p=6;x=0;y=0"/>
-      <property name="length" type="uint" value="100"/>
-      <property name="position-locked" type="bool" value="true"/>
-      <property name="size" type="uint" value="52"/>
-      <property name="icon-size" type="uint" value="28"/>
-      <property name="plugin-ids" type="array">
-        <value type="int" value="1"/>
-        <value type="int" value="2"/>
-        <value type="int" value="3"/>
-        <value type="int" value="4"/>
-      </property>
-    </property>
-  </property>
-  <property name="plugins" type="empty">
-    <property name="plugin-1" type="string" value="applicationsmenu"/>
-    <property name="plugin-2" type="string" value="tasklist"/>
-    <property name="plugin-3" type="string" value="separator"/>
-    <property name="plugin-4" type="string" value="clock"/>
-  </property>
-</channel>
-EOF
-                cat > /home/metmc/.config/xfce4/terminal/terminalrc <<'EOF'
-[Configuration]
-FontName=Monospace 11
-MiscAlwaysShowTabs=TRUE
-MiscMenubarDefault=FALSE
-MiscToolbarDefault=FALSE
-ColorForeground=#00ff88
-ColorBackground=#101418
-EOF
-                if ! grep -q 'METMC OS' /home/metmc/.bashrc 2>/dev/null; then
-                    cat >> /home/metmc/.bashrc <<'EOF'
-
-# METMC OS hacker-style prompt
-if [ -n "${'$'}PS1" ]; then
-  PS1='\[\e[1;32m\]metmc@METMC-OS\[\e[0m\]:\[\e[1;34m\]\w\[\e[0m\]${'$'} '
-fi
-EOF
+                mkdir -p /home/metmc/.config/labwc /home/metmc/.config/waybar /home/metmc/.config/fuzzel /home/metmc/.config/foot /home/metmc/.config/gtk-3.0
+                for item in labwc/rc.xml labwc/autostart labwc/menu.xml waybar/config.jsonc waybar/style.css fuzzel/fuzzel.ini foot/foot.ini gtk-3.0/settings.ini; do
+                    source="/etc/skel/.config/${'$'}item"
+                    target="/home/metmc/.config/${'$'}item"
+                    if [ ! -e "${'$'}target" ] && [ -f "${'$'}source" ]; then cp "${'$'}source" "${'$'}target"; fi
+                done
+                mkdir -p /home/metmc/.local/share/themes/METMC-Hacker/openbox-3
+                if [ -f /usr/share/themes/METMC-Hacker/openbox-3/themerc ]; then
+                    cp /usr/share/themes/METMC-Hacker/openbox-3/themerc /home/metmc/.local/share/themes/METMC-Hacker/openbox-3/themerc
                 fi
-                chown -R metmc:metmc /home/metmc/.config /home/metmc/.bashrc
+                chown -R metmc:metmc /home/metmc/.config /home/metmc/.local
             """.trimIndent()
         )
-        if (result == 0) Log.i(TAG, "Xfce touch layout configured")
-        else Log.w(TAG, "Xfce layout setup failed (exit ${'$'}result)")
+        if (result == 0) Log.i(TAG, "Labwc hacker theme configured")
+        else Log.w(TAG, "Labwc theme setup failed (exit $result)")
         return result == 0
     }
 
@@ -255,6 +182,12 @@ EOF
         distro: String = DEFAULT_DISTRO,
         onProgress: (progress: Double, status: String) -> Unit
     ) {
+        if (distro == "alpine") {
+            if (!stageBundledRootfs(onProgress)) {
+                onProgress(-1.0, "Bundled Alpine rootfs is missing from this APK")
+            }
+            return
+        }
         try {
             val url = DISTRO_URLS[distro] ?: throw IllegalArgumentException("Unknown distro: $distro")
             val distroName = DISTRO_NAMES[distro] ?: distro
@@ -320,6 +253,7 @@ EOF
     }
 
     fun extractRootfs(onProgress: (progress: Double, status: String) -> Unit) {
+        var previousRootfs: File? = null
         try {
             val distro = getInstalledDistro().ifEmpty { DEFAULT_DISTRO }
             val tarball = File(downloadDir, "${distro}-rootfs.tar.gz")
@@ -327,12 +261,23 @@ EOF
                 onProgress(-1.0, "Rootfs tarball not found.")
                 return
             }
-            if (rootfsDir.exists()) rootfsDir.deleteRecursively()
-            rootfsDir.mkdirs()
+
+            // Keep the previous installation until the new rootfs validates.
+            // This allows a Linux distribution migration without immediately
+            // destroying the old system if extraction or validation fails.
+            if (rootfsDir.exists()) {
+                val backup = File(baseDir, "rootfs-previous-${System.currentTimeMillis()}")
+                if (!rootfsDir.renameTo(backup)) {
+                    throw IllegalStateException("Could not safely move the previous Linux rootfs")
+                }
+                previousRootfs = backup
+            }
+            if (!rootfsDir.mkdirs() && !rootfsDir.isDirectory) {
+                throw IllegalStateException("Could not create the new Linux rootfs directory")
+            }
 
             onProgress(0.1, "Extracting Linux filesystem...")
             Log.i(TAG, "Extracting rootfs from ${tarball.absolutePath}")
-
             val process = ProcessBuilder("tar", "zxf", tarball.absolutePath, "-C", rootfsDir.absolutePath)
                 .redirectErrorStream(true).start()
             val reader = process.inputStream.bufferedReader()
@@ -345,16 +290,49 @@ EOF
                 if (lineCount % 500 == 0) onProgress(0.1 + (lineCount % 5000) / 10000.0, "Extracting files...")
             }
             val exitCode = process.waitFor()
-            val binDir = File(rootfsDir, "bin")
-            if (exitCode != 0 && (!binDir.exists() || binDir.list()?.isEmpty() == true))
-                throw RuntimeException("tar failed (code $exitCode): $lastLine")
+            if (exitCode != 0) throw RuntimeException("tar failed (code $exitCode): $lastLine")
 
             onProgress(0.7, "Configuring Linux environment...")
             configureRootfs()
+            if (distro == "alpine" && !isAlpineRootfs()) {
+                throw IllegalStateException("Bundled rootfs is not Alpine Linux 3.22")
+            }
             setupCompleteFile.writeText("done")
+
+            // Preserve the user's Linux home directory when replacing an older distro.
+            previousRootfs?.let { backup ->
+                val oldHome = File(backup, "home/metmc")
+                if (oldHome.exists()) {
+                    val newHome = File(rootfsDir, "home/metmc")
+                    if (newHome.exists() && !newHome.deleteRecursively()) {
+                        throw IllegalStateException("Could not prepare the new metmc home directory")
+                    }
+                    newHome.parentFile?.mkdirs()
+                    if (!oldHome.renameTo(newHome)) {
+                        oldHome.copyRecursively(newHome, overwrite = true)
+                        if (!oldHome.deleteRecursively()) {
+                            Log.w(TAG, "Old metmc home remains in the previous-rootfs backup")
+                        }
+                    }
+                }
+            }
+
+            previousRootfs?.let { backup ->
+                if (backup.exists() && !backup.deleteRecursively()) {
+                    Log.w(TAG, "Could not remove previous rootfs backup: ${backup.absolutePath}")
+                }
+            }
             tarball.delete()
             onProgress(1.0, "Linux filesystem ready")
         } catch (e: Exception) {
+            previousRootfs?.let { backup ->
+                if (backup.exists()) {
+                    rootfsDir.deleteRecursively()
+                    if (!backup.renameTo(rootfsDir)) {
+                        Log.e(TAG, "Failed to restore previous rootfs from ${backup.absolutePath}")
+                    }
+                }
+            }
             Log.e(TAG, "Extraction failed: ${e.message}", e)
             onProgress(-1.0, "Extraction failed: ${e.message}")
         }
@@ -365,45 +343,47 @@ EOF
             parentFile?.mkdirs()
             writeText("nameserver 8.8.8.8\nnameserver 8.8.4.4\nnameserver 1.1.1.1\n")
         }
-        File(rootfsDir, "etc/apt/apt.conf.d").mkdirs()
-        File(rootfsDir, "etc/apt/apt.conf.d/99-disable-sandbox").writeText("APT::Sandbox::User \"root\";\n")
-        File(rootfsDir, "etc/hostname").writeText("nativOS\n")
+        File(rootfsDir, "etc/hostname").writeText("metmc-os\n")
         File(rootfsDir, "etc/hosts").apply {
             parentFile?.mkdirs()
-            writeText("127.0.0.1 localhost\n127.0.0.1 nativOS\n::1 localhost\n")
+            writeText("127.0.0.1 localhost\n127.0.1.1 metmc-os\n::1 localhost\n")
         }
-        File(rootfsDir, "etc/profile.d/nativOS.sh").apply {
+        File(rootfsDir, "etc/profile.d/nativOS.sh").delete()
+        File(rootfsDir, "etc/profile.d/metmc-os.sh").apply {
             parentFile?.mkdirs()
-            writeText("#!/bin/bash\nexport DISPLAY=:0\nexport XDG_RUNTIME_DIR=/tmp/runtime-root\nmkdir -p /tmp/runtime-root 2>/dev/null\n")
+            writeText("#!/bin/bash\nexport DISPLAY=:0\n")
         }
-        File(rootfsDir, "etc/sudoers.d/nativOS").apply {
+        File(rootfsDir, "etc/sudoers.d/nativOS").delete()
+        File(rootfsDir, "etc/sudoers.d/metmc").apply {
             parentFile?.mkdirs()
-            writeText("Defaults !requiretty\nroot ALL=(ALL) NOPASSWD: ALL\n")
+            writeText("Defaults !requiretty\nmetmc ALL=(ALL:ALL) NOPASSWD: ALL\n")
         }
-        listOf("tmp", "tmp/runtime-root", "run", "var/run", "dev/shm").forEach { File(rootfsDir, it).mkdirs() }
+        listOf("tmp", "tmp/runtime-root", "tmp/runtime-metmc", "run", "var/run", "dev/shm").forEach { File(rootfsDir, it).mkdirs() }
     }
 
-    fun installXfceDesktop(chrootManager: ChrootManager, onProgress: (Double, String) -> Unit) {
+    /** User-initiated repair/install path; never called during boot. */
+    fun installLabwcDesktop(chrootManager: ChrootManager, onProgress: (Double, String) -> Unit) {
         try {
-            onProgress(0.0, "Repairing package database...")
-            chrootManager.execChroot("rm -f /var/lib/apt/lists/lock /var/cache/apt/archives/lock /var/lib/dpkg/lock*; dpkg --configure -a 2>/dev/null || true")
-            onProgress(0.05, "Updating package lists...")
-            if (chrootManager.execChroot("apt-get update") != 0) throw IllegalStateException("Could not update package lists")
-            onProgress(0.18, "Installing lightweight Xfce desktop...")
-            val desktopResult = chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends xfce4-session xfce4-panel xfwm4 xfce4-settings xfce4-terminal thunar xfce4-whiskermenu-plugin xfce4-pulseaudio-plugin dbus dbus-x11 policykit-1 x11-xserver-utils adwaita-icon-theme fonts-noto-core fonts-noto-color-emoji")
-            if (desktopResult != 0) throw IllegalStateException("Xfce package installation failed")
-            onProgress(0.45, "Installing compact hacker and networking tools...")
-            val toolsResult = chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends nano less htop file procps psmisc ca-certificates curl wget git openssh-client iproute2 iputils-ping net-tools dnsutils traceroute netcat-openbsd nmap whois")
+            onProgress(0.0, "Refreshing Alpine package index (user requested)...")
+            if (chrootManager.execChroot("apk update") != 0) throw IllegalStateException("Could not refresh Alpine package index")
+            onProgress(0.25, "Installing Labwc desktop packages...")
+            val desktopResult = chrootManager.execChroot(
+                "apk add bash sudo util-linux-login dbus dbus-x11 labwc waybar fuzzel foot thunar xwayland swaybg wl-clipboard font-noto font-noto-emoji adwaita-icon-theme"
+            )
+            if (desktopResult != 0) throw IllegalStateException("Labwc package installation failed")
+            onProgress(0.55, "Installing compact hacker and networking tools...")
+            val toolsResult = chrootManager.execChroot(
+                "apk add nano less htop file procps psmisc ca-certificates curl wget git openssh-client iproute2 iputils bind-tools traceroute netcat-openbsd nmap whois jq python3 tmux rsync tar gzip unzip zip tree util-linux util-linux-login coreutils findutils grep sed gawk"
+            )
             if (toolsResult != 0) Log.w(TAG, "Some optional diagnostics packages could not be installed")
-            onProgress(0.72, "Applying touch-friendly dark theme and taskbar...")
-            configureXfceTouchLayout(chrootManager)
-            onProgress(0.88, "Preparing non-root desktop user...")
+            onProgress(0.78, "Applying hacker theme and touch taskbar...")
+            configureLabwcTouchLayout(chrootManager)
+            onProgress(0.9, "Preparing non-root desktop user...")
             chrootManager.ensureDefaultLinuxUser()
-            onProgress(1.0, "METMC OS Xfce desktop ready")
-            Log.i(TAG, "Xfce desktop provisioning complete")
+            onProgress(1.0, "METMC OS Alpine Labwc desktop ready")
         } catch (error: Throwable) {
-            Log.e(TAG, "Xfce desktop installation failed", error)
-            onProgress(-1.0, error.message ?: "Xfce installation failed")
+            Log.e(TAG, "Labwc desktop installation failed", error)
+            onProgress(-1.0, error.message ?: "Labwc installation failed")
         }
     }
 
