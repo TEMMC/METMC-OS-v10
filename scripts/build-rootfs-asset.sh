@@ -18,7 +18,7 @@ if ! "$tar_bin" --version 2>/dev/null | grep -q 'GNU tar'; then
     exit 2
 fi
 
-for executable in usr/bin/bash usr/bin/labwc usr/bin/waybar usr/bin/fuzzel usr/bin/foot usr/bin/thunar sbin/apk; do
+for executable in bin/bash usr/bin/labwc usr/bin/waybar usr/bin/fuzzel usr/bin/foot usr/bin/thunar sbin/apk; do
     test -x "$rootfs/$executable" || { echo "Missing Alpine runtime component: $executable" >&2; exit 1; }
 done
 
