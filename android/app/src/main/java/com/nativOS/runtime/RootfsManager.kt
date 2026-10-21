@@ -16,7 +16,7 @@ class RootfsManager(private val context: Context) {
     companion object {
         private const val TAG = "NativOS.RootfsManager"
         private const val BUFFER_SIZE = 8192
-        private const val BUNDLED_ROOTFS_ASSET = "rootfs/nativos-rootfs-arm64.tgz"
+        private const val BUNDLED_ROOTFS_ASSET = "rootfs/nativos-rootfs-arm64.tar"
 
         val DISTRO_URLS = mapOf(
             "alpine" to "https://dl-cdn.alpinelinux.org/alpine/v3.22/releases/aarch64/alpine-minirootfs-3.22.0-aarch64.tar.gz",
@@ -69,8 +69,8 @@ class RootfsManager(private val context: Context) {
 
         return try {
             downloadDir.mkdirs()
-            val target = File(downloadDir, "$DEFAULT_DISTRO-rootfs.tar.gz")
-            val temporary = File(downloadDir, "$DEFAULT_DISTRO-rootfs.tar.gz.part")
+            val target = File(downloadDir, "$DEFAULT_DISTRO-rootfs.tar")
+            val temporary = File(downloadDir, "$DEFAULT_DISTRO-rootfs.tar.part")
             onProgress(0.0, "Preparing bundled Linux system...")
             var copied = 0L
             var lastReportedPercent = -1
@@ -108,7 +108,7 @@ class RootfsManager(private val context: Context) {
             Log.i(TAG, "Staged bundled rootfs (${copied / (1024 * 1024)} MiB)")
             true
         } catch (error: Throwable) {
-            File(downloadDir, "$DEFAULT_DISTRO-rootfs.tar.gz.part").delete()
+            File(downloadDir, "$DEFAULT_DISTRO-rootfs.tar.part").delete()
             Log.e(TAG, "Could not stage bundled rootfs", error)
             false
         }
@@ -256,7 +256,7 @@ class RootfsManager(private val context: Context) {
         var previousRootfs: File? = null
         try {
             val distro = getInstalledDistro().ifEmpty { DEFAULT_DISTRO }
-            val tarball = File(downloadDir, "${distro}-rootfs.tar.gz")
+            val tarball = File(downloadDir, if (distro == "alpine") "${distro}-rootfs.tar" else "${distro}-rootfs.tar.gz")
             if (!tarball.exists()) {
                 onProgress(-1.0, "Rootfs tarball not found.")
                 return
@@ -278,7 +278,8 @@ class RootfsManager(private val context: Context) {
 
             onProgress(0.1, "Extracting Linux filesystem...")
             Log.i(TAG, "Extracting rootfs from ${tarball.absolutePath}")
-            val process = ProcessBuilder("tar", "zxf", tarball.absolutePath, "-C", rootfsDir.absolutePath)
+            val tarArgs = if (distro == "alpine") "xf" else "zxf"
+            val process = ProcessBuilder("tar", tarArgs, tarball.absolutePath, "-C", rootfsDir.absolutePath)
                 .redirectErrorStream(true).start()
             val reader = process.inputStream.bufferedReader()
             var line: String?
