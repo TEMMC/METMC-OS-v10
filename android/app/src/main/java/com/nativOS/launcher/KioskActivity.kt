@@ -674,10 +674,10 @@ class KioskActivity : Activity() {
             }
             updateOverlay(0.05, "Root access confirmed", "")
 
-            // Step 2: Ensure the bundled Debian 13 Trixie rootfs is installed.
-            // Existing Ubuntu installs are migrated once, with /home/metmc preserved.
+            // Step 2: Ensure the bundled Alpine ARM64 rootfs is installed.
+            // Existing Linux installations are migrated once, preserving /home/metmc where possible.
             if (rootfsManager.isRootfsReady() && !rootfsManager.isBundledDistroReady()) {
-                updateOverlay(0.05, "Switching Linux system to Debian 13...", "One-time migration; preserving /home/metmc")
+                updateOverlay(0.05, "Switching Linux system to Alpine Linux...", "One-time migration; preserving /home/metmc")
                 chrootManager.stopSession()
             }
             if (!rootfsManager.isRootfsReady() || !rootfsManager.isBundledDistroReady()) {
@@ -709,7 +709,7 @@ class KioskActivity : Activity() {
             }
 
             if (!rootfsManager.isBundledDistroReady()) {
-                updateOverlay(-1.0, "ERROR: Debian rootfs setup failed", "The Debian 13 Trixie Linux filesystem could not be prepared")
+                updateOverlay(-1.0, "ERROR: Alpine rootfs setup failed", "The Alpine Linux filesystem could not be prepared")
                 return
             }
 
@@ -719,25 +719,25 @@ class KioskActivity : Activity() {
             chrootManager.bindX11Socket()
             AndroidAppIntegration.sync(this)
 
-            // Step 4: Validate the offline Xfce windowed desktop. Never run apt or
-            // configure online repositories during startup; the bundled rootfs must
-            // already contain the complete desktop and essential tools.
+            // Step 4: Validate the offline Labwc Wayland desktop. Never run apk or
+            // install packages during startup; the bundled rootfs must contain
+            // the complete desktop and essential tools.
             updateOverlay(0.74, "Checking offline desktop...", "")
-            if (!chrootManager.isXfceInstalled()) {
+            if (!chrootManager.isLabwcInstalled()) {
                 updateOverlay(
                     -1.0,
                     "Offline desktop components missing",
-                    "The bundled Linux rootfs is missing Xfce, xfwm4, or its panel. Rebuild the APK with the windowed desktop; boot will not install packages."
+                    "The bundled Alpine rootfs is missing Labwc, Waybar or Xwayland. Rebuild the APK with the windowed desktop; boot will not install packages."
                 )
                 return
             }
 
             updateOverlay(0.95, "Validating local desktop components...", "No downloads or updates")
-            if (!rootfsManager.ensureXfceRuntime(chrootManager)) {
+            if (!rootfsManager.ensureLabwcRuntime(chrootManager)) {
                 updateOverlay(
                     -1.0,
                     "Offline desktop components missing",
-                    "Xfce runtime is incomplete in the bundled rootfs. Rebuild the APK with xfwm4, the panel, and terminal included."
+                    "Labwc runtime is incomplete in the bundled rootfs. Rebuild the APK with Labwc, Waybar, Xwayland and the basic tools included."
                 )
                 return
             }
@@ -851,16 +851,16 @@ class KioskActivity : Activity() {
             val screenHeight = lorieView.height
             Log.i(TAG, "Detected screen: ${screenWidth}x${screenHeight}")
 
-            chrootManager.startXfceSession(screenWidth, screenHeight)
-            updateOverlay(0.98, "Starting Xfce desktop...", "Starting window manager and taskbar")
-            if (!chrootManager.awaitXfceReady()) {
-                throw IllegalStateException("Xfce window manager and taskbar did not become ready")
+            chrootManager.startLabwcSession(screenWidth, screenHeight)
+            updateOverlay(0.98, "Starting Labwc Wayland desktop...", "Starting window manager and taskbar")
+            if (!chrootManager.awaitLabwcReady()) {
+                throw IllegalStateException("Labwc compositor and taskbar did not become ready")
             }
             runOnUiThread {
                 overlayLayout?.visibility = View.GONE
                 keyboardButton?.visibility = View.VISIBLE
                 keyboardButton?.bringToFront()
-                // Keep the Xfce taskbar and Linux windows unobstructed.
+                // Keep the METMC taskbar and Linux windows unobstructed.
                 navigationHandle?.visibility = View.GONE
             }
 
