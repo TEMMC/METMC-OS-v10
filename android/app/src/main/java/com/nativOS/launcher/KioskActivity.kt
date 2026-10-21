@@ -361,7 +361,7 @@ class KioskActivity : Activity() {
         // Xfce provides a Super-key launcher. Keep a small phone-friendly handle
         // to invoke it with the Super_L shortcut.
         navigationHandle = FrameLayout(this).apply {
-            contentDescription = "Open Xfce app launcher"
+            contentDescription = "Open Linux app launcher"
             visibility = View.GONE
             isClickable = true
             isFocusable = true
@@ -719,11 +719,11 @@ class KioskActivity : Activity() {
             chrootManager.bindX11Socket()
             AndroidAppIntegration.sync(this)
 
-            // Step 4: Validate preinstalled desktop components. Never run apt or
+            // Step 4: Validate the lean Phosh desktop. Never run apt or
             // configure online repositories during startup; the bundled rootfs must
             // already contain the complete desktop and essential tools.
             updateOverlay(0.74, "Checking offline desktop...", "")
-            if (!chrootManager.isXfceInstalled()) {
+            if (!chrootManager.isPhoshInstalled()) {
                 updateOverlay(
                     -1.0,
                     "Offline desktop components missing",
@@ -733,18 +733,14 @@ class KioskActivity : Activity() {
             }
 
             updateOverlay(0.95, "Validating local desktop components...", "No downloads or updates")
-            if (!rootfsManager.ensureXfceRuntime(chrootManager)) {
+            if (!rootfsManager.ensurePhoshRuntime(chrootManager)) {
                 updateOverlay(
                     -1.0,
                     "Offline desktop components missing",
-                    "Xfce is incomplete in the bundled rootfs. Rebuild the APK with all desktop packages included."
+                    "Phosh runtime is incomplete in the bundled rootfs. Rebuild the APK with the minimal Phosh packages included."
                 )
                 return
             }
-
-            // Keep startup limited to local configuration and launch operations.
-            updateOverlay(0.95, "Preparing touch-friendly desktop...", "Offline startup")
-            rootfsManager.configureXfceTouchLayout(chrootManager)
 
             // Step 5: Attach the display surface to the bundled X11 service process.
             updateOverlay(0.95, "Getting GUI ready...", "Preparing your desktop")
@@ -855,16 +851,16 @@ class KioskActivity : Activity() {
             val screenHeight = lorieView.height
             Log.i(TAG, "Detected screen: ${screenWidth}x${screenHeight}")
 
-            chrootManager.startXfceSession(screenWidth, screenHeight)
-            updateOverlay(0.98, "Starting Linux desktop...", "Waiting for Xfce")
-            if (!chrootManager.awaitXfceReady()) {
-                throw IllegalStateException("Xfce did not become ready")
+            chrootManager.startPhoshSession(screenWidth, screenHeight)
+            updateOverlay(0.98, "Starting Phosh...", "Waiting for mobile shell")
+            if (!chrootManager.awaitPhoshReady()) {
+                throw IllegalStateException("Phosh/Phoc/Xwayland did not become ready")
             }
             runOnUiThread {
                 overlayLayout?.visibility = View.GONE
                 keyboardButton?.visibility = View.VISIBLE
                 keyboardButton?.bringToFront()
-                // Xfce has its own panel; keep the extra Android navigation handle hidden.
+                // Phosh owns the mobile shell; keep the extra Android navigation handle hidden.
                 navigationHandle?.visibility = View.GONE
             }
 
