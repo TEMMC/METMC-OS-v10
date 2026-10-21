@@ -1,10 +1,9 @@
 name: Build METMC OS v10 APK
 
-# METMC OS V10 Phosh mobile-shell experiment; build and validate before any release.
+# METMC OS V10 Debian Trixie + Phosh mobile-shell experiment; validate before release.
 # Do not publish a release until the Phosh-first build and fallback pass validation.
 # Release publishing is gated on the commit message so only verified builds are published.
-# Phosh 0.38.0 release pin: https://github.com/PhoshMobi/phosh/commit/db3a4cb8cba9e9bb19d1e905a487e72ffee5da26
-# Phoc 0.38.0 release pin: https://github.com/PhoshMobi/phoc/commit/aca1b40c9e78369f583c429439d0549ff79d44b6
+# Debian 13 Trixie supplies the matching packaged Phosh/Phoc 0.46 series for ARM64.
 # Phosh is attempted first in a nested Wayland/X11 session; Xfce remains a safe fallback.
 
 on:
@@ -254,13 +253,13 @@ jobs:
             - Keyboard no longer opens on ordinary taps near the bottom of the desktop; use a three-finger tap to toggle it.
             - Improved Android/Linux clipboard text synchronization, including mixed plain-text and HTML clipboard items.
             - Removed the legacy root-shell redirect that could interfere with opening the terminal; Linux root password defaults to `metmc`.
-            - Attempts the pinned Phosh 0.38.0 mobile shell through Phoc's nested Wayland/X11 backend as the unprivileged Linux user `metmc`; falls back to Xfce/Xfwm4 if the Phosh session exits. This nested path is experimental and requires device testing.
+            - Attempts Debian Trixie's Phosh/Phoc mobile shell through Phoc's nested Wayland/X11 backend as the unprivileged Linux user `metmc`; falls back to Xfce/Xfwm4 if the Phosh session exits. This nested path is experimental and requires device testing.
             - Retains METMC launchers for Bluetooth, display, sound, location, and Android system settings; Android remains the owner of physical radios.
             - Uses Xfce Terminal and Thunar, with a touch-sized taskbar, large panel icons, movable/resizable windows, and minimized-window task buttons.
             - Adds BlueZ/rfkill diagnostic utilities without starting a competing Linux radio manager.
             - This is an alpha build. Phosh's nested compositor path, touch handling, virtual keyboard, GPU behavior, RAM use, and first-boot installation time still need testing on the A04e.
             - APK is signed with the METMC OS V10 release keystore; this does not imply Play Store certification.
-            - Package operations require root access, a provisioned Linux rootfs, and an internet connection. Review the operation log and close the Linux desktop before upgrades.
+            - The bundled rootfs is Debian 13 Trixie ARM64; boot and first launch require no package downloads. Manual package operations require root access, a provisioned Linux rootfs, and an internet connection. Review the operation log and close the Linux desktop before upgrades.
           files: |
             METMC-OS-V10.7.0-arm64.apk
             METMC-OS-V10.7.0-arm64.apk.sha256
