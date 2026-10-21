@@ -1,10 +1,10 @@
 name: Build METMC OS v10 APK
 
-# METMC OS V10 Debian Trixie + lightweight Xfce multi-window desktop; validate before release.
-# Keep the bundled rootfs lean; do not publish until the Xfce windowed-desktop build passes device validation.
+# METMC OS V10 Alpine ARM64 + Labwc Wayland/Xwayland hacker desktop; validate before release.
+# Keep the bundled Alpine rootfs lean; do not publish until the windowed desktop build passes device validation.
 # Release publishing is gated on the commit message so only verified builds are published.
-# Use a minimal X11 Xfce session: xfwm4 provides overlapping windows and the panel provides a taskbar.
-# The Android-hosted display is already X11, so no nested Phosh/Phoc compositor or Xwayland is needed.
+# Labwc provides stacked Wayland windows; Waybar provides the touch-sized taskbar.
+# Labwc is nested on the Android-hosted X11 display; Xwayland serves legacy Linux X11 apps.
 
 on:
   workflow_dispatch:
@@ -65,19 +65,19 @@ jobs:
       - name: Install Android SDK packages
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
-      - name: Build Debian 13 Trixie ARM64 rootfs offline-ready
+      - name: Build Alpine 3.22 ARM64 Labwc rootfs offline-ready
         shell: bash
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y debootstrap qemu-user-static binfmt-support
+          sudo apt-get install -y qemu-user-static binfmt-support curl
           sudo update-binfmts --enable qemu-aarch64 || true
 
-          ROOTFS="$RUNNER_TEMP/metmc-rootfs"
+          ROOTFS="$RUNNER_TEMP/metmc-alpine-rootfs"
           mkdir -p "$ROOTFS"
-          sudo debootstrap --arch=arm64 --foreign --variant=minbase \
-            --include=ca-certificates,apt \
-            trixie "$ROOTFS" https://deb.debian.org/debian
+          curl -fL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/alpine-minirootfs.tar.gz" \
+            "https://dl-cdn.alpinelinux.org/alpine/v3.22/releases/aarch64/alpine-minirootfs-3.22.0-aarch64.tar.gz"
+          sudo tar -xzf "$RUNNER_TEMP/alpine-minirootfs.tar.gz" -C "$ROOTFS"
           sudo cp /usr/bin/qemu-aarch64-static "$ROOTFS/usr/bin/qemu-aarch64-static"
 
           cleanup_mounts() {
@@ -87,61 +87,53 @@ jobs:
             sudo umount "$ROOTFS/dev" 2>/dev/null || true
           }
           trap cleanup_mounts EXIT
-          sudo mkdir -p "$ROOTFS/dev/pts" "$ROOTFS/proc" "$ROOTFS/sys"
+          sudo mkdir -p "$ROOTFS/dev/pts" "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/etc/apk"
           sudo mount --bind /dev "$ROOTFS/dev"
           sudo mount --bind /dev/pts "$ROOTFS/dev/pts"
           sudo mount -t proc proc "$ROOTFS/proc"
           sudo mount --bind /sys "$ROOTFS/sys"
 
-          sudo chroot "$ROOTFS" /debootstrap/debootstrap --second-stage
-          sudo chroot "$ROOTFS" /bin/bash -eu -c '
-            rm -f /etc/apt/sources.list.d/debian.sources
-            cat > /etc/apt/sources.list <<EOF
-          deb https://deb.debian.org/debian trixie main
-          deb https://deb.debian.org/debian trixie-updates main
-          deb https://security.debian.org/debian-security trixie-security main
+          sudo tee "$ROOTFS/etc/apk/repositories" >/dev/null <<'EOF'
+          https://dl-cdn.alpinelinux.org/alpine/v3.22/main
+          https://dl-cdn.alpinelinux.org/alpine/v3.22/community
           EOF
-            printf "metmc-os\n" > /etc/hostname
-            printf "127.0.0.1 localhost\n127.0.1.1 metmc-os\n" > /etc/hosts
-            rm -f /etc/resolv.conf
+          sudo chroot "$ROOTFS" /sbin/apk update
+          sudo chroot "$ROOTFS" /sbin/apk add --no-cache \
+            bash sudo shadow dbus dbus-x11 labwc waybar fuzzel foot thunar xwayland swaybg wl-clipboard \
+            nano less htop file procps psmisc ca-certificates curl wget git openssh-client \
+            iproute2 iputils bind-tools traceroute netcat-openbsd nmap whois jq python3 tmux rsync \
+            tar gzip unzip zip tree util-linux coreutils findutils grep sed gawk \
+            font-noto font-noto-emoji adwaita-icon-theme hicolor-icon-theme
+
+          # Copy the desktop design into the image; first boot must not fetch or install anything.
+          sudo mkdir -p "$ROOTFS/etc/skel" "$ROOTFS/usr/share/themes/METMC-Hacker/openbox-3" "$ROOTFS/usr/share/metmc"
+          sudo cp -a linux/config/skel/. "$ROOTFS/etc/skel/"
+          sudo cp linux/config/labwc/theme/METMC-Hacker/openbox-3/themerc "$ROOTFS/usr/share/themes/METMC-Hacker/openbox-3/themerc"
+          sudo chmod 0755 "$ROOTFS/etc/skel/.config/labwc/autostart"
+          sudo chroot "$ROOTFS" /bin/sh -eu -c '
             printf "nameserver 1.1.1.1\nnameserver 8.8.8.8\n" > /etc/resolv.conf
-          '
-
-          # All downloads and package installation happen on the GitHub runner.
-          # The finished APK embeds this complete Debian rootfs; Android startup
-          # never performs apt operations or downloads the rootfs.
-          sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive apt-get update
-          sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends \
-            xfce4-session xfce4-panel xfwm4 xfce4-settings xfce4-terminal xfce4-appfinder xfce4-whiskermenu-plugin \
-            dbus dbus-x11 dbus-user-session polkitd pkexec thunar adwaita-icon-theme fonts-noto-core fonts-noto-color-emoji \
-            sudo ca-certificates curl iproute2 iputils-ping procps psmisc
-
-          sudo chroot "$ROOTFS" /bin/bash -eu -c '
-            id -u metmc >/dev/null 2>&1 || useradd --create-home --shell /bin/bash metmc
-            usermod -aG sudo metmc
-            install -d -m 0755 /etc/sudoers.d
+            printf "metmc-os\n" > /etc/hostname
+            printf "127.0.0.1 localhost\n127.0.1.1 metmc-os\n::1 localhost\n" > /etc/hosts
+            addgroup -S metmc 2>/dev/null || true
+            addgroup -S wheel 2>/dev/null || true
+            adduser -D -s /bin/bash -G wheel metmc 2>/dev/null || true
+            mkdir -p /etc/sudoers.d /home/metmc/.config
             printf "%s\n" "Defaults !requiretty" "metmc ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/metmc
             chmod 0440 /etc/sudoers.d/metmc
             passwd -l root >/dev/null 2>&1 || true
-            command -v sudo >/dev/null
-            test -x /usr/bin/startxfce4
-            test -x /usr/bin/xfwm4
-            test -x /usr/bin/xfce4-panel
-            test -x /usr/bin/xfce4-terminal
-            test -x /usr/bin/thunar
-            test -x /usr/bin/curl
-            test -x /usr/bin/ip
-            test -x /usr/bin/ping
-            apt-get purge -y flatpak flatpak-xdg-utils flatpak-builder gnome-software-plugin-flatpak phosh phoc phosh-osk-stub xwayland xfce4-pulseaudio-plugin gcc libxcb1-dev git wget nmap whois traceroute dnsutils net-tools netcat-openbsd openssh-client locales || true
-            rm -rf /root/.local/share/flatpak /home/metmc/.local/share/flatpak /var/lib/flatpak /etc/flatpak /usr/share/flatpak
-            apt-get autoremove --purge -y
-            apt-get clean
-            rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /var/cache/debconf/*
+            chown -R metmc:metmc /home/metmc
+            chmod 0750 /home/metmc
+            mkdir -p /run/dbus /run/metmc /tmp/runtime-metmc /dev/shm /usr/share/metmc
+            chmod 1777 /tmp
+            chmod 0700 /tmp/runtime-metmc
+            printf "METMC OS V10 Alpine Labwc\n" > /etc/issue
+            printf "distribution=Alpine Linux 3.22\ndesktop=Labwc Wayland + Xwayland\n" > /usr/share/metmc/system-profile.txt
+            # Keep rootfs startup self-contained; update operations are user initiated.
+            rm -f /usr/bin/qemu-aarch64-static
           '
 
           cleanup_mounts
           trap - EXIT
-          sudo rm -f "$ROOTFS/usr/bin/qemu-aarch64-static"
           sudo chown -R "$USER":"$USER" "$ROOTFS"
           scripts/build-rootfs-asset.sh "$ROOTFS" android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz
           cd android/app/src/main/assets/rootfs
