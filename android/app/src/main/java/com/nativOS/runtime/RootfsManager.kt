@@ -118,7 +118,7 @@ class RootfsManager(private val context: Context) {
     fun ensureLabwcRuntime(chrootManager: ChrootManager): Boolean {
         val required = listOf(
             "usr/bin/labwc", "usr/bin/waybar", "usr/bin/fuzzel",
-            "usr/bin/foot", "usr/bin/thunar", "usr/bin/apk",
+            "usr/bin/foot", "usr/bin/thunar", "sbin/apk",
             "usr/bin/curl", "sbin/ip", "usr/bin/htop"
         )
         val missing = required.filterNot { File(rootfsDir, it).exists() }
@@ -372,7 +372,7 @@ class RootfsManager(private val context: Context) {
             if (desktopResult != 0) throw IllegalStateException("Labwc package installation failed")
             onProgress(0.55, "Installing compact hacker and networking tools...")
             val toolsResult = chrootManager.execChroot(
-                "apk add nano less htop file procps psmisc ca-certificates curl wget git openssh-client iproute2 iputils bind-tools traceroute netcat-openbsd nmap whois jq python3 tmux rsync tar gzip unzip zip tree util-linux coreutils findutils grep sed gawk"
+                "apk add nano less htop file procps psmisc ca-certificates curl wget git openssh-client iproute2 iputils bind-tools traceroute netcat-openbsd nmap whois jq python3 tmux rsync tar gzip unzip zip tree util-linux util-linux-login coreutils findutils grep sed gawk"
             )
             if (toolsResult != 0) Log.w(TAG, "Some optional diagnostics packages could not be installed")
             onProgress(0.78, "Applying hacker theme and touch taskbar...")
