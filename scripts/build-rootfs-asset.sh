@@ -22,10 +22,10 @@ if ! "$tar_bin" --version 2>/dev/null | grep -q 'GNU tar'; then
     exit 2
 fi
 
-test -x "$rootfs/usr/bin/phosh-session"
-test -x "$rootfs/usr/bin/phoc"
-test -x "$rootfs/usr/bin/Xwayland"
-test -x "$rootfs/usr/bin/foot"
+test -x "$rootfs/usr/bin/startxfce4"
+test -x "$rootfs/usr/bin/xfwm4"
+test -x "$rootfs/usr/bin/xfce4-panel"
+test -x "$rootfs/usr/bin/xfce4-terminal"
 
 staging=$(mktemp -d "${TMPDIR:-/tmp}/nativos-rootfs.XXXXXX")
 trap 'rm -rf "$staging"' EXIT HUP INT TERM
