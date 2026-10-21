@@ -6,11 +6,7 @@ import java.io.File
 import java.security.MessageDigest
 
 /**
- * Manages the chroot Debian filesystem: mounting, session lifecycle,
- * and command execution inside the chroot.
- *
- * Adapted from DroidDesk's ChrootRuntime for NativOS —
- * focused on Xfce's X11 session inside the Android-hosted X server.
+ * Manages the Alpine Linux chroot: mounting, Labwc session lifecycle, and command execution.\n * Labwc runs nested on METMC's Android-hosted X11 display.
  */
 class ChrootManager(private val context: Context) {
 
@@ -83,11 +79,12 @@ class ChrootManager(private val context: Context) {
 
     fun isRootfsReady(): Boolean = File(rootfsDir, "usr/bin/bash").exists()
 
-    fun isXfceInstalled(): Boolean =
-        File(rootfsDir, "usr/bin/startxfce4").exists() &&
-        File(rootfsDir, "usr/bin/xfwm4").exists() &&
-        File(rootfsDir, "usr/bin/xfce4-panel").exists() &&
-        File(rootfsDir, "usr/bin/xfce4-terminal").exists()
+    fun isLabwcInstalled(): Boolean =
+        File(rootfsDir, "usr/bin/labwc").exists() &&
+        File(rootfsDir, "usr/bin/waybar").exists() &&
+        File(rootfsDir, "usr/bin/fuzzel").exists() &&
+        File(rootfsDir, "usr/bin/foot").exists() &&
+        File(rootfsDir, "usr/bin/xwayland").exists()
 
     fun isRunning(): Boolean = sessionProcess?.isAlive == true
 
@@ -823,10 +820,14 @@ METMC_LAUNCH_EOF
      * Start Xfce as the unprivileged Linux user on the Android-hosted X11 display.
      * Xfce/KWin runs directly on DISPLAY=:0; Android remains the physical display owner.
      */
+    /**
+     * Start Labwc as the unprivileged Alpine user on the Android-hosted X11 display.
+     * Labwc's wlroots X11 backend renders the Wayland desktop into the existing Android X server.
+     */
     @Synchronized
-    fun startXfceSession(screenWidth: Int = 1080, screenHeight: Int = 2160) {
+    fun startLabwcSession(screenWidth: Int = 1080, screenHeight: Int = 2160) {
         if (!hasRoot() || !isRootfsReady()) {
-            Log.e(TAG, "Cannot start Xfce: root or rootfs unavailable")
+            Log.e(TAG, "Cannot start Labwc: root or rootfs unavailable")
             return
         }
         if (isRunning()) stopTrackedSessionProcess()
@@ -835,27 +836,18 @@ METMC_LAUNCH_EOF
         ensureDefaultLinuxUser()
         bindX11Socket()
         prepareCloseRangeCompatibility()
-        // Xfce uses the Android-hosted X11 display; keep software rendering as a safe fallback.
-        val gpuEnvironment = """
-            export NATIVOS_GPU=software LIBGL_ALWAYS_SOFTWARE=1 GBM_ALWAYS_SOFTWARE=1
-            export GALLIUM_DRIVER=llvmpipe MESA_LOADER_DRIVER_OVERRIDE=swrast
-        """.trimIndent()
         val tmpPath = tmpDir.absolutePath
         val runScript = """
             set -u
             export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
             export TMPDIR=${tmpPath} DISPLAY=:0 LANG=C.UTF-8 LC_ALL=C.UTF-8
-            export QT_QPA_PLATFORM=xcb XDG_SESSION_TYPE=x11
-            export XDG_CURRENT_DESKTOP=XFCE XDG_SESSION_DESKTOP=xfce DESKTOP_SESSION=xfce
+            export WLR_BACKENDS=x11 WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
+            export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
             export XDG_DATA_DIRS=/usr/local/share:/usr/share
-            ${gpuEnvironment}
             mkdir -p /run/dbus /run/metmc
             rm -f /run/dbus/pid /run/dbus/system_bus_socket
-            dbus-uuidgen --ensure=/etc/machine-id
-            if dbus-daemon --system --fork --nopidfile; then
-                [ -x /usr/lib/polkit-1/polkitd ] && /usr/lib/polkit-1/polkitd --no-debug >/tmp/polkit.log 2>&1 &
-                command -v upowerd >/dev/null 2>&1 && upowerd --no-debug >/tmp/upowerd.log 2>&1 &
-            fi
+            if command -v dbus-uuidgen >/dev/null 2>&1; then dbus-uuidgen --ensure=/etc/machine-id; fi
+            if command -v dbus-daemon >/dev/null 2>&1; then dbus-daemon --system --fork --nopidfile 2>/tmp/metmc-dbus.log || true; fi
             if [ -x /usr/local/bin/nativOS-bridge ]; then
                 /usr/local/bin/nativOS-bridge >/tmp/metmc-bridge.log 2>&1 &
             fi
@@ -867,38 +859,34 @@ METMC_LAUNCH_EOF
                 echo '=== input ==='; ls -la /dev/input 2>/dev/null || true
             } > /run/metmc/hardware-status.txt
             chmod 0644 /run/metmc/hardware-status.txt
-            id metmc >/dev/null 2>&1 || useradd -m -s /bin/bash metmc
-            METMC_HOME=${'$'}(getent passwd metmc | cut -d: -f6)
-            mkdir -p "${'$'}METMC_HOME" /tmp/runtime-metmc
-            chown -R metmc:metmc "${'$'}METMC_HOME" /tmp/runtime-metmc
+            id metmc >/dev/null 2>&1 || adduser -D -s /bin/bash metmc
+            METMC_HOME=$(getent passwd metmc | cut -d: -f6)
+            mkdir -p "$METMC_HOME" /tmp/runtime-metmc
+            chown -R metmc:metmc "$METMC_HOME" /tmp/runtime-metmc
             chmod 0700 /tmp/runtime-metmc
             PRELOAD=""
             for lib in /usr/local/lib/libsocket_hook.so /usr/local/lib/libnativos-close-range.so /usr/local/lib/libandroid-shmem.so; do
-                if [ -f "${'$'}lib" ]; then PRELOAD="${'$'}{PRELOAD:+${'$'}PRELOAD:}${'$'}lib"; fi
+                if [ -f "$lib" ]; then PRELOAD="${PRELOAD:+$PRELOAD:}$lib"; fi
             done
             export METMC_HOME PRELOAD
-            # Some Android app-data mounts are noexec. runuser's attempt to
-            # execute /usr/bin/env can fail even though the shell itself runs.
-            # Use runuser's built-in environment options and exec the session
-            # through bash, avoiding a separate env executable.
             runuser -u metmc --preserve-environment -- /bin/bash -c '
-                export HOME="${'$'}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
-                export TMPDIR=/tmp XDG_RUNTIME_DIR=/tmp/runtime-metmc
-                export LD_PRELOAD="${'$'}PRELOAD"
-                if [ -x /usr/bin/startxfce4 ] && [ -x /usr/bin/xfwm4 ] && [ -x /usr/bin/xfce4-panel ]; then
-                    export GDK_BACKEND=x11 SDL_VIDEODRIVER=x11 QT_QPA_PLATFORM=xcb MOZ_ENABLE_WAYLAND=0
-                    export XDG_SESSION_TYPE=x11 XDG_CURRENT_DESKTOP=XFCE XDG_SESSION_DESKTOP=xfce DESKTOP_SESSION=xfce
-                    export XDG_DATA_DIRS=/usr/local/share:/usr/share
-                    echo "Starting lightweight Xfce/Xfwm4 windowed desktop on Android X11"
-                    exec dbus-run-session -- startxfce4
+                export HOME="$METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
+                export TMPDIR=/tmp XDG_RUNTIME_DIR=/tmp/runtime-metmc WAYLAND_DISPLAY=wayland-0
+                export LD_PRELOAD="$PRELOAD"
+                export WLR_BACKENDS=x11 WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
+                export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
+                export GDK_BACKEND=wayland,x11 QT_QPA_PLATFORM=wayland;xcb MOZ_ENABLE_WAYLAND=1 SDL_VIDEODRIVER=wayland,x11
+                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
+                    echo "Starting nested Labwc Wayland desktop on Android X11"
+                    exec dbus-run-session -- labwc
                 fi
-                echo "ERROR: Xfce session, xfwm4, or panel is missing from the bundled Debian rootfs" >&2
+                echo "ERROR: Alpine Labwc, Waybar, or Fuzzel is missing from the bundled rootfs" >&2
                 exit 127
             '
         """.trimIndent()
-        Log.i(TAG, "Starting lightweight Xfce multi-window desktop")
+        Log.i(TAG, "Starting Alpine Labwc Wayland multi-window desktop")
         val su = rootShell.findSuPath() ?: return
-        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/bash -c ${shellQuote(runScript)}"
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
         val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
         sessionProcess = process
         Thread {
@@ -912,13 +900,13 @@ METMC_LAUNCH_EOF
         }.start()
     }
 
-    /** Wait for the Xfce session, Xfwm4 window manager, and taskbar on the embedded X11 display. */
-    fun awaitXfceReady(timeoutMs: Long = 45_000): Boolean {
+    /** Verify that Labwc and its touch-sized taskbar are actually running. */
+    fun awaitLabwcReady(timeoutMs: Long = 45_000): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
             if (sessionProcess?.isAlive != true) return false
-            if (execChroot("pgrep -x xfwm4 >/dev/null 2>&1 && pgrep -x xfce4-panel >/dev/null 2>&1 && pgrep -x xfce4-session >/dev/null 2>&1") == 0) {
-                Log.i(TAG, "Xfce window manager, panel, and session readiness check passed")
+            if (execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0) {
+                Log.i(TAG, "Labwc compositor and Waybar taskbar readiness check passed")
                 Thread.sleep(700)
                 return true
             }
@@ -927,7 +915,7 @@ METMC_LAUNCH_EOF
                 return false
             }
         }
-        Log.e(TAG, "Xfce window manager and panel did not become ready within ${timeoutMs}ms")
+        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
         return false
     }
 
