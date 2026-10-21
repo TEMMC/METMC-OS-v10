@@ -358,14 +358,14 @@ class KioskActivity : Activity() {
             FrameLayout.LayoutParams.WRAP_CONTENT
         ))
 
-        // Xfce provides a Super-key launcher. Keep a small phone-friendly handle
-        // to invoke it with the Super_L shortcut.
+        // Labwc uses Super+D to open the application launcher. Keep a small phone-friendly handle
+        // to invoke the launcher shortcut.
         navigationHandle = FrameLayout(this).apply {
             contentDescription = "Open Linux app launcher"
             visibility = View.GONE
             isClickable = true
             isFocusable = true
-            setOnClickListener { toggleXfceMenu() }
+            setOnClickListener { toggleLabwcMenu() }
             addView(View(this@KioskActivity).apply {
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
@@ -515,7 +515,7 @@ class KioskActivity : Activity() {
      * Keep the Linux display inside Android's physical safe area. System bars
      * may be hidden, but their stable geometry still protects gesture handles,
      * navigation buttons and landscape side bars. The display cutout protects
-     * Xfce's centered clock from notches and hole-punch cameras.
+     * the desktop's centered clock from notches and hole-punch cameras.
      */
     private fun updateDesktopSafeInsets(insets: WindowInsets) {
         val cutout = insets.displayCutout
@@ -569,13 +569,19 @@ class KioskActivity : Activity() {
         view.requestLayout()
     }
 
-    private fun toggleXfceMenu() {
+    private fun toggleLabwcMenu() {
         val view = desktopView ?: return
+        // Labwc binds Super+D to the app launcher. Send the chord rather than
+        // a bare Super key so the touch handle works without a physical keyboard.
         view.sendKeyEvent(0, KeyEvent.KEYCODE_META_LEFT, true)
         view.postDelayed({
-            if (view.isAttachedToWindow) {
+            if (!view.isAttachedToWindow) return@postDelayed
+            view.sendKeyEvent(KeyEvent.META_META_ON, KeyEvent.KEYCODE_D, true)
+            view.postDelayed({
+                if (!view.isAttachedToWindow) return@postDelayed
+                view.sendKeyEvent(KeyEvent.META_META_ON, KeyEvent.KEYCODE_D, false)
                 view.sendKeyEvent(0, KeyEvent.KEYCODE_META_LEFT, false)
-            }
+            }, 40)
         }, 40)
     }
 
@@ -925,8 +931,8 @@ class KioskActivity : Activity() {
             }, delay)
         }
 
-        // Launching an Android shortcut closes Xfce's overview before Android
-        // takes focus. Returning would therefore show Xfce's valid but empty
+        // Launching an Android shortcut may hide Labwc's app launcher before Android
+        // takes focus. Returning would therefore show Labwc's valid but empty
         // black home layer, which looks like a frozen renderer. Reopen the
         // overview after the recreated Surface has received its first frames.
         if (returningFromAndroid) {
