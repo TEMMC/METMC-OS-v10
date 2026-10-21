@@ -758,7 +758,6 @@ class ChrootManager(private val context: Context) {
                     echo "Offline rootfs is missing sudo; rebuild the bundled rootfs with sudo preinstalled." >&2
                     exit 127
                 fi
-                usermod -aG sudo metmc
                 # Root account is locked; admin actions must be explicit sudo commands.
                 passwd -l root >/dev/null 2>&1 || true
                 install -d -m 0755 /etc/sudoers.d
@@ -783,7 +782,7 @@ shift
 [ "${'$'}#" -gt 0 ] || usage
 BASE=${'$'}{${'$'}1##*/}
 case "${'$'}BASE" in
-  apt|apt-get|dpkg|dpkg-reconfigure|mount|umount|parted|mkfs*|fsck*|useradd|usermod|userdel|groupadd|groupdel|passwd|chpasswd|systemctl|service|reboot|poweroff|shutdown|fwupdmgr)
+  apk|rc-service|rc-update|mount|umount|parted|mkfs*|fsck*|useradd|usermod|userdel|groupadd|groupdel|passwd|chpasswd|systemctl|service|reboot|poweroff|shutdown|fwupdmgr)
     [ "${'$'}MODE" = auto ] && MODE=root ;;
 esac
 if [ "${'$'}MODE" = root ]; then
