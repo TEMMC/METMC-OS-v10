@@ -11,7 +11,7 @@ Target: Samsung Galaxy A04e (SM-A042F), Android 14, MediaTek MT6765, PowerVR Rog
 - Labwc nested in METMC's existing Android-hosted X11 display using the wlroots X11 backend. Android remains the physical display owner.
 - Waybar for a touch-sized taskbar, running-window list, clock, network/audio/battery status and tray.
 - Fuzzel app launcher, Foot terminal and Thunar file manager.
-- Four workspaces, server-side window decorations, keyboard shortcuts and 44px-or-larger panel targets.
+- Four workspaces, server-side window decorations, keyboard shortcuts and 44px-or-larger panel targets. Neon green-on-black styling extends to Labwc window decorations, Waybar, Fuzzel, GTK applications, Foot terminal and the shell prompt.
 - Dark METMC theme with green accents, no blur or animations, and Pixman software rendering as a compatibility baseline for the PowerVR device.
 
 ## Touch and multitasking behavior
