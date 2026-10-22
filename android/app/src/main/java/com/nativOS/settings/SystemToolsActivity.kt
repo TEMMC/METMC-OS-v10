@@ -16,6 +16,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import com.google.android.material.button.MaterialButton
+import com.nativOS.runtime.RootShell
 import java.io.File
 import java.security.DigestOutputStream
 import java.security.MessageDigest
@@ -86,7 +87,17 @@ class SystemToolsActivity : Activity() {
         page.addView(PremiumUi.text(this, "Export selected Linux configuration folders only—not the full rootfs or Android partitions. A SHA-256 digest is shown after the ZIP is written.", 13f, PremiumUi.muted).apply {
             setPadding(0, 0, 0, dp(8))
         })
-        page.addView(action("Export Linux configuration backup", true) {
+        page.addView(action("Export full diagnostic logs", true) {
+            startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/zip"
+                putExtra(Intent.EXTRA_TITLE, "METMC-OS-V10-diagnostics.zip")
+            }, REQUEST_LOGS)
+        }, PremiumUi.matchWidth(dp(8)))
+        page.addView(PremiumUi.text(this, "Includes Android log buffers, device/build details, process and memory snapshots, and available Linux session/DBus/Waybar logs. Logs may contain private information; review the ZIP before sharing.", 12f, PremiumUi.muted).apply {
+            setPadding(0, 0, 0, dp(10))
+        })
+        page.addView(action("Export Linux configuration backup") {
             startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
                 type = "application/zip"
@@ -154,6 +165,19 @@ class SystemToolsActivity : Activity() {
                     )
                 }
             }, "metmc-config-backup").start()
+        } else if (requestCode == REQUEST_LOGS) {
+            Thread({
+                val result = runCatching { exportDiagnosticLogs(uri) }
+                runOnUiThread {
+                    result.fold(
+                        onSuccess = { checksum ->
+                            monitor.text = monitor.text.toString() + "\n\nDiagnostic ZIP SHA-256: " + checksum
+                            toast("Diagnostic logs exported")
+                        },
+                        onFailure = { error -> toast("Log export failed: " + (error.message ?: error.javaClass.simpleName)) }
+                    )
+                }
+            }, "metmc-diagnostic-export").start()
         }
     }
 
@@ -177,6 +201,76 @@ class SystemToolsActivity : Activity() {
         }
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
+
+
+    /**
+     * Explicit diagnostic capture. Android logs can contain private information.
+     */
+    private fun exportDiagnosticLogs(uri: Uri): String {
+        val staging = File(cacheDir, "metmc-diagnostics").apply {
+            deleteRecursively()
+            mkdirs()
+        }
+        val rootShell = RootShell(this)
+        val logcat = File(staging, "android-logcat-all.txt")
+        val system = File(staging, "android-system-properties.txt")
+        val kernel = File(staging, "kernel-dmesg.txt")
+        val processes = File(staging, "android-processes.txt")
+        val shellScript = "set +e; " +
+            "logcat -b all -d -v threadtime > " + shellQuote(logcat.absolutePath) + " 2>&1; " +
+            "getprop > " + shellQuote(system.absolutePath) + " 2>&1; " +
+            "dmesg > " + shellQuote(kernel.absolutePath) + " 2>&1; " +
+            "ps -A -o USER,PID,PPID,NAME,ARGS > " + shellQuote(processes.absolutePath) + " 2>&1; " +
+            "chmod 0644 " + shellQuote(logcat.absolutePath) + " " + shellQuote(system.absolutePath) + " " +
+            shellQuote(kernel.absolutePath) + " " + shellQuote(processes.absolutePath)
+        val rootOutput = runCatching { rootShell.exec(shellScript) }
+            .getOrElse { "Root diagnostic capture failed: ${it.javaClass.simpleName}: ${it.message}" }
+        File(staging, "capture-status.txt").writeText(
+            "Captured at: ${java.time.Instant.now()}\nPackage: $packageName\nRoot shell output: $rootOutput\n"
+        )
+
+        val linuxLogs = File(staging, "linux-session-logs").apply { mkdirs() }
+        val rootfsPath = rootfs.absolutePath
+        val candidates = listOf(
+            "tmp/metmc-session.log", "tmp/metmc-waybar.log", "tmp/metmc-dbus.log",
+            "tmp/metmc-bridge.log", "tmp/runtime-metmc/wayland-0.log"
+        )
+        candidates.forEach { relative ->
+            val destination = File(linuxLogs, relative.replace('/', '_'))
+            val source = File(rootfs, relative)
+            if (source.isFile) runCatching { source.copyTo(destination, overwrite = true) }
+            else {
+                val command = "if [ -f " + shellQuote("$rootfsPath/$relative") + " ]; then cp " +
+                    shellQuote("$rootfsPath/$relative") + " " + shellQuote(destination.absolutePath) +
+                    " && chmod 0644 " + shellQuote(destination.absolutePath) + "; fi"
+                runCatching { rootShell.exec(command) }
+            }
+        }
+        File(staging, "device-summary.txt").writeText(
+            "METMC OS V10 diagnostic snapshot\nCaptured: ${java.time.Instant.now()}\n" +
+                "Manufacturer: ${android.os.Build.MANUFACTURER}\nModel: ${android.os.Build.MODEL}\n" +
+                "Device: ${android.os.Build.DEVICE}\nAndroid: ${android.os.Build.VERSION.RELEASE} " +
+                "(SDK ${android.os.Build.VERSION.SDK_INT})\nBuild fingerprint: ${android.os.Build.FINGERPRINT}\n" +
+                "Rootfs exists: ${rootfs.isDirectory}\nRootfs path: $rootfsPath\n"
+        )
+
+        val digest = MessageDigest.getInstance("SHA-256")
+        val output = contentResolver.openOutputStream(uri) ?: error("Cannot write selected document")
+        DigestOutputStream(output, digest).use { checked ->
+            ZipOutputStream(checked.buffered()).use { zip ->
+                staging.walkTopDown().forEach { file ->
+                    if (!file.isFile || file.length() > 64L * 1024L * 1024L) return@forEach
+                    zip.putNextEntry(ZipEntry(file.relativeTo(staging).invariantSeparatorsPath))
+                    file.inputStream().buffered().use { it.copyTo(zip) }
+                    zip.closeEntry()
+                }
+            }
+        }
+        staging.deleteRecursively()
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    private fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 
     private fun validateRootfs() {
         val checks = listOf(
@@ -207,5 +301,5 @@ class SystemToolsActivity : Activity() {
     private fun dp(value: Int) = PremiumUi.dp(this, value)
     override fun onResume() { super.onResume(); handler.removeCallbacks(refresh); handler.post(refresh) }
     override fun onPause() { handler.removeCallbacks(refresh); super.onPause() }
-    companion object { private const val REQUEST_FOLDER = 1501; private const val REQUEST_BACKUP = 1502 }
+    companion object { private const val REQUEST_FOLDER = 1501; private const val REQUEST_BACKUP = 1502; private const val REQUEST_LOGS = 1503 }
 }
