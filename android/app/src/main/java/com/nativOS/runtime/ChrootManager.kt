@@ -899,23 +899,44 @@ METMC_LAUNCH_EOF
         }.start()
     }
 
-    /** Verify that Labwc and its touch-sized taskbar are actually running. */
+    /** Verify the compositor is running; recover a missing taskbar without aborting the whole desktop. */
     fun awaitLabwcReady(timeoutMs: Long = 45_000): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
+        var taskbarRecoveryAttempted = false
         while (System.currentTimeMillis() < deadline) {
-            if (sessionProcess?.isAlive != true) return false
-            if (execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0) {
-                Log.i(TAG, "Labwc compositor and Waybar taskbar readiness check passed")
-                Thread.sleep(700)
-                return true
+            if (sessionProcess?.isAlive != true) {
+                val diagnostics = execChroot("tail -n 100 /tmp/metmc-session.log 2>&1 || true; tail -n 40 /tmp/metmc-dbus.log 2>&1 || true")
+                Log.e(TAG, "Labwc session process exited before readiness. Diagnostics:\\n${diagnostics}")
+                return false
+            }
+            val compositorReady = execChroot("pgrep -x labwc >/dev/null 2>&1") == 0
+            if (compositorReady) {
+                val taskbarReady = execChroot("pgrep -x waybar >/dev/null 2>&1") == 0
+                if (taskbarReady) {
+                    Log.i(TAG, "Labwc compositor and Waybar taskbar readiness check passed")
+                    Thread.sleep(700)
+                    return true
+                }
+                if (!taskbarRecoveryAttempted) {
+                    taskbarRecoveryAttempted = true
+                    val recovery = execChroot(
+                        "mkdir -p /tmp/runtime-metmc && chmod 0700 /tmp/runtime-metmc && " +
+                            "runuser -u metmc -- env HOME=/home/metmc USER=metmc LOGNAME=metmc " +
+                            "DISPLAY=:0 XDG_RUNTIME_DIR=/tmp/runtime-metmc WAYLAND_DISPLAY=wayland-0 " +
+                            "XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Labwc " +
+                            "WLR_BACKENDS=x11 WLR_RENDERER=pixman " +
+                            "sh -c 'waybar >/tmp/metmc-waybar.log 2>&1 &'"
+                    )
+                    Log.w(TAG, "Waybar was not started by Labwc autostart; attempted recovery (exit $recovery)")
+                }
             }
             try { Thread.sleep(300) } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
                 return false
             }
         }
-        val diagnostics = execChroot("echo \"=== processes ===\"; ps 2>&1 | grep -E \"labwc|waybar|dbus|Xwayland\" | grep -v grep || true; echo \"=== session log ===\"; tail -n 100 /tmp/metmc-session.log 2>&1 || true; echo \"=== dbus log ===\"; tail -n 40 /tmp/metmc-dbus.log 2>&1 || true")
-        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms. Startup diagnostics:\\n${diagnostics}")
+        val diagnostics = execChroot("echo \"=== processes ===\"; ps 2>&1 | grep -E \"labwc|waybar|dbus|Xwayland\" | grep -v grep || true; echo \"=== session log ===\"; tail -n 100 /tmp/metmc-session.log 2>&1 || true; echo \"=== waybar log ===\"; tail -n 60 /tmp/metmc-waybar.log 2>&1 || true; echo \"=== dbus log ===\"; tail -n 40 /tmp/metmc-dbus.log 2>&1 || true")
+        Log.e(TAG, "Labwc compositor did not become ready within ${timeoutMs}ms. Startup diagnostics:\\n${diagnostics}")
         return false
     }
 
