@@ -76,10 +76,13 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends qemu-user-static binfmt-support
+          sudo update-binfmts --enable qemu-aarch64 || true
           ROOTFS="$RUNNER_TEMP/metmc-rootfs"
           mkdir -p "$ROOTFS"
           tar -xzf android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz -C "$ROOTFS"
           test -x "$ROOTFS/usr/bin/apt-get"
+          sudo rm -f "$ROOTFS/etc/resolv.conf"
+          sudo cp -L /etc/resolv.conf "$ROOTFS/etc/resolv.conf"
           sudo cp /usr/bin/qemu-aarch64-static "$ROOTFS/usr/bin/qemu-aarch64-static"
           sudo mount --bind /dev "$ROOTFS/dev"
           sudo mount --bind /dev/pts "$ROOTFS/dev/pts"
