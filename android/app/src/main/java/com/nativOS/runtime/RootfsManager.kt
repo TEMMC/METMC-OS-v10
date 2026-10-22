@@ -19,14 +19,14 @@ class RootfsManager(private val context: Context) {
         private const val BUNDLED_ROOTFS_ASSET = "rootfs/nativos-rootfs-arm64.tgz"
 
         val DISTRO_URLS = mapOf(
-            "alpine" to "https://dl-cdn.alpinelinux.org/alpine/v3.22/releases/aarch64/alpine-minirootfs-3.22.0-aarch64.tar.gz",
-            "ubuntu" to "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.4-base-arm64.tar.gz"
+            "ubuntu" to "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.4-base-arm64.tar.gz",
+            "alpine" to "https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/aarch64/alpine-minirootfs-3.20.0-aarch64.tar.gz"
         )
         val DISTRO_NAMES = mapOf(
-            "alpine" to "Alpine Linux 3.22 (bundled)",
-            "ubuntu" to "Ubuntu 24.04 Base"
+            "ubuntu" to "Ubuntu 24.04 Base",
+            "alpine" to "Alpine Linux 3.20"
         )
-        const val DEFAULT_DISTRO = "alpine"
+        const val DEFAULT_DISTRO = "ubuntu"
     }
 
     private val baseDir: File get() = context.filesDir
@@ -43,17 +43,6 @@ class RootfsManager(private val context: Context) {
     fun isRootfsReady(): Boolean =
         rootfsDir.exists() && File(rootfsDir, "bin").exists() &&
         File(rootfsDir, "usr").exists() && File(rootfsDir, "etc").exists()
-
-    /** The APK bundles Alpine ARM64; startup never bootstraps Linux over the network. */
-    fun isBundledDistroReady(): Boolean = isRootfsReady() && isAlpineRootfs()
-
-    private fun isAlpineRootfs(): Boolean {
-        val release = File(rootfsDir, "etc/os-release")
-        if (!release.exists()) return false
-        val contents = runCatching { release.readText() }.getOrDefault("")
-        return Regex("(?m)^ID=alpine$").containsMatchIn(contents) &&
-            Regex("(?m)^VERSION_ID=3\\.22(?:\\.|$)").containsMatchIn(contents)
-    }
 
     fun isSetupComplete(): Boolean = setupCompleteFile.exists()
 
@@ -114,44 +103,82 @@ class RootfsManager(private val context: Context) {
         }
     }
 
-    /** Verify the bundled Labwc desktop and compact basic-tool set without networking. */
-    fun ensureLabwcRuntime(chrootManager: ChrootManager): Boolean {
-        val required = listOf(
-            "usr/bin/labwc", "usr/bin/waybar", "usr/bin/fuzzel",
-            "usr/bin/foot", "usr/bin/thunar", "sbin/apk",
-            "usr/bin/curl", "sbin/ip", "usr/bin/htop",
-            "usr/local/bin/nativOS-bridge", "usr/local/bin/metmc-settings", "usr/local/bin/metmc-wifi"
+    /**
+     * Repair a partially provisioned Phosh installation. The phoc binary can be
+     * unpacked before the remaining packages finish, so it is not a sufficient
+     * readiness marker by itself. Without the touchscreen schema Phosh aborts
+     * immediately and the X11 cursor visibly flickers in a restart loop.
+     */
+    fun ensurePhoshRuntime(chrootManager: ChrootManager): Boolean {
+        val schema = File(
+            rootfsDir,
+            "usr/share/glib-2.0/schemas/org.gnome.settings-daemon.peripherals.gschema.xml"
         )
-        val missing = required.filterNot { File(rootfsDir, it).exists() }
-        if (missing.isNotEmpty()) {
-            Log.w(TAG, "Offline Alpine/Labwc rootfs is missing: ${missing.joinToString()}")
-            return false
-        }
-        Log.i(TAG, "Alpine Labwc desktop and compact tools are present")
-        return configureLabwcTouchLayout(chrootManager)
-    }
+        val svgLoader = File(
+            rootfsDir,
+            "usr/lib/aarch64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders/libpixbufloader-svg.so"
+        )
+        if (schema.exists() && svgLoader.exists()) return true
 
-    /** Seed the neon hacker theme and touch-first desktop config without downloads. */
-    fun configureLabwcTouchLayout(chrootManager: ChrootManager): Boolean {
+        Log.w(TAG, "Phosh runtime components missing; repairing interrupted provisioning")
         val result = chrootManager.execChroot(
             """
-                set -e
-                id metmc >/dev/null 2>&1 || exit 1
-                mkdir -p /home/metmc/.config/labwc /home/metmc/.config/waybar /home/metmc/.config/fuzzel /home/metmc/.config/foot /home/metmc/.config/gtk-3.0
-                for item in labwc/rc.xml labwc/autostart labwc/menu.xml waybar/config.jsonc waybar/style.css fuzzel/fuzzel.ini foot/foot.ini gtk-3.0/settings.ini; do
-                    source="/etc/skel/.config/${'$'}item"
-                    target="/home/metmc/.config/${'$'}item"
-                    if [ ! -e "${'$'}target" ] && [ -f "${'$'}source" ]; then cp "${'$'}source" "${'$'}target"; fi
-                done
-                mkdir -p /home/metmc/.local/share/themes/METMC-Hacker/openbox-3
-                if [ -f /usr/share/themes/METMC-Hacker/openbox-3/themerc ]; then
-                    cp /usr/share/themes/METMC-Hacker/openbox-3/themerc /home/metmc/.local/share/themes/METMC-Hacker/openbox-3/themerc
+                dpkg --configure -a || true
+                apt-get update || exit 1
+                TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC \
+                    apt-get install -y --no-install-recommends \
+                    gnome-settings-daemon-common librsvg2-common || exit 1
+                glib-compile-schemas /usr/share/glib-2.0/schemas || exit 1
+                GDK_LOADER=${'$'}(find /usr/lib -name gdk-pixbuf-query-loaders | head -n 1)
+                if [ -x "${'$'}GDK_LOADER" ]; then
+                    "${'$'}GDK_LOADER" > "${'$'}(dirname "${'$'}GDK_LOADER")/2.10.0/loaders.cache" || exit 1
                 fi
-                chown -R metmc:metmc /home/metmc/.config /home/metmc/.local
+                gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+                gtk-update-icon-cache -f -t /usr/share/icons/Adwaita 2>/dev/null || true
+                test -f /usr/share/glib-2.0/schemas/org.gnome.settings-daemon.peripherals.gschema.xml
+                test -f /usr/lib/aarch64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders/libpixbufloader-svg.so
             """.trimIndent()
         )
-        if (result == 0) Log.i(TAG, "Labwc hacker theme configured")
-        else Log.w(TAG, "Labwc theme setup failed (exit $result)")
+        if (result == 0 && schema.exists() && svgLoader.exists()) {
+            Log.i(TAG, "Phosh runtime schemas and SVG loader repaired")
+            return true
+        }
+        Log.e(TAG, "Could not repair Phosh runtime components (exit $result)")
+        return false
+    }
+
+    /** Install the adaptive Wayland terminal and remove the two legacy XTerm launchers. */
+    fun ensureProfessionalTerminal(chrootManager: ChrootManager): Boolean {
+        val console = File(rootfsDir, "usr/bin/kgx")
+        val legacyXterm = File(rootfsDir, "usr/bin/xterm")
+        val legacyGnomeTerminal = File(rootfsDir, "usr/bin/gnome-terminal")
+        if (console.exists() && !legacyXterm.exists() && !legacyGnomeTerminal.exists()) return true
+
+        val result = chrootManager.execChroot(
+            """
+                # A previously interrupted optional package must not prevent the
+                # terminal migration from repairing the installation.
+                dpkg --configure -a || true
+                if ! command -v kgx >/dev/null 2>&1; then
+                    apt-get update || exit 1
+                    TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC \
+                        apt-get install -y --no-install-recommends gnome-console || exit 1
+                fi
+                # XTerm and UXTerm are supplied by the same package. Keep the proven
+                # adaptive Console installed before removing either legacy terminal.
+                rm -f /usr/share/applications/debian-xterm.desktop \
+                    /usr/share/applications/debian-uxterm.desktop \
+                    /usr/share/applications/org.gnome.Terminal.desktop
+                TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive \
+                    apt-get purge -y xterm gnome-terminal gnome-terminal-data || exit 1
+                update-desktop-database /usr/share/applications 2>/dev/null || true
+            """.trimIndent()
+        )
+        if (result == 0) {
+            Log.i(TAG, "GNOME Console ready; legacy terminal launchers removed")
+        } else {
+            Log.w(TAG, "Could not provision GNOME Console (exit $result)")
+        }
         return result == 0
     }
 
@@ -182,12 +209,6 @@ class RootfsManager(private val context: Context) {
         distro: String = DEFAULT_DISTRO,
         onProgress: (progress: Double, status: String) -> Unit
     ) {
-        if (distro == "alpine") {
-            if (!stageBundledRootfs(onProgress)) {
-                onProgress(-1.0, "Bundled Alpine rootfs is missing from this APK")
-            }
-            return
-        }
         try {
             val url = DISTRO_URLS[distro] ?: throw IllegalArgumentException("Unknown distro: $distro")
             val distroName = DISTRO_NAMES[distro] ?: distro
@@ -253,7 +274,6 @@ class RootfsManager(private val context: Context) {
     }
 
     fun extractRootfs(onProgress: (progress: Double, status: String) -> Unit) {
-        var previousRootfs: File? = null
         try {
             val distro = getInstalledDistro().ifEmpty { DEFAULT_DISTRO }
             val tarball = File(downloadDir, "${distro}-rootfs.tar.gz")
@@ -261,23 +281,12 @@ class RootfsManager(private val context: Context) {
                 onProgress(-1.0, "Rootfs tarball not found.")
                 return
             }
-
-            // Keep the previous installation until the new rootfs validates.
-            // This allows a Linux distribution migration without immediately
-            // destroying the old system if extraction or validation fails.
-            if (rootfsDir.exists()) {
-                val backup = File(baseDir, "rootfs-previous-${System.currentTimeMillis()}")
-                if (!rootfsDir.renameTo(backup)) {
-                    throw IllegalStateException("Could not safely move the previous Linux rootfs")
-                }
-                previousRootfs = backup
-            }
-            if (!rootfsDir.mkdirs() && !rootfsDir.isDirectory) {
-                throw IllegalStateException("Could not create the new Linux rootfs directory")
-            }
+            if (rootfsDir.exists()) rootfsDir.deleteRecursively()
+            rootfsDir.mkdirs()
 
             onProgress(0.1, "Extracting Linux filesystem...")
             Log.i(TAG, "Extracting rootfs from ${tarball.absolutePath}")
+
             val process = ProcessBuilder("tar", "zxf", tarball.absolutePath, "-C", rootfsDir.absolutePath)
                 .redirectErrorStream(true).start()
             val reader = process.inputStream.bufferedReader()
@@ -290,49 +299,16 @@ class RootfsManager(private val context: Context) {
                 if (lineCount % 500 == 0) onProgress(0.1 + (lineCount % 5000) / 10000.0, "Extracting files...")
             }
             val exitCode = process.waitFor()
-            if (exitCode != 0) throw RuntimeException("tar failed (code $exitCode): $lastLine")
+            val binDir = File(rootfsDir, "bin")
+            if (exitCode != 0 && (!binDir.exists() || binDir.list()?.isEmpty() == true))
+                throw RuntimeException("tar failed (code $exitCode): $lastLine")
 
             onProgress(0.7, "Configuring Linux environment...")
             configureRootfs()
-            if (distro == "alpine" && !isAlpineRootfs()) {
-                throw IllegalStateException("Bundled rootfs is not Alpine Linux 3.22")
-            }
             setupCompleteFile.writeText("done")
-
-            // Preserve the user's Linux home directory when replacing an older distro.
-            previousRootfs?.let { backup ->
-                val oldHome = File(backup, "home/metmc")
-                if (oldHome.exists()) {
-                    val newHome = File(rootfsDir, "home/metmc")
-                    if (newHome.exists() && !newHome.deleteRecursively()) {
-                        throw IllegalStateException("Could not prepare the new metmc home directory")
-                    }
-                    newHome.parentFile?.mkdirs()
-                    if (!oldHome.renameTo(newHome)) {
-                        oldHome.copyRecursively(newHome, overwrite = true)
-                        if (!oldHome.deleteRecursively()) {
-                            Log.w(TAG, "Old metmc home remains in the previous-rootfs backup")
-                        }
-                    }
-                }
-            }
-
-            previousRootfs?.let { backup ->
-                if (backup.exists() && !backup.deleteRecursively()) {
-                    Log.w(TAG, "Could not remove previous rootfs backup: ${backup.absolutePath}")
-                }
-            }
             tarball.delete()
             onProgress(1.0, "Linux filesystem ready")
         } catch (e: Exception) {
-            previousRootfs?.let { backup ->
-                if (backup.exists()) {
-                    rootfsDir.deleteRecursively()
-                    if (!backup.renameTo(rootfsDir)) {
-                        Log.e(TAG, "Failed to restore previous rootfs from ${backup.absolutePath}")
-                    }
-                }
-            }
             Log.e(TAG, "Extraction failed: ${e.message}", e)
             onProgress(-1.0, "Extraction failed: ${e.message}")
         }
@@ -343,47 +319,132 @@ class RootfsManager(private val context: Context) {
             parentFile?.mkdirs()
             writeText("nameserver 8.8.8.8\nnameserver 8.8.4.4\nnameserver 1.1.1.1\n")
         }
-        File(rootfsDir, "etc/hostname").writeText("metmc-os\n")
+        File(rootfsDir, "etc/apt/apt.conf.d").mkdirs()
+        File(rootfsDir, "etc/apt/apt.conf.d/99-disable-sandbox").writeText("APT::Sandbox::User \"root\";\n")
+        File(rootfsDir, "etc/hostname").writeText("nativOS\n")
         File(rootfsDir, "etc/hosts").apply {
             parentFile?.mkdirs()
-            writeText("127.0.0.1 localhost\n127.0.1.1 metmc-os\n::1 localhost\n")
+            writeText("127.0.0.1 localhost\n127.0.0.1 nativOS\n::1 localhost\n")
         }
-        File(rootfsDir, "etc/profile.d/nativOS.sh").delete()
-        File(rootfsDir, "etc/profile.d/metmc-os.sh").apply {
+        File(rootfsDir, "etc/profile.d/nativOS.sh").apply {
             parentFile?.mkdirs()
-            writeText("#!/bin/bash\nexport DISPLAY=:0\n")
+            writeText("#!/bin/bash\nexport DISPLAY=:0\nexport XDG_RUNTIME_DIR=/tmp/runtime-root\nmkdir -p /tmp/runtime-root 2>/dev/null\n")
         }
-        File(rootfsDir, "etc/sudoers.d/nativOS").delete()
-        File(rootfsDir, "etc/sudoers.d/metmc").apply {
+        File(rootfsDir, "etc/sudoers.d/nativOS").apply {
             parentFile?.mkdirs()
-            writeText("Defaults !requiretty\nmetmc ALL=(ALL:ALL) NOPASSWD: ALL\n")
+            writeText("Defaults !requiretty\nroot ALL=(ALL) NOPASSWD: ALL\n")
         }
-        listOf("tmp", "tmp/runtime-root", "tmp/runtime-metmc", "run", "var/run", "dev/shm").forEach { File(rootfsDir, it).mkdirs() }
+        listOf("tmp", "tmp/runtime-root", "run", "var/run", "dev/shm").forEach { File(rootfsDir, it).mkdirs() }
     }
 
-    /** User-initiated repair/install path; never called during boot. */
-    fun installLabwcDesktop(chrootManager: ChrootManager, onProgress: (Double, String) -> Unit) {
+    fun installPhosh(chrootManager: ChrootManager, onProgress: (Double, String) -> Unit) {
         try {
-            onProgress(0.0, "Refreshing Alpine package index (user requested)...")
-            if (chrootManager.execChroot("apk update") != 0) throw IllegalStateException("Could not refresh Alpine package index")
-            onProgress(0.25, "Installing Labwc desktop packages...")
-            val desktopResult = chrootManager.execChroot(
-                "apk add bash sudo util-linux-login dbus dbus-x11 labwc waybar fuzzel foot thunar xwayland swaybg wl-clipboard font-noto font-noto-emoji adwaita-icon-theme"
-            )
-            if (desktopResult != 0) throw IllegalStateException("Labwc package installation failed")
-            onProgress(0.55, "Installing compact hacker and networking tools...")
-            val toolsResult = chrootManager.execChroot(
-                "apk add nano less htop file procps psmisc ca-certificates curl wget git openssh-client iproute2 iputils bind-tools traceroute netcat-openbsd nmap whois jq python3 tmux rsync tar gzip unzip zip tree util-linux util-linux-login coreutils findutils grep sed gawk"
-            )
-            if (toolsResult != 0) Log.w(TAG, "Some optional diagnostics packages could not be installed")
-            onProgress(0.78, "Applying hacker theme and touch taskbar...")
-            configureLabwcTouchLayout(chrootManager)
-            onProgress(0.9, "Preparing non-root desktop user...")
-            chrootManager.ensureDefaultLinuxUser()
-            onProgress(1.0, "METMC OS Alpine Labwc desktop ready")
-        } catch (error: Throwable) {
-            Log.e(TAG, "Labwc desktop installation failed", error)
-            onProgress(-1.0, error.message ?: "Labwc installation failed")
+            onProgress(0.0, "Clearing package locks...")
+            try { chrootManager.execChroot("rm -f /var/lib/apt/lists/lock /var/cache/apt/archives/lock /var/lib/dpkg/lock*; dpkg --configure -a 2>/dev/null || true") } catch (_: Exception) {}
+
+            onProgress(0.05, "Updating package lists...")
+            chrootManager.execChroot("apt-get update -y")
+
+            // dbus is CRITICAL - without it no session can start
+            onProgress(0.10, "Installing D-Bus (required)...")
+            chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends dbus dbus-x11 policykit-1 packagekit")
+
+            onProgress(0.20, "Installing Phosh & Compositor...")
+            chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends phoc phosh")
+
+            onProgress(0.40, "Installing GUI Dependencies...")
+            chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends squeekboard phosh-mobile-settings gnome-settings-daemon gnome-settings-daemon-common librsvg2-common gnome-console adwaita-icon-theme fonts-cantarell")
+
+            onProgress(0.55, "Installing compilation tools...")
+            chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends gcc libxcb1-dev libxcb-dri3-dev libc6-dev libvulkan1 vulkan-tools wget curl")
+
+            onProgress(0.70, "Building universal hooks (Socket)...")
+            chrootManager.execChroot("""
+                bash -c "cat > /tmp/socket_hook.c << 'EOF'
+#define _GNU_SOURCE
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <dlfcn.h>
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <stddef.h>
+int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
+    int (*real_connect)(int, const struct sockaddr *, socklen_t) = dlsym(RTLD_NEXT, \"connect\");
+    if (addr && addr->sa_family == AF_UNIX) {
+        struct sockaddr_un *un = (struct sockaddr_un *)addr;
+        if (strstr(un->sun_path, \".X11-unix/X\")) {
+            struct sockaddr_un abstract_addr;
+            memset(&abstract_addr, 0, sizeof(abstract_addr));
+            abstract_addr.sun_family = AF_UNIX;
+            const char *tmpdir = getenv(\"TMPDIR\");
+            if (!tmpdir) tmpdir = \"/tmp\";
+            snprintf(abstract_addr.sun_path + 1, sizeof(abstract_addr.sun_path) - 1, \"%s/.X11-unix/X0\", tmpdir);
+            socklen_t abs_len = offsetof(struct sockaddr_un, sun_path) + 1 + strlen(abstract_addr.sun_path + 1);
+            return real_connect(sockfd, (struct sockaddr *)&abstract_addr, abs_len);
+        }
+    }
+    return real_connect(sockfd, addr, addrlen);
+}
+EOF
+gcc -shared -fPIC -o /usr/local/lib/libsocket_hook.so /tmp/socket_hook.c -ldl"
+            """.trimIndent())
+
+            onProgress(0.85, "Building universal hooks (DRI3)...")
+            chrootManager.execChroot("""
+                bash -c "cat > /tmp/nodri3.c << 'EOF'
+#include <xcb/xcb.h>
+#include <dlfcn.h>
+#include <stdio.h>
+extern xcb_extension_t xcb_dri3_id;
+const xcb_query_extension_reply_t *xcb_get_extension_data(xcb_connection_t *c, xcb_extension_t *ext) {
+    const xcb_query_extension_reply_t *(*real_fn)(xcb_connection_t*, xcb_extension_t*) = dlsym(RTLD_NEXT, \"xcb_get_extension_data\");
+    if (ext == &xcb_dri3_id) {
+        const xcb_query_extension_reply_t *reply = real_fn(c, ext);
+        if (reply && reply->present) {
+            ((xcb_query_extension_reply_t *)reply)->present = 0;
+        }
+        return reply;
+    }
+    return real_fn(c, ext);
+}
+EOF
+gcc -shared -fPIC -o /usr/local/lib/libnodri3.so /tmp/nodri3.c -lxcb -ldl -lxcb-dri3"
+            """.trimIndent())
+
+            chrootManager.execChroot("""
+                bash -c "cat > /tmp/close_range_compat.c << 'EOF'
+#define _GNU_SOURCE
+#include <errno.h>
+int close_range(unsigned int first, unsigned int last, int flags) {
+    (void) first; (void) last; (void) flags;
+    errno = ENOSYS;
+    return -1;
+}
+EOF
+gcc -shared -fPIC -o /usr/local/lib/libnativos-close-range.so /tmp/close_range_compat.c"
+            """.trimIndent())
+
+            onProgress(0.90, "Installing Built-in Apps & Store...")
+            chrootManager.execChroot("TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends software-properties-common nautilus gnome-calculator gnome-clocks megapixels gnome-software gnome-software-plugin-flatpak flatpak")
+
+            onProgress(0.95, "Setting up Firefox...")
+            chrootManager.execChroot("""
+                bash -c "add-apt-repository -y ppa:mozillateam/ppa && echo 'Package: *\nPin: release o=LP-PPA-mozillateam\nPin-Priority: 1001\n\nPackage: firefox\nPin: version 1:1snap1-0ubuntu2\nPin-Priority: -1' > /etc/apt/preferences.d/mozilla-firefox && apt-get update && DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install -y --no-install-recommends firefox"
+            """.trimIndent())
+
+            onProgress(0.97, "Configuring Flathub...")
+            ensureFlathub(chrootManager)
+
+            onProgress(0.98, "Building icon caches...")
+            chrootManager.execChroot("""
+                bash -c "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin && GDK_LOADER=${'$'}(find /usr/lib -name gdk-pixbuf-query-loaders | head -n 1) && ${'$'}GDK_LOADER > ${'$'}(dirname ${'$'}GDK_LOADER)/2.10.0/loaders.cache && gtk-update-icon-cache -f -t /usr/share/icons/hicolor && gtk-update-icon-cache -f -t /usr/share/icons/Adwaita && glib-compile-schemas /usr/share/glib-2.0/schemas"
+            """.trimIndent())
+
+            onProgress(1.0, "Phosh installed!")
+        } catch (e: Exception) {
+            Log.e(TAG, "Phosh install failed: ${e.message}", e)
+            onProgress(-1.0, "Phosh install failed: ${e.message}")
         }
     }
 
