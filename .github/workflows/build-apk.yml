@@ -8,7 +8,7 @@ name: Build METMC OS v10 APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, fix/restore-known-working-phosh]
     paths:
       - "android/**"
       - "linux/config/phoc.ini"
