@@ -100,6 +100,7 @@ jobs:
           sudo chroot "$ROOTFS" apt-get clean
           sudo rm -rf "$ROOTFS/var/lib/apt/lists/"* "$ROOTFS/var/cache/apt/archives/"*.deb
           sudo rm -f "$ROOTFS/usr/bin/qemu-aarch64-static"
+          cleanup
           sudo tar --numeric-owner -czf android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz -C "$ROOTFS" .
           test "$(stat -c %s android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz)" -gt 104857600
           cd android/app/src/main/assets/rootfs
