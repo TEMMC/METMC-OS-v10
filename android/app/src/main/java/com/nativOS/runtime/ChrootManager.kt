@@ -190,7 +190,7 @@ class ChrootManager(private val context: Context) {
         }
         val result = rootShell.exec(
             "mkdir -p ${androidSharedDir.absolutePath} $chrootSharedDir && " +
-                "chmod -R 0777 ${androidSharedDir.absolutePath} && " +
+                "chmod 0777 ${androidSharedDir.absolutePath} && " +
                 "mount --bind ${androidSharedDir.absolutePath} $chrootSharedDir && " +
                 "echo NATIVOS_SHARED_READY"
         )
@@ -834,6 +834,10 @@ METMC_LAUNCH_EOF
         val tmpPath = tmpDir.absolutePath
         val runScript = """
             set -u
+            : > /tmp/metmc-session.log
+            exec >> /tmp/metmc-session.log 2>&1
+            set -x
+            echo "METMC session startup: $(date 2>/dev/null || true)"
             export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
             export TMPDIR=${tmpPath} DISPLAY=:0 LANG=C.UTF-8 LC_ALL=C.UTF-8
             export WLR_BACKENDS=x11 WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
@@ -910,7 +914,8 @@ METMC_LAUNCH_EOF
                 return false
             }
         }
-        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
+        val diagnostics = execChroot("echo \"=== processes ===\"; ps 2>&1 | grep -E \"labwc|waybar|dbus|Xwayland\" | grep -v grep || true; echo \"=== session log ===\"; tail -n 100 /tmp/metmc-session.log 2>&1 || true; echo \"=== dbus log ===\"; tail -n 40 /tmp/metmc-dbus.log 2>&1 || true")
+        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms. Startup diagnostics:\\n${diagnostics}")
         return false
     }
 
