@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="2400" viewBox="0 0 1080 2400">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#080e17"/>
+      <stop offset=".52" stop-color="#0c1b2a"/>
+      <stop offset="1" stop-color="#071019"/>
+    </linearGradient>
+    <radialGradient id="glow">
+      <stop offset="0" stop-color="#38d6be" stop-opacity=".24"/>
+      <stop offset="1" stop-color="#38d6be" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0V48" fill="none" stroke="#4a7891" stroke-opacity=".13" stroke-width="1"/>
+      <circle cx="0" cy="0" r="1.6" fill="#38d6be" fill-opacity=".35"/>
+    </pattern>
+    <linearGradient id="line" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#38d6be" stop-opacity="0"/>
+      <stop offset=".5" stop-color="#38d6be" stop-opacity=".65"/>
+      <stop offset="1" stop-color="#69aefc" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="1080" height="2400" fill="url(#bg)"/>
+  <rect width="1080" height="2400" fill="url(#glow)" />
+  <circle cx="870" cy="720" r="620" fill="url(#glow)"/>
+  <rect width="1080" height="2400" fill="url(#grid)"/>
+  <g fill="none" stroke="url(#line)" stroke-width="3">
+    <path d="M-100 720H280L430 570H760L950 380H1180"/>
+    <path d="M-100 790H310L470 630H790L1010 410H1180"/>
+    <path d="M-100 1660H250L390 1800H680L850 1970H1180"/>
+    <path d="M-100 1730H220L370 1880H650L830 2060H1180"/>
+  </g>
+  <g fill="#38d6be" fill-opacity=".7">
+    <circle cx="280" cy="720" r="5"/><circle cx="760" cy="570" r="5"/>
+    <circle cx="250" cy="1660" r="5"/><circle cx="680" cy="1800" r="5"/>
+  </g>
+  <g transform="translate(84 1000)">
+    <rect width="6" height="160" rx="3" fill="#38d6be"/>
+    <text x="34" y="54" fill="#dbe7f3" font-family="monospace" font-size="27" letter-spacing="7">SYSTEM ONLINE</text>
+    <text x="30" y="128" fill="#f1f7fb" font-family="sans-serif" font-size="76" font-weight="700" letter-spacing="-2">METMC OS</text>
+    <text x="34" y="178" fill="#65e6c8" font-family="monospace" font-size="24" letter-spacing="5">V10  /  CYBER TERMINAL</text>
+  </g>
+  <g fill="#9aafc3" font-family="monospace" font-size="17" letter-spacing="3" opacity=".7">
+    <text x="84" y="2240">ARM64  •  TOUCH FIRST  •  OFFLINE READY</text>
+    <text x="84" y="2280">OPEN SOURCE DESKTOP ENVIRONMENT</text>
+  </g>
+</svg>
