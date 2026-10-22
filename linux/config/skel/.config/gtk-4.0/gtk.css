@@ -1,50 +1,37 @@
-/* METMC OS V10 — Windows-inspired GTK4 theme layer for Phosh apps.
- * Touch-friendly controls, dark blue surfaces and METMC blue accent.
- * This is visual styling only; it does not add desktop windows or a taskbar.
- */
-@define-color accent_color #1683f8;
-@define-color accent_bg_color #1683f8;
-@define-color accent_fg_color #ffffff;
-@define-color window_bg_color #101a2a;
-@define-color window_fg_color #f4f7fb;
-@define-color view_bg_color #0b1320;
-@define-color view_fg_color #f4f7fb;
-@define-color headerbar_bg_color #17263a;
-@define-color headerbar_fg_color #f4f7fb;
-@define-color card_bg_color #17263a;
-@define-color card_fg_color #f4f7fb;
-@define-color dialog_bg_color #101a2a;
-@define-color dialog_fg_color #f4f7fb;
-@define-color popover_bg_color #101a2a;
-@define-color popover_fg_color #f4f7fb;
-@define-color destructive_color #e5484d;
-@define-color success_color #28a86b;
-@define-color warning_color #e6a23c;
-
-window, dialog {
-  background: @window_bg_color;
-  color: @window_fg_color;
-}
-
+/* METMC OS V10 — Cyber Terminal GTK4 theme */
+@define-color accent_color #38d6be;
+@define-color accent_bg_color #38d6be;
+@define-color accent_fg_color #071219;
+@define-color window_bg_color #0a1019;
+@define-color window_fg_color #dbe7f3;
+@define-color view_bg_color #0d1723;
+@define-color view_fg_color #dbe7f3;
+@define-color headerbar_bg_color #131f2d;
+@define-color headerbar_fg_color #dbe7f3;
+@define-color card_bg_color #131f2d;
+@define-color card_fg_color #dbe7f3;
+@define-color dialog_bg_color #0a1019;
+@define-color dialog_fg_color #dbe7f3;
+@define-color popover_bg_color #0d1723;
+@define-color popover_fg_color #dbe7f3;
+@define-color destructive_color #ff6b78;
+@define-color success_color #38d6be;
+@define-color warning_color #f6c969;
+window, dialog { background: @window_bg_color; color: @window_fg_color; }
 headerbar {
   min-height: 46px;
   background: @headerbar_bg_color;
   color: @headerbar_fg_color;
-  border-bottom: 1px solid alpha(@accent_color, 0.35);
+  border-bottom: 1px solid alpha(@accent_color, 0.38);
 }
-
 button {
   min-height: 42px;
   min-width: 42px;
   padding: 7px 13px;
-  border-radius: 9px;
+  border-radius: 8px;
 }
-
 entry, spinbutton, dropdown, combobox {
   min-height: 40px;
   border-radius: 8px;
 }
-
-switch, checkbutton, radiobutton {
-  min-height: 40px;
-}
+switch, checkbutton, radiobutton { min-height: 40px; }
