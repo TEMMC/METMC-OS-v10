@@ -1,0 +1,75 @@
+/* METMC OS V10 — Windows-inspired Phosh GTK styling.
+ * Keep this as a GTK theme layer; it does not replace Phosh or Phoc.
+ * Colors and spacing are tuned for touch targets on small screens.
+ */
+@define-color metmc_accent #1683f8;
+@define-color metmc_accent_hover #3698ff;
+@define-color metmc_surface #101a2a;
+@define-color metmc_surface_alt #17263a;
+@define-color metmc_text #f4f7fb;
+@define-color metmc_muted #b9c7d8;
+
+* {
+  -gtk-secondary-caret-color: @metmc_accent;
+  -gtk-dnd-drag-threshold: 8;
+}
+
+window, dialog, .background {
+  background-color: @metmc_surface;
+  color: @metmc_text;
+}
+
+headerbar, .titlebar {
+  min-height: 42px;
+  padding: 4px 10px;
+  background-image: none;
+  background-color: @metmc_surface_alt;
+  color: @metmc_text;
+  border-bottom: 1px solid alpha(@metmc_accent, 0.35);
+}
+
+button {
+  min-height: 42px;
+  min-width: 42px;
+  padding: 7px 13px;
+  border-radius: 9px;
+  background-image: none;
+  background-color: @metmc_surface_alt;
+  color: @metmc_text;
+  border: 1px solid alpha(@metmc_accent, 0.24);
+}
+
+button:hover, button:checked {
+  background-color: alpha(@metmc_accent, 0.22);
+  border-color: @metmc_accent;
+}
+
+button:active {
+  background-color: @metmc_accent;
+  color: white;
+}
+
+entry, textview text, spinbutton, combobox, dropdown {
+  min-height: 40px;
+  background-color: #0b1320;
+  color: @metmc_text;
+  border: 1px solid alpha(@metmc_accent, 0.38);
+  border-radius: 8px;
+  caret-color: @metmc_accent;
+}
+
+selection {
+  background-color: @metmc_accent;
+  color: white;
+}
+
+checkbutton, radiobutton, switch {
+  min-height: 40px;
+}
+
+tooltip {
+  background-color: #08101c;
+  color: @metmc_text;
+  border: 1px solid @metmc_accent;
+  border-radius: 8px;
+}
