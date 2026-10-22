@@ -1,15 +1,52 @@
-* { font-family: "Noto Sans", "DejaVu Sans", sans-serif; font-size: 16px; min-height: 0; }
+/* METMC OS V10 — Cyber Terminal UI
+ * Inspired by open desktop themes; original project styling.
+ * High contrast, restrained teal/green accents, touch-sized controls.
+ */
+* {
+  font-family: "Noto Sans", "DejaVu Sans", sans-serif;
+  font-size: 14px;
+  min-height: 0;
+}
 window#waybar {
-  background: rgba(5, 11, 8, 0.97); color: #d6ffe8;
-  border: 1px solid #00ff88; border-radius: 14px;
+  background: rgba(10, 16, 25, 0.97);
+  color: #dbe7f3;
+  border: 1px solid rgba(56, 214, 190, 0.58);
+  border-radius: 13px;
 }
-#custom-menu, #taskbar button, #clock, #network, #pulseaudio, #battery, #tray {
-  padding: 8px 14px; margin: 4px 2px; min-height: 44px; border-radius: 10px;
+#custom-menu, #taskbar button, #clock, #network,
+#custom-audio, #custom-display, #battery, #tray {
+  padding: 7px 12px;
+  margin: 4px 2px;
+  min-height: 42px;
+  border-radius: 9px;
 }
-#custom-menu { color: #050b08; background: #00ff88; font-size: 24px; min-width: 48px; font-weight: bold; }
-#taskbar button { background: #111d16; border: 1px solid #244333; }
-#taskbar button.active { background: #00552d; border-color: #00ff88; }
-#clock { color: #00ff88; font-weight: bold; }
-#network.disconnected, #battery.critical { color: #ff626e; }
-#battery.warning { color: #ffd166; }
-tooltip { background: #050b08; color: #d6ffe8; border: 1px solid #00ff88; border-radius: 8px; }
+#custom-menu {
+  color: #071219;
+  background: #38d6be;
+  font-size: 19px;
+  min-width: 46px;
+  font-weight: 800;
+}
+#taskbar button {
+  color: #dbe7f3;
+  background: #131f2d;
+  border: 1px solid #26394b;
+}
+#taskbar button:hover {
+  background: #1a3040;
+  border-color: #38d6be;
+}
+#taskbar button.active {
+  background: #123d3b;
+  border-color: #38d6be;
+}
+#clock { color: #65e6c8; font-weight: 700; }
+#network { color: #c6d5e4; }
+#network.disconnected, #battery.critical { color: #ff6b78; }
+#battery.warning { color: #f6c969; }
+tooltip {
+  background: #0a1019;
+  color: #e8f2fb;
+  border: 1px solid #38d6be;
+  border-radius: 8px;
+}
