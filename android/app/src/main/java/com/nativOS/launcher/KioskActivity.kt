@@ -2,7 +2,6 @@ package com.nativOS.launcher
 
 import android.Manifest
 import android.app.Activity
-import android.app.ActivityOptions
 import android.content.ComponentName
 import android.content.ClipboardManager
 import android.content.Intent
@@ -54,7 +53,7 @@ import java.lang.ref.WeakReference
  *   1. Initialize X11 surface (LorieView)
  *   2. Download Linux rootfs (if first boot)
  *   3. Extract and configure rootfs
- *   4. Validate the bundled Alpine Labwc desktop (offline)
+ *   4. Install Phosh desktop (if not installed)
  *   5. Start the Linux desktop session
  *
  * Escape hatch: press Volume Up 5 times rapidly to show Android.
@@ -69,10 +68,9 @@ class KioskActivity : Activity() {
         @Volatile private var activeInstance: WeakReference<KioskActivity>? = null
 
         /**
-         * Launch an Android app in a bounded task so Android's freeform-capable
-         * window manager can present it as a floating app window above the Linux
-         * desktop. Android may ignore launch bounds on devices without freeform
-         * support; in that case the app opens using the device's normal mode.
+         * Launch an Android shortcut from the visible activity so it is placed
+         * above NativOS in the same Android task. Back then reliably returns to
+         * the Linux desktop instead of Android's launcher or an older app task.
          */
         fun launchAndroidApp(component: ComponentName): Boolean {
             val activity = activeInstance?.get() ?: return false
@@ -80,19 +78,7 @@ class KioskActivity : Activity() {
             AndroidAppIntegration.markAndroidAppLaunched()
             activity.runOnUiThread {
                 runCatching {
-                    val metrics = activity.resources.displayMetrics
-                    val width = metrics.widthPixels
-                    val height = metrics.heightPixels
-                    val windowWidth = (width * 0.88f).toInt().coerceAtLeast(320)
-                    val windowHeight = (height * 0.76f).toInt().coerceAtLeast(480)
-                    val left = ((width - windowWidth) / 2).coerceAtLeast(0)
-                    val top = ((height - windowHeight) / 2).coerceAtLeast(0)
-                    val bounds = Rect(left, top, left + windowWidth, top + windowHeight)
-                    val intent = Intent.makeMainActivity(component).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-                    }
-                    val options = ActivityOptions.makeBasic().setLaunchBounds(bounds)
-                    activity.startActivity(intent, options.toBundle())
+                    activity.startActivity(Intent().apply { this.component = component })
                 }.onFailure {
                     Log.e(TAG, "Could not launch Android app $component", it)
                 }
@@ -341,7 +327,7 @@ class KioskActivity : Activity() {
             visibility = View.GONE
             addAssistiveAction("⌂", "Home") { showLinuxHome() }
             addAssistiveAction("‹", "Back") { goLinuxBack() }
-            addAssistiveAction("▦", "Switch windows") { sendLabwcChord(KeyEvent.KEYCODE_ALT_LEFT, KeyEvent.META_ALT_ON, KeyEvent.KEYCODE_TAB) }
+            addAssistiveAction("▦", "Recents") { showLinuxHome() }
             addAssistiveAction("□", "Maximize") { maximizeLinuxWindow() }
             addAssistiveAction("⌨", "Keyboard") {
                 MainActivity.toggleKeyboardVisibility(this@KioskActivity)
@@ -358,14 +344,15 @@ class KioskActivity : Activity() {
             FrameLayout.LayoutParams.WRAP_CONTENT
         ))
 
-        // Labwc uses Super+D to open the application launcher. Keep a small phone-friendly handle
-        // to invoke the launcher shortcut.
+        // Phosh 0.38 has no persistent bottom affordance. Provide a small,
+        // functional phone-style handle: tap or swipe it upward to toggle the
+        // Phosh overview via its Super_L shortcut.
         navigationHandle = FrameLayout(this).apply {
-            contentDescription = "Open Linux app launcher"
+            contentDescription = "Open Linux overview"
             visibility = View.GONE
             isClickable = true
             isFocusable = true
-            setOnClickListener { toggleLabwcMenu() }
+            setOnClickListener { togglePhoshOverview() }
             addView(View(this@KioskActivity).apply {
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
@@ -515,7 +502,7 @@ class KioskActivity : Activity() {
      * Keep the Linux display inside Android's physical safe area. System bars
      * may be hidden, but their stable geometry still protects gesture handles,
      * navigation buttons and landscape side bars. The display cutout protects
-     * the desktop's centered clock from notches and hole-punch cameras.
+     * Phosh's centered clock from notches and hole-punch cameras.
      */
     private fun updateDesktopSafeInsets(insets: WindowInsets) {
         val cutout = insets.displayCutout
@@ -569,22 +556,13 @@ class KioskActivity : Activity() {
         view.requestLayout()
     }
 
-    private fun toggleLabwcMenu() {
-        sendLabwcChord(KeyEvent.KEYCODE_META_LEFT, KeyEvent.META_META_ON, KeyEvent.KEYCODE_D)
-    }
-
-    /** Send a desktop shortcut through the embedded X11 input bridge. */
-    private fun sendLabwcChord(modifierKeyCode: Int, modifierMetaState: Int, keyCode: Int) {
+    private fun togglePhoshOverview() {
         val view = desktopView ?: return
-        view.sendKeyEvent(0, modifierKeyCode, true)
+        view.sendKeyEvent(0, KeyEvent.KEYCODE_META_LEFT, true)
         view.postDelayed({
-            if (!view.isAttachedToWindow) return@postDelayed
-            view.sendKeyEvent(modifierMetaState, keyCode, true)
-            view.postDelayed({
-                if (!view.isAttachedToWindow) return@postDelayed
-                view.sendKeyEvent(modifierMetaState, keyCode, false)
-                view.sendKeyEvent(0, modifierKeyCode, false)
-            }, 40)
+            if (view.isAttachedToWindow) {
+                view.sendKeyEvent(0, KeyEvent.KEYCODE_META_LEFT, false)
+            }
         }, 40)
     }
 
@@ -597,13 +575,27 @@ class KioskActivity : Activity() {
     }
 
     private fun showLinuxHome() {
-        // Labwc owns the Linux desktop and its window manager.
-        // Open the app launcher using the touch-friendly Super+D shortcut.
-        toggleLabwcMenu()
-        desktopView?.postDelayed({
-            desktopView?.triggerCallback()
-            MainActivity.getInstance().lorieView?.triggerCallback()
-        }, 120)
+        // The Android navigation handle is a Home action, not an app-drawer
+        // toggle. Toggling Super_L here can reopen Phosh's overview; when the
+        // nested X11 surface is stale that leaves a black home layer and makes
+        // the shell look frozen. Restore/focus the Phosh window, then dismiss
+        // any open overview with Escape and repaint the embedded X11 surface.
+        Thread({
+            val restored = chrootManager.restoreMaximizedX11Window(focusDesktop = true)
+            if (restored) SystemClock.sleep(160)
+            val focused = chrootManager.focusPhoshWindow()
+            runOnUiThread {
+                desktopView?.postDelayed({
+                    if (focused && desktopView?.isAttachedToWindow == true) {
+                        sendLinuxKey(KeyEvent.KEYCODE_ESCAPE)
+                        desktopView?.postDelayed({
+                            desktopView?.triggerCallback()
+                            MainActivity.getInstance().lorieView?.triggerCallback()
+                        }, 120)
+                    }
+                }, 80)
+            }
+        }, "LinuxHome").start()
     }
 
     private fun goLinuxBack() {
@@ -618,9 +610,13 @@ class KioskActivity : Activity() {
         }, "LinuxBack").start()
     }
 
-    /** Ask Labwc to maximize the focused Linux window; it owns the nested desktop's windows. */
+    /** Resize unmanaged X11 apps directly; they have no X11 WM to handle Alt+F10. */
     private fun maximizeLinuxWindow() {
-        sendLabwcChord(KeyEvent.KEYCODE_META_LEFT, KeyEvent.META_META_ON, KeyEvent.KEYCODE_A)
+        Thread({
+            if (!chrootManager.maximizeActiveX11Window()) {
+                Log.w(TAG, "No active X11 application could be maximized")
+            }
+        }, "MaximizeX11").start()
     }
 
     private fun requestNotificationPermission() {
@@ -665,11 +661,6 @@ class KioskActivity : Activity() {
                 return
             }
             waitingForRoot = false
-            // Configure Android's own freeform window manager before Linux
-            // desktop shortcuts launch Android activities. Firmware support is
-            // device-dependent, so failure must not prevent the Linux desktop.
-            val freeformReady = chrootManager.enableFreeformWindows()
-            Log.i(TAG, "Android freeform windowing switches enabled=$freeformReady")
             SharedFolderSync.start(this)
             runOnUiThread {
                 overlayLayout?.apply {
@@ -679,42 +670,45 @@ class KioskActivity : Activity() {
             }
             updateOverlay(0.05, "Root access confirmed", "")
 
-            // Step 2: Ensure the bundled Alpine ARM64 rootfs is installed.
-            // Existing Linux installations are migrated once, preserving /home/metmc where possible.
-            if (rootfsManager.isRootfsReady() && !rootfsManager.isBundledDistroReady()) {
-                updateOverlay(0.05, "Switching Linux system to Alpine Linux...", "One-time migration; preserving /home/metmc")
-                chrootManager.stopSession()
-            }
-            if (!rootfsManager.isRootfsReady() || !rootfsManager.isBundledDistroReady()) {
+            // Step 2: Download + extract rootfs if needed
+            if (!rootfsManager.isRootfsReady()) {
+                // Production builds carry a ready rootfs. Development builds and
+                // damaged assets retain the resumable Ubuntu download as recovery.
                 val bundled = rootfsManager.stageBundledRootfs { progress, status ->
-                    updateOverlay(0.05 + progress * 0.45, status, "Bundled in this APK — no network required")
+                    updateOverlay(0.05 + progress * 0.45, status, "No network required")
                 }
                 if (!bundled) {
-                    updateOverlay(
-                        -1.0,
-                        "Offline root filesystem missing",
-                        "This APK must include the prepared Linux rootfs. Rebuild it through GitHub Actions; boot will not download files."
-                    )
-                    return
+                    updateOverlay(0.05, "Downloading Linux filesystem...", "First boot — this takes a few minutes")
+                    bootFailed = false
+                    rootfsManager.downloadRootfs { progress, status ->
+                        if (progress < 0) {
+                            bootFailed = true
+                            updateOverlay(-1.0, "Download failed", status)
+                        } else {
+                            updateOverlay(0.05 + progress * 0.45, status, "")
+                        }
+                    }
+                    if (bootFailed) return
                 }
 
-                updateOverlay(0.50, "Extracting bundled Linux filesystem...", "No network required")
+                // Extract
+                updateOverlay(0.50, "Extracting Linux filesystem...", "This may take a few minutes")
                 bootFailed = false
                 rootfsManager.extractRootfs { progress, status ->
                     if (progress < 0) {
                         bootFailed = true
-                        updateOverlay(-1.0, "Rootfs extraction failed", status)
+                        updateOverlay(-1.0, "Extraction failed", status)
                     } else {
                         updateOverlay(0.50 + progress * 0.20, status, "")
                     }
                 }
                 if (bootFailed) return
             } else {
-                updateOverlay(0.70, "Local Linux filesystem found", "Offline startup")
+                updateOverlay(0.70, "Linux filesystem found", "")
             }
 
-            if (!rootfsManager.isBundledDistroReady()) {
-                updateOverlay(-1.0, "ERROR: Alpine rootfs setup failed", "The Alpine Linux filesystem could not be prepared")
+            if (!rootfsManager.isRootfsReady()) {
+                updateOverlay(-1.0, "ERROR: Rootfs setup failed", "The Linux filesystem could not be prepared")
                 return
             }
 
@@ -724,27 +718,54 @@ class KioskActivity : Activity() {
             chrootManager.bindX11Socket()
             AndroidAppIntegration.sync(this)
 
-            // Step 4: Validate the offline Labwc Wayland desktop. Never run apk or
-            // install packages during startup; the bundled rootfs must contain
-            // the complete desktop and essential tools.
-            updateOverlay(0.74, "Checking offline desktop...", "")
-            if (!chrootManager.isLabwcInstalled()) {
+            // Step 4: Install essential packages (dbus is required for any session)
+            updateOverlay(0.74, "Checking essential packages...", "")
+            if (!chrootManager.isPhoshInstalled()) {
+                updateOverlay(0.75, "Installing Phosh desktop...", "First boot — installing packages (5-15 min)")
+                bootFailed = false
+                rootfsManager.installPhosh(chrootManager) { progress, status ->
+                    if (progress < 0) {
+                        bootFailed = true
+                        updateOverlay(-1.0, "Phosh installation failed", status)
+                    } else {
+                        updateOverlay(0.75 + progress * 0.20, status, "")
+                    }
+                }
+                if (bootFailed) {
+                    // Even if Phosh failed, leave the rootfs package database usable.
+                    updateOverlay(0.90, "Installing minimal session...", "Phosh failed, trying fallback")
+                    try {
+                        chrootManager.execChroot(
+                            "TMPDIR=/tmp DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends dbus dbus-x11")
+                    } catch (_: Exception) {}
+                }
+            } else {
+                updateOverlay(0.95, "Phosh desktop found", "")
+            }
+
+            // A first-boot install can be interrupted after phoc is unpacked but
+            // before Phosh's required schemas arrive. Repair that partial state
+            // instead of entering an invisible compositor restart loop.
+            updateOverlay(0.95, "Checking desktop components...", "Phosh runtime")
+            if (!rootfsManager.ensurePhoshRuntime(chrootManager)) {
                 updateOverlay(
                     -1.0,
-                    "Offline desktop components missing",
-                    "The bundled Alpine rootfs is missing Labwc, Waybar or Xwayland. Rebuild the APK with the windowed desktop; boot will not install packages."
+                    "Desktop repair failed",
+                    "Connect to the internet and reopen METMC OS V10"
                 )
                 return
             }
 
-            updateOverlay(0.95, "Validating local desktop components...", "No downloads or updates")
-            if (!rootfsManager.ensureLabwcRuntime(chrootManager)) {
-                updateOverlay(
-                    -1.0,
-                    "Offline desktop components missing",
-                    "Labwc runtime is incomplete in the bundled rootfs. Rebuild the APK with Labwc, Waybar, Xwayland and the basic tools included."
-                )
-                return
+            // Migrate existing installs away from the tiny unmanaged XTerm/UXTerm
+            // windows. GNOME Console is adaptive and is maximized by Phosh.
+            updateOverlay(0.95, "Checking terminal...", "GNOME Console")
+            rootfsManager.ensureProfessionalTerminal(chrootManager)
+
+            // Migrate existing installations that have Flatpak but were created
+            // before Flathub setup became independent from Firefox provisioning.
+            if (rootfsManager.isFlatpakInstalled()) {
+                updateOverlay(0.95, "Checking app catalog...", "Flathub")
+                rootfsManager.ensureFlathub(chrootManager)
             }
 
             // Step 5: Attach the display surface to the bundled X11 service process.
@@ -851,21 +872,22 @@ class KioskActivity : Activity() {
 
             Log.i(TAG, "Starting test session...")
 
-            // Match the Labwc session to the current Android X11 surface dimensions.
+            // Match Phoc's nested output to the actual X11 surface dimensions.
             val screenWidth = lorieView.width
             val screenHeight = lorieView.height
             Log.i(TAG, "Detected screen: ${screenWidth}x${screenHeight}")
 
-            chrootManager.startLabwcSession(screenWidth, screenHeight)
-            updateOverlay(0.98, "Starting Labwc Wayland desktop...", "Starting window manager and taskbar")
-            if (!chrootManager.awaitLabwcReady()) {
-                throw IllegalStateException("Labwc compositor and taskbar did not become ready")
+            chrootManager.startPhoshSession(screenWidth, screenHeight)
+            updateOverlay(0.98, "Starting Linux desktop...", "Waiting for Phosh")
+            if (!chrootManager.awaitDesktopReady()) {
+                throw IllegalStateException("Phosh did not become ready")
             }
             runOnUiThread {
                 overlayLayout?.visibility = View.GONE
                 keyboardButton?.visibility = View.VISIBLE
                 keyboardButton?.bringToFront()
-                // Keep the METMC taskbar and Linux windows unobstructed.
+                // Current Phosh provides its own bottom gesture handle. Keep the
+                // Android overlay handle hidden to avoid duplicate affordances.
                 navigationHandle?.visibility = View.GONE
             }
 
@@ -930,14 +952,14 @@ class KioskActivity : Activity() {
             }, delay)
         }
 
-        // Launching an Android shortcut may hide Labwc's app launcher before Android
-        // takes focus. Returning would therefore show Labwc's valid but empty
+        // Launching an Android shortcut closes Phosh's overview before Android
+        // takes focus. Returning would therefore show Phosh's valid but empty
         // black home layer, which looks like a frozen renderer. Reopen the
         // overview after the recreated Surface has received its first frames.
         if (returningFromAndroid) {
             rootLayout?.postDelayed({
                 if (hasWindowFocus() && desktopView?.isAttachedToWindow == true) {
-                    toggleLabwcMenu()
+                    togglePhoshOverview()
                 }
             }, 400)
         }
@@ -970,7 +992,7 @@ class KioskActivity : Activity() {
         enterImmersiveMode()
 
         // The activity is retained across rotation so the X11 connection and
-        // Labwc session stay alive. Recalculate Android's cutout/navigation
+        // Phosh session stay alive. Recalculate Android's cutout/navigation
         // safe area, then notify X11 after SurfaceView has its new dimensions.
         assistiveMenu?.visibility = View.GONE
         rootLayout?.requestApplyInsets()
@@ -980,7 +1002,13 @@ class KioskActivity : Activity() {
                 applyDesktopSafeArea(view)
                 view.post {
                     view.triggerCallback()
-
+                    view.postDelayed({
+                        val width = view.width
+                        val height = view.height
+                        Thread({
+                            chrootManager.resizePhoshDisplay(width, height)
+                        }, "nativOS-display-resize").start()
+                    }, 150)
                 }
             }
             keyboardButton?.let { button ->
