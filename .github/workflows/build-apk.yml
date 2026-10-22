@@ -149,7 +149,7 @@ jobs:
           retention-days: 30
 
   publish-release:
-    if: github.event_name == 'push' && contains(github.event.head_commit.message, 'Publish METMC OS V10 v10.8.0')
+    if: github.event_name == 'push' && github.ref == 'refs/heads/fix/restore-known-working-phosh'
     needs: build
     runs-on: ubuntu-22.04
     permissions:
