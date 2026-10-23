@@ -1512,7 +1512,7 @@ SSHEOF
             mkdir -p /etc/nativOS
             cat > /etc/nativOS/phoc.ini << PHOCEOF
 [core]
-xwayland=false
+xwayland=true
 
 [output:X11-1]
 mode=${screenWidth}x${screenHeight}
