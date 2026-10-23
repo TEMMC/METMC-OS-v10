@@ -1030,24 +1030,48 @@ class KioskActivity : Activity() {
     }
 
     /**
-     * Keep the kiosk activity alive after boot. Finishing this Activity on Back
-     * recreates the boot overlay and repeats the mount sequence, which makes
-     * the user land on the mounting screen instead of the Linux home screen.
+     * Android can deliver HOME to an already-running singleTask launcher through
+     * onNewIntent/onResume. Never rebuild the boot UI or repeat mounts when that
+     * happens: return to the existing Linux desktop instead.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (desktopIsReady()) {
+            overlayLayout?.visibility = View.GONE
+            showLinuxHome()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (desktopIsReady()) {
+            overlayLayout?.visibility = View.GONE
+            keyboardButton?.visibility = View.VISIBLE
+        }
+    }
+
+    private fun desktopIsReady(): Boolean {
+        val view = desktopView
+        return !isFinishing && !isDestroyed &&
+            view != null && view.isAttachedToWindow && view.connected() &&
+            ::chrootManager.isInitialized && chrootManager.isRunning()
+    }
+
+    /**
+     * Back should act inside Linux and must never finish the HOME/kiosk Activity.
+     * Escape dismisses shell dialogs/overviews; for ordinary apps the X11 focus
+     * helper restores the desktop instead of restarting the mount screen.
      */
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
-        val view = desktopView
-        if (view != null && view.isAttachedToWindow && view.connected()) {
-            showLinuxHome()
+        if (desktopIsReady()) {
+            goLinuxBack()
             return
         }
-        // During boot, never finish the activity: doing so would restart the
-        // boot/mount screen when the HOME launcher recreates it.
-        if (bootSequenceRunning || waitingForRoot) return
-        // If the desktop has not started yet, keep the activity alive and let
-        // the existing boot sequence report/recover from its current state.
-        if (view == null) return
-        super.onBackPressed()
+        // During boot or recovery, keep the activity alive so Back cannot
+        // recreate the mounting overlay or start a second boot sequence.
+        if (bootSequenceRunning || waitingForRoot || desktopView == null) return
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
