@@ -2,10 +2,12 @@ import importlib.util
 import json
 from pathlib import Path
 import socket
+import sys
 import threading
-from bridge_transport import connect as connect_bridge
 
 SCRIPT = Path(__file__).parents[1] / "bridge-client" / "mt-bridge.py"
+sys.path.insert(0, str(SCRIPT.parent))
+from bridge_transport import connect as connect_bridge
 spec = importlib.util.spec_from_file_location("mt_bridge_cli", SCRIPT)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
