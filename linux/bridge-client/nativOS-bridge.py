@@ -29,6 +29,7 @@ import subprocess
 import sys
 import threading
 import time
+from bridge_transport import connect as connect_bridge
 
 # ── Configuration ──
 
@@ -56,8 +57,7 @@ class BridgeClient:
     def connect(self) -> bool:
         """Connect to the Android bridge socket."""
         try:
-            self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            self.sock.connect(self.socket_path)
+            self.sock = connect_bridge(self.socket_path)
             self.connected = True
             logger.info(f"Connected to bridge at {self.socket_path}")
 
