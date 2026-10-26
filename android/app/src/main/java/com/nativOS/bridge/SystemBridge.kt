@@ -2,6 +2,7 @@ package com.nativOS.bridge
 
 import android.content.Context
 import android.content.ClipData
+import android.content.ComponentName
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.IntentFilter
@@ -12,6 +13,7 @@ import android.provider.Settings
 import android.telephony.SignalStrength
 import android.telephony.TelephonyManager
 import android.util.Log
+import com.nativOS.launcher.KioskActivity
 import org.json.JSONObject
 
 /**
@@ -41,6 +43,7 @@ class SystemBridge(private val service: BridgeService) {
             BridgeProtocol.ACTION_GET_SIGNAL -> handleGetSignal(request)
             "get_device_info" -> handleGetDeviceInfo(request)
             "list_android_apps" -> handleListAndroidApps(request)
+            "launch_android_app" -> handleLaunchAndroidApp(request)
             "get_wifi" -> handleGetWifi(request)
             "open_wifi_settings" -> handleOpenWifiSettings(request)
             "open_bluetooth_settings" -> handleOpenAndroidSettings(request, Settings.ACTION_BLUETOOTH_SETTINGS, "Bluetooth")
@@ -273,6 +276,45 @@ class SystemBridge(private val service: BridgeService) {
         } catch (e: Exception) {
             BridgeProtocol.response(request.id, BridgeProtocol.STATUS_ERROR,
                 JSONObject().put("message", "Could not open $label: ${e.message}"))
+        }
+    }
+
+    /** Launch only a component advertised as a normal Android launcher activity. */
+    private fun handleLaunchAndroidApp(request: BridgeRequest): String {
+        val packageName = request.params.optString("package", "")
+        val activityName = request.params.optString("activity", "")
+        if (packageName.isBlank() || activityName.isBlank()) {
+            return BridgeProtocol.response(request.id, BridgeProtocol.STATUS_ERROR,
+                JSONObject().put("message", "Both package and activity are required"))
+        }
+        return try {
+            val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+            @Suppress("DEPRECATION")
+            val allowed = service.packageManager.queryIntentActivities(launcherIntent, 0).any {
+                it.activityInfo.packageName == packageName &&
+                    it.activityInfo.name == activityName &&
+                    packageName != service.packageName
+            }
+            if (!allowed) {
+                return BridgeProtocol.response(request.id, BridgeProtocol.STATUS_ERROR,
+                    JSONObject().put("message", "Requested component is not an installed Android launcher activity"))
+            }
+            val component = ComponentName(packageName, activityName)
+            if (!KioskActivity.launchAndroidApp(component)) {
+                service.startActivity(Intent().apply {
+                    this.component = component
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+                AndroidAppIntegration.markAndroidAppLaunched()
+            }
+            BridgeProtocol.response(request.id, BridgeProtocol.STATUS_OK, JSONObject().apply {
+                put("launched", true)
+                put("package", packageName)
+                put("activity", activityName)
+            })
+        } catch (e: Exception) {
+            BridgeProtocol.response(request.id, BridgeProtocol.STATUS_ERROR,
+                JSONObject().put("message", "Android app launch failed: ${e.message}"))
         }
     }
 
