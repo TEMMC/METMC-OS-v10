@@ -120,10 +120,16 @@ jobs:
           sudo mkdir -p "$ROOTFS/etc/skel" "$ROOTFS/usr/share/themes/METMC-Hacker/openbox-3" "$ROOTFS/usr/share/metmc"
           sudo cp -a linux/config/skel/. "$ROOTFS/etc/skel/"
           sudo cp linux/config/labwc/theme/METMC-Hacker/openbox-3/themerc "$ROOTFS/usr/share/themes/METMC-Hacker/openbox-3/themerc"
-          # Bundle the existing Android hardware bridge clients into Alpine.
+          # Bundle the Android hardware bridge clients and shared socket transport into Alpine.
+          sudo install -d -m 0755 "$ROOTFS/usr/local/lib/mt-bridge"
+          sudo install -m 0644 linux/bridge-client/bridge_transport.py "$ROOTFS/usr/local/lib/mt-bridge/bridge_transport.py"
           sudo install -m 0755 linux/bridge-client/nativOS-bridge.py "$ROOTFS/usr/local/bin/nativOS-bridge"
+          sudo install -m 0755 linux/bridge-client/mt-bridge.py "$ROOTFS/usr/local/bin/mt-bridge"
           sudo install -m 0755 linux/bridge-client/metmc-settings.py "$ROOTFS/usr/local/bin/metmc-settings"
           sudo install -m 0755 linux/bridge-client/metmc-wifi.py "$ROOTFS/usr/local/bin/metmc-wifi"
+          # Python locates shared helpers in the script directory; install a matching copy.
+          sudo install -m 0644 linux/bridge-client/bridge_transport.py "$ROOTFS/usr/local/bin/bridge_transport.py"
+          sudo install -m 0644 linux/README-bridge.md "$ROOTFS/usr/share/metmc/README-bridge.md"
           sudo chmod 0755 "$ROOTFS/etc/skel/.config/labwc/autostart"
           sudo chroot "$ROOTFS" /bin/sh -eu -c '
             printf "nameserver 1.1.1.1\nnameserver 8.8.8.8\n" > /etc/resolv.conf
