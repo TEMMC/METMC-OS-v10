@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - "android/app/src/main/java/com/nativOS/bridge/**"
+      - "android/app/src/main/AndroidManifest.xml"
       - "linux/bridge-client/**"
       - "linux/tests/**"
       - "linux/README-bridge.md"
