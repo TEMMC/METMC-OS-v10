@@ -1,0 +1,94 @@
+name: Build MT Android-Linux Bridge Bundle
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "android/app/src/main/java/com/nativOS/bridge/**"
+      - "linux/bridge-client/**"
+      - "linux/config/nativOS-bridge.service"
+      - "linux/config/phoc.ini"
+      - "linux/setup/install-bridge.sh"
+      - ".github/workflows/build-mt-desktop-bridge.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  package-bridge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout MT OS bridge source
+        uses: actions/checkout@v4
+
+      - name: Download latest successful MT-Phosh build artifact
+        env:
+          ARTIFACT_URL: https://api.github.com/repos/TEMMC/MT-phosh-/actions/artifacts/12583781785/zip
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/artifacts/phosh"
+          curl -fL --retry 5 --retry-all-errors \
+            -H 'Accept: application/vnd.github+json' \
+            "$ARTIFACT_URL" -o "$RUNNER_TEMP/phosh-artifact.zip"
+          unzip -q "$RUNNER_TEMP/phosh-artifact.zip" -d "$RUNNER_TEMP/artifacts/phosh"
+          test -s "$RUNNER_TEMP/artifacts/phosh/mt-phosh-linux-install.tar.gz"
+
+      - name: Download latest successful MT-Phoc build artifact
+        env:
+          ARTIFACT_URL: https://api.github.com/repos/TEMMC/MT-phoc/actions/artifacts/12661260748/zip
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/artifacts/phoc"
+          curl -fL --retry 5 --retry-all-errors \
+            -H 'Accept: application/vnd.github+json' \
+            "$ARTIFACT_URL" -o "$RUNNER_TEMP/phoc-artifact.zip"
+          unzip -q "$RUNNER_TEMP/phoc-artifact.zip" -d "$RUNNER_TEMP/artifacts/phoc"
+          test -s "$RUNNER_TEMP/artifacts/phoc/MT-phoc-linux-install.tar.gz"
+
+      - name: Validate bridge source and stage bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile linux/bridge-client/nativOS-bridge.py
+          python3 -m py_compile linux/bridge-client/metmc-settings.py
+          python3 -m py_compile linux/bridge-client/metmc-wifi.py
+          test -d android/app/src/main/java/com/nativOS/bridge
+
+          OUT="$RUNNER_TEMP/mt-bridge-bundle"
+          mkdir -p "$OUT/linux/bridge-client" "$OUT/linux/config" "$OUT/linux/setup" \
+            "$OUT/android/app/src/main/java/com/nativOS/bridge" "$OUT/desktop-builds"
+          cp -a linux/bridge-client/. "$OUT/linux/bridge-client/"
+          cp linux/config/nativOS-bridge.service linux/config/phoc.ini "$OUT/linux/config/"
+          cp linux/setup/install-bridge.sh "$OUT/linux/setup/"
+          cp -a android/app/src/main/java/com/nativOS/bridge/. \
+            "$OUT/android/app/src/main/java/com/nativOS/bridge/"
+          cp "$RUNNER_TEMP/artifacts/phosh/mt-phosh-linux-install.tar.gz" \
+            "$OUT/desktop-builds/mt-phosh-linux-install.tar.gz"
+          cp "$RUNNER_TEMP/artifacts/phoc/MT-phoc-linux-install.tar.gz" \
+            "$OUT/desktop-builds/mt-phoc-linux-install.tar.gz"
+
+          cat > "$OUT/BUILD-MANIFEST.txt" <<'EOF'
+          MT OS Android-Linux Bridge Bundle
+          MT-Phosh successful build: TEMMC/MT-phosh- run 40153637822
+          MT-Phosh commit: a666684c70338867034f889545d1b1da49e8cb64
+          MT-Phoc successful build: TEMMC/MT-phoc run 40344456949
+          MT-Phoc commit: 7207050415b30a99a985277dcca8a3393086d918
+          Bridge sources are included under linux/bridge-client and android/app/src/main/java/com/nativOS/bridge.
+          Desktop build archives are payloads only; they are not automatically installed into the Alpine/musl rootfs.
+          The Phosh/Phoc artifacts were built in Debian testing and need a glibc-compatible runtime and matching dependencies.
+          EOF
+
+          tar -czf "$RUNNER_TEMP/MT-Android-Linux-Bridge-arm64.tar.gz" -C "$OUT" .
+          sha256sum "$RUNNER_TEMP/MT-Android-Linux-Bridge-arm64.tar.gz" | tee "$RUNNER_TEMP/SHA256SUMS.txt"
+
+      - name: Upload bridge bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: MT-Android-Linux-Bridge-arm64
+          path: |
+            ${{ runner.temp }}/MT-Android-Linux-Bridge-arm64.tar.gz
+            ${{ runner.temp }}/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
