@@ -836,7 +836,7 @@ METMC_LAUNCH_EOF
             set -u
             export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
             export TMPDIR=${tmpPath} DISPLAY=:0 LANG=C.UTF-8 LC_ALL=C.UTF-8
-            export WLR_BACKENDS=x11 WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
+            export WLR_BACKENDS=x11 WLR_RENDERER=gles2 WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
             export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
             export XDG_DATA_DIRS=/usr/local/share:/usr/share
             mkdir -p /run/dbus /run/metmc
@@ -868,12 +868,21 @@ METMC_LAUNCH_EOF
                 export HOME="${'$'}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
                 export TMPDIR=/tmp XDG_RUNTIME_DIR=/tmp/runtime-metmc WAYLAND_DISPLAY=wayland-0
                 export LD_PRELOAD="${'$'}PRELOAD"
-                export WLR_BACKENDS=x11 WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
+                export WLR_BACKENDS=x11 WLR_RENDERER=gles2 WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
                 export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
                 export GDK_BACKEND=wayland,x11 QT_QPA_PLATFORM='wayland;xcb' MOZ_ENABLE_WAYLAND=1 SDL_VIDEODRIVER=wayland,x11
                 if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
                     echo "Starting nested Labwc Wayland desktop on Android X11"
-                    exec dbus-run-session -- labwc
+                    echo "Graphics: trying wlroots GLES2/EGL renderer first"
+                    echo "GPU devices visible in rootfs:"
+                    ls -l /dev/dri 2>/dev/null || true
+                    if WLR_RENDERER=gles2 dbus-run-session -- labwc; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "GLES2 renderer exited with status ${renderer_status}; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- labwc
+                    fi
                 fi
                 echo "ERROR: Alpine Labwc, Waybar, or Fuzzel is missing from the bundled rootfs" >&2
                 exit 127
