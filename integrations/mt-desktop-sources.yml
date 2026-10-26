@@ -11,12 +11,14 @@ components:
     runtime: bundled-in-android-apk
   mt_phosh:
     repository: https://github.com/TEMMC/MT-phosh-.git
-    ref: main
+    branch: main
+    ref: fbe7a6d58ea10a02cd837ec4db8d4493dc4b5b21
     path: integrations/sources/MT-phosh
     runtime: source-bundle-only
   mt_phoc:
     repository: https://github.com/TEMMC/MT-phoc.git
-    ref: mt-desktop-abc-experimental
+    branch: mt-desktop-abc-experimental
+    ref: 1d0282772d493b16e3e6f021accfa07655cdfe3f
     path: integrations/sources/MT-phoc
     runtime: source-bundle-only
 compatibility:
