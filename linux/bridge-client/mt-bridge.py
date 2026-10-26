@@ -90,7 +90,7 @@ def main(argv=None):
                 raise RuntimeError("Android launch FIFO is missing; ensure the app bridge launch pipe is mounted")
             fd = os.open(DEFAULT_LAUNCH_PIPE, os.O_WRONLY | os.O_NONBLOCK)
             try:
-                os.write(fd, (args.package + "\\t" + args.activity + "\\n").encode())
+                os.write(fd, (args.package + "\t" + args.activity + "\n").encode())
             finally:
                 os.close(fd)
             result = {"requested": True, "package": args.package, "activity": args.activity}
