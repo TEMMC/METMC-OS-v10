@@ -39,7 +39,7 @@ object AndroidAppIntegration {
             File(integrationDir, "nativos-launch-android").writeText(
                 """#!/bin/sh
                 |[ "${'$'}#" -eq 2 ] || exit 2
-                |exec /usr/local/bin/mt-bridge launch-app "${'
+                |exec /usr/local/bin/mt-bridge launch-app "${'$'}1" "${'$'}2"
                 |""".trimMargin()
             )
 
