@@ -43,6 +43,21 @@ class BridgeService : Service() {
         const val ACTION_REFRESH_NOTIFICATION = "com.nativOS.action.REFRESH_NOTIFICATION"
         @Volatile private var activeService: BridgeService? = null
 
+        fun publishAndroidNotification(packageName: String, title: String, text: String, postTime: Long, key: String) {
+            if (packageName == "com.temmc.metmcosv10") return
+            activeService?.broadcastEvent(
+                BridgeProtocol.TYPE_NOTIFICATION,
+                BridgeProtocol.EVENT_NOTIFICATION_RECEIVED,
+                JSONObject().apply {
+                    put("package", packageName)
+                    put("title", title.take(4096))
+                    put("text", text.take(16384))
+                    put("post_time", postTime)
+                    put("key", key.take(512))
+                }
+            )
+        }
+
         fun publishClipboardText(text: String) {
             activeService?.broadcastEvent(
                 BridgeProtocol.TYPE_SYSTEM,
