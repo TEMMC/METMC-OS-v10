@@ -45,6 +45,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 -m py_compile linux/bridge-client/bridge_transport.py
           python3 -m py_compile linux/bridge-client/nativOS-bridge.py
           python3 -m py_compile linux/bridge-client/metmc-settings.py
           python3 -m py_compile linux/bridge-client/metmc-wifi.py
