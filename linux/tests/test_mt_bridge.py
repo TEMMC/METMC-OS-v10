@@ -68,7 +68,7 @@ def test_request_surfaces_android_error(tmp_path):
 
 def test_connect_falls_back_to_android_abstract_socket():
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    server.bind("\\0nativOS_bridge")
+    server.bind("\0nativOS_bridge")
     server.listen(1)
 
     def serve():
