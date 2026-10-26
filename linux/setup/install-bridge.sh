@@ -24,6 +24,8 @@ apt-get install -y --no-install-recommends python3 python3-pip python3-dbus wl-c
 
 # ── Copy bridge daemon ──
 echo "[2/4] Installing bridge daemon..."
+cp "$BRIDGE_DIR/bridge_transport.py" /usr/local/bin/bridge_transport.py
+chmod +x /usr/local/bin/bridge_transport.py
 cp "$BRIDGE_DIR/nativOS-bridge.py" /usr/local/bin/nativOS-bridge
 chmod +x /usr/local/bin/nativOS-bridge
 cp "$BRIDGE_DIR/mt-bridge.py" /usr/local/bin/mt-bridge
