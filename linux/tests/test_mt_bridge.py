@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import socket
 import threading
+from bridge_transport import connect as connect_bridge
 
 SCRIPT = Path(__file__).parents[1] / "bridge-client" / "mt-bridge.py"
 spec = importlib.util.spec_from_file_location("mt_bridge_cli", SCRIPT)
@@ -61,3 +62,21 @@ def test_request_surfaces_android_error(tmp_path):
     except RuntimeError as error:
         assert "permission required" in str(error)
     thread.join(timeout=2)
+
+
+def test_connect_falls_back_to_android_abstract_socket():
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind("\\0nativOS_bridge")
+    server.listen(1)
+
+    def serve():
+        conn, _ = server.accept()
+        conn.close()
+        server.close()
+
+    thread = threading.Thread(target=serve)
+    thread.start()
+    with connect_bridge(timeout=1) as client:
+        assert client.fileno() >= 0
+    thread.join(timeout=2)
+    assert not thread.is_alive()
