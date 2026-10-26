@@ -183,6 +183,17 @@
             android:exported="false"
             android:process=":x11" />
 
+        <!-- User-enabled notification listener; Android requires explicit notification-access approval. -->
+        <service
+            android:name=".bridge.BridgeNotificationListenerService"
+            android:label="MT OS Notification Bridge"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <!-- ── Boot Receiver ── -->
         <receiver
             android:name=".launcher.BootReceiver"
