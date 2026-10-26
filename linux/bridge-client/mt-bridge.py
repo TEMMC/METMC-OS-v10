@@ -22,6 +22,7 @@ ACTIONS = {
     "display-settings": ("system", "open_display_settings", {}),
     "sound-settings": ("system", "open_sound_settings", {}),
     "location-settings": ("system", "open_location_settings", {}),
+    "notification-settings": ("system", "open_notification_listener_settings", {}),
     "settings": ("system", "open_system_settings", {}),
     "signal": ("system", "get_signal", {}),
     "apps": ("system", "list_android_apps", {}),
