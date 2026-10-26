@@ -1,4 +1,4 @@
-name: Build MT Android-Linux Bridge Bundle
+name: Build MT Bridge Only
 
 on:
   workflow_dispatch:
@@ -9,6 +9,7 @@ on:
       - "linux/bridge-client/**"
       - "linux/config/nativOS-bridge.service"
       - "linux/config/phoc.ini"
+      - "linux/config/metmc-*.desktop"
       - "linux/setup/install-bridge.sh"
       - ".github/workflows/build-mt-desktop-bridge.yml"
 
@@ -16,84 +17,69 @@ permissions:
   contents: read
 
 jobs:
-  package-bridge:
-    runs-on: ubuntu-24.04-arm
-    container: debian:testing
-    timeout-minutes: 45
+  build-bridge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - name: Install native build dependencies
-        run: |
-          set -euo pipefail
-          apt-get update
-          apt-get install -y ca-certificates git meson ninja-build pkg-config build-essential python3 unzip tar gzip
-          printf 'Types: deb deb-src\nURIs: http://deb.debian.org/debian\nSuites: testing\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n' > /etc/apt/sources.list.d/debian.sources
-          apt-get update
-          apt-get build-dep -y phosh phoc
-
       - name: Checkout bridge source
         uses: actions/checkout@v4
 
-      - name: Rebuild the exact MT-Phosh source revision from the successful build
+      - name: Install bridge validation tools
         run: |
           set -euo pipefail
-          git clone https://github.com/TEMMC/MT-phosh-.git "$RUNNER_TEMP/mt-phosh"
-          git -C "$RUNNER_TEMP/mt-phosh" checkout a666684c70338867034f889545d1b1da49e8cb64
-          meson setup "$RUNNER_TEMP/mt-phosh/_build" --prefix=/usr
-          meson compile -C "$RUNNER_TEMP/mt-phosh/_build"
-          DESTDIR="$RUNNER_TEMP/phosh-stage" meson install -C "$RUNNER_TEMP/mt-phosh/_build"
-          tar -C "$RUNNER_TEMP/phosh-stage" -czf "$RUNNER_TEMP/mt-phosh-linux-install.tar.gz" .
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends python3 python3-pytest shellcheck
 
-      - name: Rebuild the Phoc 0.47.0 source used by the latest successful MT-Phoc build
-        env:
-          CFLAGS: -Wno-error=switch -Wno-error=discarded-qualifiers
-        run: |
-          set -euo pipefail
-          git clone --depth 1 --branch v0.47.0 https://github.com/PhoshMobi/phoc.git "$RUNNER_TEMP/phoc-src"
-          git -C "$RUNNER_TEMP/phoc-src" log -1 --format='Phoc source: %H (%s)'
-          meson setup "$RUNNER_TEMP/phoc-src/_build" -Dembed-wlroots=enabled -Dxwayland=enabled -Dtests=false --prefix=/usr
-          meson compile -C "$RUNNER_TEMP/phoc-src/_build"
-          DESTDIR="$RUNNER_TEMP/phoc-stage" meson install -C "$RUNNER_TEMP/phoc-src/_build" --skip-subprojects
-          tar -C "$RUNNER_TEMP/phoc-stage" -czf "$RUNNER_TEMP/MT-phoc-linux-install.tar.gz" .
-
-      - name: Validate bridge source and stage bundle
+      - name: Validate Linux bridge client and installer
         shell: bash
         run: |
           set -euo pipefail
           python3 -m py_compile linux/bridge-client/nativOS-bridge.py
           python3 -m py_compile linux/bridge-client/metmc-settings.py
           python3 -m py_compile linux/bridge-client/metmc-wifi.py
-          test -d android/app/src/main/java/com/nativOS/bridge
-          test -s "$RUNNER_TEMP/mt-phosh-linux-install.tar.gz"
-          test -s "$RUNNER_TEMP/MT-phoc-linux-install.tar.gz"
+          bash -n linux/setup/install-bridge.sh
+          test -s linux/config/nativOS-bridge.service
+          test -s linux/config/phoc.ini
+          test -s android/app/src/main/java/com/nativOS/bridge/BridgeService.kt
+          test -s android/app/src/main/java/com/nativOS/bridge/BridgeProtocol.kt
+          shellcheck -S error linux/setup/install-bridge.sh
 
-          OUT="$RUNNER_TEMP/mt-bridge-bundle"
+      - name: Assemble standalone bridge bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/mt-bridge"
           mkdir -p "$OUT/linux/bridge-client" "$OUT/linux/config" "$OUT/linux/setup" \
-            "$OUT/android/app/src/main/java/com/nativOS/bridge" "$OUT/desktop-builds"
+            "$OUT/android-bridge-source"
           cp -a linux/bridge-client/. "$OUT/linux/bridge-client/"
           cp linux/config/nativOS-bridge.service linux/config/phoc.ini "$OUT/linux/config/"
+          cp linux/config/metmc-*.desktop "$OUT/linux/config/"
           cp linux/setup/install-bridge.sh "$OUT/linux/setup/"
-          cp -a android/app/src/main/java/com/nativOS/bridge/. \
-            "$OUT/android/app/src/main/java/com/nativOS/bridge/"
-          cp "$RUNNER_TEMP/mt-phosh-linux-install.tar.gz" \
-            "$OUT/desktop-builds/mt-phosh-linux-install.tar.gz"
-          cp "$RUNNER_TEMP/MT-phoc-linux-install.tar.gz" \
-            "$OUT/desktop-builds/mt-phoc-linux-install.tar.gz"
+          cp -a android/app/src/main/java/com/nativOS/bridge/. "$OUT/android-bridge-source/"
 
-          cat > "$OUT/BUILD-MANIFEST.txt" <<'EOF'
-          MT OS Android-Linux Bridge Bundle
-          MT-Phosh source revision: TEMMC/MT-phosh- a666684c70338867034f889545d1b1da49e8cb64
-          Reference successful MT-Phosh run: 40153637822
-          MT-Phoc source release: PhoshMobi/phoc v0.47.0
-          Reference successful MT-Phoc run: 40344456949
-          Bridge sources are included under linux/bridge-client and android/app/src/main/java/com/nativOS/bridge.
-          Desktop build archives are payloads only; they are not automatically installed into the Alpine/musl rootfs.
-          These desktop builds use Debian/glibc dependencies and need a compatible runtime and matching dependencies.
+          cat > "$OUT/README.txt" <<'EOF'
+          MT OS standalone Android-Linux bridge bundle
+
+          This artifact contains bridge source and Linux installation files only.
+          MT-Phosh and MT-Phoc are intentionally NOT rebuilt or bundled here.
+
+          Contents:
+          - linux/bridge-client: Linux-side Python bridge clients
+          - linux/config: bridge service, Phoc integration config, and launchers
+          - linux/setup/install-bridge.sh: Ubuntu/Debian-oriented bridge installer
+          - android-bridge-source: Android-side Kotlin bridge implementation
+
+          The Android Kotlin source is provided for integration into the MT OS Android app;
+          it is not a separately installable APK by itself.
+          Install the Linux side inside the Ubuntu rootfs as root. Review launcher paths
+          and Android socket permissions for the target runtime before enabling the service.
           EOF
 
           tar -czf "$RUNNER_TEMP/MT-Android-Linux-Bridge-arm64.tar.gz" -C "$OUT" .
           sha256sum "$RUNNER_TEMP/MT-Android-Linux-Bridge-arm64.tar.gz" | tee "$RUNNER_TEMP/SHA256SUMS.txt"
+          tar -tzf "$RUNNER_TEMP/MT-Android-Linux-Bridge-arm64.tar.gz" | head -80
 
-      - name: Upload bridge bundle
+      - name: Upload standalone bridge artifact
         uses: actions/upload-artifact@v4
         with:
           name: MT-Android-Linux-Bridge-arm64
