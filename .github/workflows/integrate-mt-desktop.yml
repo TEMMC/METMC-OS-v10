@@ -1,0 +1,74 @@
+name: Integrate MT Desktop Sources
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "integrations/**"
+      - "linux/bridge-client/**"
+      - "android/app/src/main/java/com/nativOS/bridge/**"
+      - ".github/workflows/integrate-mt-desktop.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout MT OS
+        uses: actions/checkout@v4
+
+      - name: Checkout MT-Phosh
+        uses: actions/checkout@v4
+        with:
+          repository: TEMMC/MT-phosh-
+          ref: main
+          path: integrations/sources/MT-phosh
+
+      - name: Checkout MT-Phoc
+        uses: actions/checkout@v4
+        with:
+          repository: TEMMC/MT-phoc
+          ref: mt-desktop-abc-experimental
+          path: integrations/sources/MT-phoc
+
+      - name: Validate source trees and bridge files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f integrations/mt-desktop-sources.yml
+          test -f integrations/sources/MT-phosh/meson.build
+          test -f integrations/sources/MT-phoc/meson.build
+          test -f integrations/sources/MT-phoc/src/render.c
+          test -f linux/bridge-client/mt-bridge.py
+          test -f linux/bridge-client/bridge_transport.py
+          test -f android/app/src/main/java/com/nativOS/bridge/BridgeService.kt
+          test -f android/app/src/main/java/com/nativOS/bridge/BridgeProtocol.kt
+          python3 -m py_compile linux/bridge-client/*.py
+          git -C integrations/sources/MT-phosh rev-parse HEAD
+          git -C integrations/sources/MT-phoc rev-parse HEAD
+
+      - name: Create reproducible source bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          tar --sort=name --mtime='UTC 2020-01-01' --owner=0 --group=0 --numeric-owner \
+            --exclude-vcs -czf dist/MT-Desktop-Integration-Source.tar.gz \
+            integrations/mt-desktop-sources.yml integrations/sources \
+            linux/bridge-client linux/config linux/setup/install-bridge.sh \
+            linux/README-bridge.md android/app/src/main/java/com/nativOS/bridge
+          sha256sum dist/MT-Desktop-Integration-Source.tar.gz > dist/SHA256SUMS
+
+      - name: Upload integration source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MT-Desktop-Integration-Source
+          path: |
+            dist/MT-Desktop-Integration-Source.tar.gz
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
