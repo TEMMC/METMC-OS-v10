@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""MT OS bridge command line: inspect and control Android features from Ubuntu."""
+"""MT OS bridge command line for supported Android APIs from the Ubuntu rootfs."""
 import argparse
 import json
 import os
-import re
 import socket
 import sys
 
@@ -13,12 +12,9 @@ ACTIONS = {
     "battery": ("system", "get_battery", {}),
     "wifi": ("system", "get_wifi", {}),
     "brightness": ("system", "get_brightness", {}),
-    "brightness-set": ("system", "set_brightness", None),
     "volume": ("audio", "get_volume", {}),
-    "volume-set": ("audio", "set_volume", None),
     "audio": ("audio", "get_audio_info", {}),
     "clipboard-get": ("system", "get_clipboard", {}),
-    "clipboard-set": ("system", "set_clipboard", None),
     "torch-on": ("system", "torch_on", {}),
     "torch-off": ("system", "torch_off", {}),
     "wifi-settings": ("system", "open_wifi_settings", {}),
@@ -105,12 +101,12 @@ def main(argv=None):
                              {"number": args.number, "text": args.text})
         else:
             msg_type, action, params = ACTIONS[args.command]
-            result = request(args.socket, msg_type, action, params or {})
+            result = request(args.socket, msg_type, action, params)
         print(json.dumps(result, indent=2, sort_keys=True))
         return 0
-    except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as error:
+    except (OSError, ValueError, RuntimeError) as error:
         print("mt-bridge: {}".format(error), file=sys.stderr)
-        print("Check that the Android bridge service is running and the socket is mounted at {}.".format(
+        print("Check that the Android bridge service is running and its socket is mounted at {}.".format(
             args.socket), file=sys.stderr)
         return 1
 
