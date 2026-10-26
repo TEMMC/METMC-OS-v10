@@ -7,6 +7,7 @@ from bridge_transport import connect as connect_bridge
 import sys
 
 DEFAULT_SOCKET = os.environ.get("MT_BRIDGE_SOCKET", "/run/nativOS/bridge.sock")
+DEFAULT_LAUNCH_PIPE = os.environ.get("MT_ANDROID_LAUNCH_PIPE", "/run/nativOS/android-launch.fifo")
 ACTIONS = {
     "status": ("system", "get_device_info", {}),
     "battery": ("system", "get_battery", {}),
@@ -73,13 +74,27 @@ def main(argv=None):
     p = sub.add_parser("sms-send")
     p.add_argument("number")
     p.add_argument("text")
+    p = sub.add_parser("launch-app")
+    p.add_argument("package")
+    p.add_argument("activity")
     p = sub.add_parser("request")
     p.add_argument("type", choices=sorted(TYPES))
     p.add_argument("action")
     p.add_argument("--params", default="{}", help="JSON object of action parameters")
     args = parser.parse_args(argv)
     try:
-        if args.command == "request":
+        if args.command == "launch-app":
+            if not re.fullmatch(r"[A-Za-z0-9_.]+", args.package) or not re.fullmatch(r"[A-Za-z0-9_.$]+", args.activity):
+                raise ValueError("package/activity contains unsupported characters")
+            if not stat.S_ISFIFO(os.stat(DEFAULT_LAUNCH_PIPE).st_mode):
+                raise RuntimeError("Android launch FIFO is missing; ensure the app bridge launch pipe is mounted")
+            fd = os.open(DEFAULT_LAUNCH_PIPE, os.O_WRONLY | os.O_NONBLOCK)
+            try:
+                os.write(fd, (args.package + "\\t" + args.activity + "\\n").encode())
+            finally:
+                os.close(fd)
+            result = {"requested": True, "package": args.package, "activity": args.activity}
+        elif args.command == "request":
             params = json.loads(args.params)
             if not isinstance(params, dict):
                 raise ValueError("--params must be a JSON object")
