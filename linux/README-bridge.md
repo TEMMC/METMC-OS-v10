@@ -29,4 +29,4 @@ mt-bridge request sensor list_sensors
 The CLI only reports success when the Android handler returns success. Use the generic `request` subcommand for other implemented handler actions, passing parameters as a JSON object. Android permissions, foreground-state limits and privileged APIs still apply.
 
 ## Runtime contract
-The Android service must be running and its Unix socket must be made available inside Ubuntu as `/run/nativOS/bridge.sock`. A green CI run proves source/package checks, not that this socket mount or live device communication works. No network download is needed at boot.
+The Android service listens on the abstract Unix socket `nativOS_bridge`. Linux clients try `/run/nativOS/bridge.sock` first and then fall back to the abstract socket, which works when the Ubuntu chroot shares Android’s network namespace. Generated app icons/desktop entries still need the existing Android-to-rootfs shared path mounted at `/run/nativOS/android-apps`. A green CI run proves source/package checks, not live device communication or Android permission availability. No network download is needed at boot.
