@@ -85,6 +85,11 @@ class ChrootManager(private val context: Context) {
         File(rootfsDir, "usr/bin/fuzzel").exists() &&
         File(rootfsDir, "usr/bin/foot").exists() &&
         (File(rootfsDir, "usr/bin/Xwayland").exists() || File(rootfsDir, "usr/bin/xwayland").exists())
+    /** MT-Phosh/MT-Phoc is preferred when the integrated mobile shell is bundled. */
+    fun isPhoshInstalled(): Boolean =
+        File(rootfsDir, "usr/bin/phosh-session").canExecute() &&
+        File(rootfsDir, "usr/bin/phoc").canExecute() &&
+        File(rootfsDir, "usr/libexec/phosh").canExecute()
 
     fun isRunning(): Boolean = sessionProcess?.isAlive == true
 
@@ -871,16 +876,27 @@ METMC_LAUNCH_EOF
                 export WLR_BACKENDS=x11 WLR_RENDERER=gles2 WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
                 export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
                 export GDK_BACKEND=wayland,x11 QT_QPA_PLATFORM='wayland;xcb' MOZ_ENABLE_WAYLAND=1 SDL_VIDEODRIVER=wayland,x11
-                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
-                    echo "Starting nested Labwc Wayland desktop on Android X11"
-                    echo "Graphics: trying wlroots GLES2/EGL renderer first"
-                    echo "GPU devices visible in rootfs:"
+                if [ -x /usr/bin/phosh-session ] && [ -x /usr/bin/phoc ] && [ -x /usr/libexec/phosh ]; then
+                    echo "Starting MT-Phosh on MT-Phoc nested inside Android X11"
+                    echo "Graphics: trying GLES2/EGL hardware rendering first"
                     ls -l /dev/dri 2>/dev/null || true
+                    export XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh
+                    if WLR_RENDERER=gles2 dbus-run-session -- phosh-session; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Phosh/GLES2 exited with status ${renderer_status}; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- phosh-session
+                    fi
+                fi
+                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
+                    echo "Starting nested Labwc fallback desktop on Android X11"
+                    export XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
                     if WLR_RENDERER=gles2 dbus-run-session -- labwc; then
                         exit 0
                     else
                         renderer_status=$?
-                        echo "GLES2 renderer exited with status ${renderer_status}; retrying with pixman software rendering"
+                        echo "Labwc GLES2 exited with status ${renderer_status}; retrying with pixman software rendering"
                         WLR_RENDERER=pixman exec dbus-run-session -- labwc
                     fi
                 fi
@@ -909,8 +925,13 @@ METMC_LAUNCH_EOF
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
             if (sessionProcess?.isAlive != true) return false
-            if (execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0) {
-                Log.i(TAG, "Labwc compositor and Waybar taskbar readiness check passed")
+            val ready = if (isPhoshInstalled()) {
+                execChroot("pgrep -x phoc >/dev/null 2>&1 && pgrep -x phosh >/dev/null 2>&1") == 0
+            } else {
+                execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0
+            }
+            if (ready) {
+                Log.i(TAG, if (isPhoshInstalled()) "MT-Phosh and MT-Phoc readiness check passed" else "Labwc compositor and Waybar taskbar readiness check passed")
                 Thread.sleep(700)
                 return true
             }
