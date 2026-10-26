@@ -14,7 +14,6 @@ import java.security.MessageDigest
 /** Publishes Android launcher activities as applications in the Phosh drawer. */
 object AndroidAppIntegration {
     private const val TAG = "NativOS.AndroidApps"
-    const val LAUNCH_PIPE = "android-launch.fifo"
     @Volatile private var returningFromAndroidApp = false
 
     /** Records launches initiated by a Phosh Android-app shortcut. */
