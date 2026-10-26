@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# MT OS GPU setup and diagnostics for the Ubuntu rootfs.
+# Never force a specific Mesa driver: Android PowerVR userspace may not match
+# the Linux Mesa driver, so the safest path is to detect and report reality.
+set -uo pipefail
+
+MODE="${1:-status}"
+case "$MODE" in
+  status|check) ;;
+  *) echo "Usage: mt-gpu-status [status|check]" >&2; exit 2 ;;
+esac
+
+echo "MT OS graphics diagnostics"
+echo "=========================="
+echo "Kernel: $(uname -r 2>/dev/null || echo unknown)"
+echo "Architecture: $(uname -m 2>/dev/null || echo unknown)"
+
+if [[ -d /dev/dri ]]; then
+  echo
+  echo "/dev/dri nodes:"
+  find /dev/dri -maxdepth 1 -type c -printf '%f\n' 2>/dev/null | sort || ls -l /dev/dri
+else
+  echo "/dev/dri: not exposed inside Ubuntu rootfs"
+fi
+
+echo
+echo "Graphics libraries:"
+for lib in libEGL.so.1 libGLESv2.so.2 libGL.so.1 libgbm.so.1 libdrm.so.2; do
+  if ldconfig -p 2>/dev/null | grep -Fq "$lib"; then
+    printf '  available: %s\n' "$lib"
+  else
+    printf '  missing:   %s\n' "$lib"
+  fi
+done
+
+echo
+if command -v glxinfo >/dev/null 2>&1; then
+  echo "OpenGL renderer:"
+  timeout 5s glxinfo -B 2>&1 | grep -E 'direct rendering:|OpenGL vendor string:|OpenGL renderer string:|OpenGL core profile version string:|Error:' || true
+else
+  echo "glxinfo not installed; install mesa-utils for renderer detection."
+fi
+
+if command -v eglinfo >/dev/null 2>&1; then
+  echo
+  echo "EGL summary:"
+  timeout 5s eglinfo -B 2>&1 | grep -E 'EGL vendor string:|EGL version string:|Device platform|DRI2|DRI3|Error' | head -20 || true
+fi
+
+echo
+if [[ -e /dev/dri/renderD128 || -e /dev/dri/card0 ]]; then
+  echo "DRM device nodes are visible. This is necessary but does not alone prove GPU acceleration."
+else
+  echo "No DRM node is visible. Linux OpenGL may use software rendering unless Xlorie provides acceleration."
+fi
+
+if command -v glxinfo >/dev/null 2>&1; then
+  renderer="$(timeout 5s glxinfo -B 2>/dev/null | awk -F': ' '/OpenGL renderer string:/ {print $2; exit}')"
+  case "${renderer,,}" in
+    *llvmpipe*|*softpipe*|*swrast*)
+      echo "RESULT: software renderer detected; expect slower 3D and compositing."
+      echo "Do not force a Mesa driver name. Verify Android/Xlorie GPU integration and matching DRM/EGL drivers."
+      ;;
+    "")
+      echo "RESULT: renderer could not be identified (possibly no active X display)."
+      ;;
+    *)
+      echo "RESULT: renderer reported as: $renderer"
+      echo "Confirm it is the intended hardware GPU rather than assuming from the name alone."
+      ;;
+  esac
+fi
