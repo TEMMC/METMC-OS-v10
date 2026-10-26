@@ -1,0 +1,26 @@
+# MT desktop integration manifest
+# Source is fetched at build time into CI workspaces; no boot-time network access.
+# Keep these refs explicit so the desktop build is reproducible.
+version: 1
+project: MT OS
+components:
+  android_linux_bridge:
+    source: local
+    path: linux/bridge-client
+    android_source: android/app/src/main/java/com/nativOS/bridge
+    runtime: bundled-in-android-apk
+  mt_phosh:
+    repository: https://github.com/TEMMC/MT-phosh-.git
+    ref: main
+    path: integrations/sources/MT-phosh
+    runtime: source-bundle-only
+  mt_phoc:
+    repository: https://github.com/TEMMC/MT-phoc.git
+    ref: mt-desktop-abc-experimental
+    path: integrations/sources/MT-phoc
+    runtime: source-bundle-only
+compatibility:
+  current_apk_rootfs: Alpine Linux 3.22 ARM64
+  phosh_phoc_runtime: not-yet-bundled
+  reason: "MT-Phosh/MT-Phoc require a compatible Wayland/wlroots runtime and ABI; do not copy host-built binaries into Alpine blindly."
+  required_next_step: "Build both against the selected ARM64 rootfs and launch them from the Android-hosted display after device validation."
