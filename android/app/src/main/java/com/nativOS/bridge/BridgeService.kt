@@ -41,6 +41,7 @@ class BridgeService : Service() {
         private const val TAG = "NativOS.Bridge"
         private const val NOTIFICATION_CHANNEL = "nativOS_bridge"
         private const val NOTIFICATION_ID = 1001
+        private const val MAX_REQUEST_CHARS = 1_048_576
         const val ACTION_REFRESH_NOTIFICATION = "com.nativOS.action.REFRESH_NOTIFICATION"
         @Volatile private var activeService: BridgeService? = null
 
@@ -273,33 +274,44 @@ class BridgeService : Service() {
 
     private fun handleClient(client: LocalSocket) {
         thread(name = "bridge-client-handler") {
+            var output: OutputStream? = null
             try {
                 val input = BufferedReader(InputStreamReader(client.inputStream))
-                val output = client.outputStream
+                val clientOutput = client.outputStream
+                output = clientOutput
 
-                // Register for events
+                // Register for events. Response and event writes share this stream lock.
                 synchronized(eventClientsLock) {
-                    eventClients.add(output)
+                    eventClients.add(clientOutput)
                 }
 
                 var line: String?
                 while (input.readLine().also { line = it } != null) {
-                    val request = BridgeProtocol.parseRequest(line!!)
+                    val requestLine = line ?: break
+                    if (requestLine.length > MAX_REQUEST_CHARS) {
+                        Log.w(TAG, "Rejected oversized bridge request")
+                        break
+                    }
+                    val request = BridgeProtocol.parseRequest(requestLine)
                     if (request == null) {
-                        Log.w(TAG, "Invalid request: $line")
+                        Log.w(TAG, "Invalid bridge request")
                         continue
                     }
 
                     Log.d(TAG, "Request: type=${request.type} action=${request.action} id=${request.id}")
                     val response = routeRequest(request)
-                    output.write(response.toByteArray())
-                    output.flush()
+                    synchronized(clientOutput) {
+                        clientOutput.write(response.toByteArray())
+                        clientOutput.flush()
+                    }
                 }
             } catch (e: Exception) {
                 Log.d(TAG, "Client disconnected: ${e.message}")
             } finally {
-                synchronized(eventClientsLock) {
-                    eventClients.remove(client.outputStream)
+                output?.let { stream ->
+                    synchronized(eventClientsLock) {
+                        eventClients.remove(stream)
+                    }
                 }
                 try { client.close() } catch (_: Exception) {}
             }
@@ -345,8 +357,10 @@ class BridgeService : Service() {
             val disconnected = mutableListOf<OutputStream>()
             for (client in eventClients) {
                 try {
-                    client.write(bytes)
-                    client.flush()
+                    synchronized(client) {
+                        client.write(bytes)
+                        client.flush()
+                    }
                 } catch (e: Exception) {
                     disconnected.add(client)
                 }
