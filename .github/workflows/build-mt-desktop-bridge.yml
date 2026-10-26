@@ -17,35 +17,43 @@ permissions:
 
 jobs:
   package-bridge:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    runs-on: ubuntu-24.04-arm
+    container: debian:testing
+    timeout-minutes: 45
     steps:
-      - name: Checkout MT OS bridge source
+      - name: Install native build dependencies
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y ca-certificates git meson ninja-build pkg-config build-essential python3 unzip tar gzip
+          printf 'Types: deb deb-src\nURIs: http://deb.debian.org/debian\nSuites: testing\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n' > /etc/apt/sources.list.d/debian.sources
+          apt-get update
+          apt-get build-dep -y phosh phoc
+
+      - name: Checkout bridge source
         uses: actions/checkout@v4
 
-      - name: Download latest successful MT-Phosh build artifact
-        env:
-          ARTIFACT_URL: https://api.github.com/repos/TEMMC/MT-phosh-/actions/artifacts/12583781785/zip
+      - name: Rebuild the exact MT-Phosh source revision from the successful build
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/artifacts/phosh"
-          curl -fL --retry 5 --retry-all-errors \
-            -H 'Accept: application/vnd.github+json' \
-            "$ARTIFACT_URL" -o "$RUNNER_TEMP/phosh-artifact.zip"
-          unzip -q "$RUNNER_TEMP/phosh-artifact.zip" -d "$RUNNER_TEMP/artifacts/phosh"
-          test -s "$RUNNER_TEMP/artifacts/phosh/mt-phosh-linux-install.tar.gz"
+          git clone https://github.com/TEMMC/MT-phosh-.git "$RUNNER_TEMP/mt-phosh"
+          git -C "$RUNNER_TEMP/mt-phosh" checkout a666684c70338867034f889545d1b1da49e8cb64
+          meson setup "$RUNNER_TEMP/mt-phosh/_build" --prefix=/usr
+          meson compile -C "$RUNNER_TEMP/mt-phosh/_build"
+          DESTDIR="$RUNNER_TEMP/phosh-stage" meson install -C "$RUNNER_TEMP/mt-phosh/_build"
+          tar -C "$RUNNER_TEMP/phosh-stage" -czf "$RUNNER_TEMP/mt-phosh-linux-install.tar.gz" .
 
-      - name: Download latest successful MT-Phoc build artifact
+      - name: Rebuild the Phoc 0.47.0 source used by the latest successful MT-Phoc build
         env:
-          ARTIFACT_URL: https://api.github.com/repos/TEMMC/MT-phoc/actions/artifacts/12661260748/zip
+          CFLAGS: -Wno-error=switch -Wno-error=discarded-qualifiers
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/artifacts/phoc"
-          curl -fL --retry 5 --retry-all-errors \
-            -H 'Accept: application/vnd.github+json' \
-            "$ARTIFACT_URL" -o "$RUNNER_TEMP/phoc-artifact.zip"
-          unzip -q "$RUNNER_TEMP/phoc-artifact.zip" -d "$RUNNER_TEMP/artifacts/phoc"
-          test -s "$RUNNER_TEMP/artifacts/phoc/MT-phoc-linux-install.tar.gz"
+          git clone --depth 1 --branch v0.47.0 https://github.com/PhoshMobi/phoc.git "$RUNNER_TEMP/phoc-src"
+          git -C "$RUNNER_TEMP/phoc-src" log -1 --format='Phoc source: %H (%s)'
+          meson setup "$RUNNER_TEMP/phoc-src/_build" -Dembed-wlroots=enabled -Dxwayland=enabled -Dtests=false --prefix=/usr
+          meson compile -C "$RUNNER_TEMP/phoc-src/_build"
+          DESTDIR="$RUNNER_TEMP/phoc-stage" meson install -C "$RUNNER_TEMP/phoc-src/_build" --skip-subprojects
+          tar -C "$RUNNER_TEMP/phoc-stage" -czf "$RUNNER_TEMP/MT-phoc-linux-install.tar.gz" .
 
       - name: Validate bridge source and stage bundle
         shell: bash
@@ -55,6 +63,8 @@ jobs:
           python3 -m py_compile linux/bridge-client/metmc-settings.py
           python3 -m py_compile linux/bridge-client/metmc-wifi.py
           test -d android/app/src/main/java/com/nativOS/bridge
+          test -s "$RUNNER_TEMP/mt-phosh-linux-install.tar.gz"
+          test -s "$RUNNER_TEMP/MT-phoc-linux-install.tar.gz"
 
           OUT="$RUNNER_TEMP/mt-bridge-bundle"
           mkdir -p "$OUT/linux/bridge-client" "$OUT/linux/config" "$OUT/linux/setup" \
@@ -64,20 +74,20 @@ jobs:
           cp linux/setup/install-bridge.sh "$OUT/linux/setup/"
           cp -a android/app/src/main/java/com/nativOS/bridge/. \
             "$OUT/android/app/src/main/java/com/nativOS/bridge/"
-          cp "$RUNNER_TEMP/artifacts/phosh/mt-phosh-linux-install.tar.gz" \
+          cp "$RUNNER_TEMP/mt-phosh-linux-install.tar.gz" \
             "$OUT/desktop-builds/mt-phosh-linux-install.tar.gz"
-          cp "$RUNNER_TEMP/artifacts/phoc/MT-phoc-linux-install.tar.gz" \
+          cp "$RUNNER_TEMP/MT-phoc-linux-install.tar.gz" \
             "$OUT/desktop-builds/mt-phoc-linux-install.tar.gz"
 
           cat > "$OUT/BUILD-MANIFEST.txt" <<'EOF'
           MT OS Android-Linux Bridge Bundle
-          MT-Phosh successful build: TEMMC/MT-phosh- run 40153637822
-          MT-Phosh commit: a666684c70338867034f889545d1b1da49e8cb64
-          MT-Phoc successful build: TEMMC/MT-phoc run 40344456949
-          MT-Phoc commit: 7207050415b30a99a985277dcca8a3393086d918
+          MT-Phosh source revision: TEMMC/MT-phosh- a666684c70338867034f889545d1b1da49e8cb64
+          Reference successful MT-Phosh run: 40153637822
+          MT-Phoc source release: PhoshMobi/phoc v0.47.0
+          Reference successful MT-Phoc run: 40344456949
           Bridge sources are included under linux/bridge-client and android/app/src/main/java/com/nativOS/bridge.
           Desktop build archives are payloads only; they are not automatically installed into the Alpine/musl rootfs.
-          The Phosh/Phoc artifacts were built in Debian testing and need a glibc-compatible runtime and matching dependencies.
+          These desktop builds use Debian/glibc dependencies and need a compatible runtime and matching dependencies.
           EOF
 
           tar -czf "$RUNNER_TEMP/MT-Android-Linux-Bridge-arm64.tar.gz" -C "$OUT" .
