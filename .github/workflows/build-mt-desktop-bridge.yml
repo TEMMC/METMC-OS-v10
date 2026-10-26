@@ -7,6 +7,8 @@ on:
     paths:
       - "android/app/src/main/java/com/nativOS/bridge/**"
       - "linux/bridge-client/**"
+      - "linux/tests/**"
+      - "linux/README-bridge.md"
       - "linux/config/nativOS-bridge.service"
       - "linux/config/phoc.ini"
       - "linux/config/metmc-*.desktop"
@@ -24,6 +26,15 @@ jobs:
       - name: Checkout bridge source
         uses: actions/checkout@v4
 
+      - name: Set up Android build toolchain
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Install bridge validation tools
         run: |
           set -euo pipefail
@@ -37,12 +48,22 @@ jobs:
           python3 -m py_compile linux/bridge-client/nativOS-bridge.py
           python3 -m py_compile linux/bridge-client/metmc-settings.py
           python3 -m py_compile linux/bridge-client/metmc-wifi.py
+          python3 -m py_compile linux/bridge-client/mt-bridge.py
+          python3 -m pytest -q linux/tests/test_mt_bridge.py
           bash -n linux/setup/install-bridge.sh
           test -s linux/config/nativOS-bridge.service
           test -s linux/config/phoc.ini
           test -s android/app/src/main/java/com/nativOS/bridge/BridgeService.kt
           test -s android/app/src/main/java/com/nativOS/bridge/BridgeProtocol.kt
           shellcheck -S error linux/setup/install-bridge.sh
+
+      - name: Compile Android app bridge integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x android/gradlew
+          cd android
+          ./gradlew :app:compileDebugKotlin -x verifyBundledRootfs -x preparePatchedXlorie --no-daemon
 
       - name: Assemble standalone bridge bundle
         shell: bash
@@ -52,6 +73,7 @@ jobs:
           mkdir -p "$OUT/linux/bridge-client" "$OUT/linux/config" "$OUT/linux/setup" \
             "$OUT/android-bridge-source"
           cp -a linux/bridge-client/. "$OUT/linux/bridge-client/"
+          cp linux/README-bridge.md "$OUT/README-bridge.md"
           cp linux/config/nativOS-bridge.service linux/config/phoc.ini "$OUT/linux/config/"
           cp linux/config/metmc-*.desktop "$OUT/linux/config/"
           cp linux/setup/install-bridge.sh "$OUT/linux/setup/"
@@ -64,13 +86,15 @@ jobs:
           MT-Phosh and MT-Phoc are intentionally NOT rebuilt or bundled here.
 
           Contents:
-          - linux/bridge-client: Linux-side Python bridge clients
+          - linux/bridge-client: Linux-side Python bridge clients, including mt-bridge CLI
           - linux/config: bridge service, Phoc integration config, and launchers
           - linux/setup/install-bridge.sh: Ubuntu/Debian-oriented bridge installer
           - android-bridge-source: Android-side Kotlin bridge implementation
+          - README-bridge.md: feature usage and runtime contract
 
-          The Android Kotlin source is provided for integration into the MT OS Android app;
-          it is not a separately installable APK by itself.
+          The Android Kotlin source is part of the MT OS Android app; it is not a separate APK.
+          CI compiles the Android Kotlin integration and tests the Linux client, but does not
+          build or distribute the full rootfs APK in this bridge-only workflow.
           Install the Linux side inside the Ubuntu rootfs as root. Review launcher paths
           and Android socket permissions for the target runtime before enabling the service.
           EOF
