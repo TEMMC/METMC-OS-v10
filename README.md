@@ -73,3 +73,15 @@ Maintained by **Tinotenda Enock Mapfumo (Dr TEMMC)**.
 
 
 Release publishing is performed by GitHub Actions after the APK build and signature verification pass.
+
+
+## MT desktop source integration
+
+The repository now pins the MT desktop sources in `integrations/mt-desktop-sources.yml`:
+- **MT-Phosh:** `TEMMC/MT-phosh-`, branch `main`.
+- **MT-Phoc:** `TEMMC/MT-phoc`, branch `mt-desktop-abc-experimental`.
+- **MT Android–Linux bridge:** bridge protocol/service in the Android app plus the Linux clients under `linux/bridge-client/`.
+
+The **Integrate MT Desktop Sources** GitHub Actions workflow checks out those exact source branches, validates the source trees and bridge files, and publishes a checksum-protected source bundle. The Android APK build also bundles the MT bridge CLI and shared socket transport into the Linux rootfs.
+
+**Runtime status:** the current APK workflow still builds an Alpine Linux 3.22 ARM64 rootfs with Labwc. MT-Phosh and MT-Phoc are pinned and bundled as source, but their compiled binaries are not yet installed into the APK or selected at startup. They must be built for the exact ARM64 rootfs/runtime ABI and tested with the Android-hosted display before safely replacing Labwc. The source-bundle workflow does not claim that Phosh/Phoc run on the phone. No boot-time downloads are introduced.
