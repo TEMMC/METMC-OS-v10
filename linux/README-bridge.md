@@ -21,6 +21,7 @@ mt-bridge volume-set 7 --stream media
 mt-bridge clipboard-get
 mt-bridge clipboard-set 'Text copied from Ubuntu'
 mt-bridge apps
+mt-bridge launch-app com.example.app com.example.app.MainActivity
 mt-bridge display-settings
 mt-bridge request sensor list_sensors
 ```
