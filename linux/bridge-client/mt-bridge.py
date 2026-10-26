@@ -3,7 +3,7 @@
 import argparse
 import json
 import os
-import socket
+from bridge_transport import connect as connect_bridge
 import sys
 
 DEFAULT_SOCKET = os.environ.get("MT_BRIDGE_SOCKET", "/run/nativOS/bridge.sock")
@@ -32,9 +32,7 @@ TYPES = {"system", "audio", "telephony", "sms", "camera", "sensor",
 
 def request(socket_path, msg_type, action, params, timeout=8):
     message = {"id": 91371, "type": msg_type, "action": action, "params": params}
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-        client.settimeout(timeout)
-        client.connect(socket_path)
+    with connect_bridge(socket_path, timeout=timeout) as client:
         client.sendall((json.dumps(message, separators=(",", ":")) + "\n").encode())
         stream = client.makefile("r", encoding="utf-8")
         while True:
