@@ -118,42 +118,6 @@ class BridgeService : Service() {
         registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         batteryReceiverRegistered = true
         startSocketServer()
-        startAndroidAppLaunchPipe()
-    }
-
-    private fun startAndroidAppLaunchPipe() {
-        thread(name = "android-app-launch-pipe") {
-            val pipe = java.io.File(filesDir, "bridge/${AndroidAppIntegration.LAUNCH_PIPE}")
-            try {
-                pipe.parentFile?.mkdirs()
-                if (!pipe.exists()) Os.mkfifo(pipe.absolutePath, 0x1B6) // 0666
-                Os.chmod(pipe.absolutePath, 0x1B6)
-
-                while (running) {
-                    pipe.inputStream().bufferedReader().useLines { lines ->
-                        lines.forEach { line ->
-                            val fields = line.split('\t', limit = 2)
-                            if (fields.size != 2 ||
-                                !AndroidAppIntegration.isLaunchable(this, fields[0], fields[1])) {
-                                Log.w(TAG, "Rejected Android app launch request: $line")
-                                return@forEach
-                            }
-                            val component = android.content.ComponentName(fields[0], fields[1])
-                            if (!KioskActivity.launchAndroidApp(component)) {
-                                startActivity(Intent().apply {
-                                    this.component = component
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                })
-                                AndroidAppIntegration.markAndroidAppLaunched()
-                            }
-                            Log.i(TAG, "Launched Android app ${fields[0]}/${fields[1]}")
-                        }
-                    }
-                }
-            } catch (error: Throwable) {
-                if (running) Log.e(TAG, "Android app launch pipe failed", error)
-            }
-        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -209,18 +173,10 @@ class BridgeService : Service() {
         running = true
         thread(name = "bridge-socket-server") {
             try {
-                // Create the socket file in the bridge directory
-                val socketPath = "${filesDir.absolutePath}/bridge/${BridgeProtocol.SOCKET_NAME}"
-                java.io.File(socketPath).parentFile?.mkdirs()
-                java.io.File(socketPath).delete() // Remove stale socket
-
-                // Use abstract namespace socket for reliability
+                // LocalServerSocket uses Android's abstract AF_UNIX namespace.
+                // Linux clients fall back to this name when the filesystem path is unavailable.
                 serverSocket = LocalServerSocket("nativOS_bridge")
-                Log.i(TAG, "Bridge socket server listening on: nativOS_bridge")
-
-                // Also create a filesystem socket via symlink for the chroot
-                // The chroot accesses /run/nativOS/bridge.sock
-                createFilesystemSocket(socketPath)
+                Log.i(TAG, "Bridge socket server listening on abstract name nativOS_bridge")
 
                 while (running) {
                     try {
@@ -233,41 +189,6 @@ class BridgeService : Service() {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Socket server failed: ${e.message}", e)
-            }
-        }
-    }
-
-    /**
-     * Create a filesystem-accessible Unix socket that the chroot can connect to.
-     * This is needed because LocalServerSocket uses Android's abstract namespace,
-     * which isn't accessible from inside a chroot.
-     */
-    private fun createFilesystemSocket(socketPath: String) {
-        thread(name = "bridge-fs-socket") {
-            try {
-                val file = java.io.File(socketPath)
-                file.parentFile?.mkdirs()
-                file.delete()
-
-                // Use a real filesystem Unix domain socket
-                val address = android.net.LocalSocketAddress(
-                    socketPath,
-                    android.net.LocalSocketAddress.Namespace.FILESYSTEM
-                )
-                val fsServer = LocalServerSocket(address.name)
-                Log.i(TAG, "Filesystem bridge socket at: $socketPath")
-
-                while (running) {
-                    try {
-                        val client = fsServer.accept() ?: break
-                        Log.i(TAG, "Bridge client connected via filesystem socket")
-                        handleClient(client)
-                    } catch (e: Exception) {
-                        if (running) Log.w(TAG, "FS socket error: ${e.message}")
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Filesystem socket failed: ${e.message}")
             }
         }
     }
