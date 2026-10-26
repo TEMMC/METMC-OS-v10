@@ -26,6 +26,8 @@ apt-get install -y --no-install-recommends python3 python3-pip python3-dbus wl-c
 echo "[2/4] Installing bridge daemon..."
 cp "$BRIDGE_DIR/nativOS-bridge.py" /usr/local/bin/nativOS-bridge
 chmod +x /usr/local/bin/nativOS-bridge
+cp "$BRIDGE_DIR/mt-bridge.py" /usr/local/bin/mt-bridge
+chmod +x /usr/local/bin/mt-bridge
 
 # Install Phosh-accessible Wi-Fi controls backed by Android Wi-Fi APIs.
 cp "$BRIDGE_DIR/metmc-wifi.py" /usr/local/bin/metmc-wifi
@@ -55,6 +57,7 @@ mkdir -p /run/nativOS
 echo ""
 echo "✅ Bridge client installed!"
 echo "   Daemon: /usr/local/bin/nativOS-bridge"
+echo "   CLI: /usr/local/bin/mt-bridge"
 echo "   Service: nativOS-bridge.service"
 echo "   Socket: /run/nativOS/bridge.sock (bind-mounted from Android)"
 echo "   Wi-Fi: launch METMC Wi-Fi from Phosh or run metmc-wifi status/open
