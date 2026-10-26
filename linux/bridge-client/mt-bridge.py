@@ -7,7 +7,6 @@ from bridge_transport import connect as connect_bridge
 import sys
 
 DEFAULT_SOCKET = os.environ.get("MT_BRIDGE_SOCKET", "/run/nativOS/bridge.sock")
-DEFAULT_LAUNCH_PIPE = os.environ.get("MT_ANDROID_LAUNCH_PIPE", "/run/nativOS/android-launch.fifo")
 ACTIONS = {
     "status": ("system", "get_device_info", {}),
     "battery": ("system", "get_battery", {}),
@@ -86,14 +85,8 @@ def main(argv=None):
         if args.command == "launch-app":
             if not re.fullmatch(r"[A-Za-z0-9_.]+", args.package) or not re.fullmatch(r"[A-Za-z0-9_.$]+", args.activity):
                 raise ValueError("package/activity contains unsupported characters")
-            if not stat.S_ISFIFO(os.stat(DEFAULT_LAUNCH_PIPE).st_mode):
-                raise RuntimeError("Android launch FIFO is missing; ensure the app bridge launch pipe is mounted")
-            fd = os.open(DEFAULT_LAUNCH_PIPE, os.O_WRONLY | os.O_NONBLOCK)
-            try:
-                os.write(fd, (args.package + "\t" + args.activity + "\n").encode())
-            finally:
-                os.close(fd)
-            result = {"requested": True, "package": args.package, "activity": args.activity}
+            result = request(args.socket, "system", "launch_android_app",
+                             {"package": args.package, "activity": args.activity})
         elif args.command == "request":
             params = json.loads(args.params)
             if not isinstance(params, dict):
