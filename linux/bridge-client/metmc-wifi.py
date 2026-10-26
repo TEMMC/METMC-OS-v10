@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """METMC OS Wi-Fi bridge client. Android keeps ownership of the Wi-Fi radio."""
 import json
-import socket
+from bridge_transport import connect as connect_bridge
 import sys
 
 SOCKET_PATH = "/run/nativOS/bridge.sock"
 
 def request(action):
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-        client.settimeout(8)
-        client.connect(SOCKET_PATH)
+    with connect_bridge(SOCKET_PATH, timeout=8) as client:
         client.sendall((json.dumps({
             "id": 7301, "type": "system", "action": action, "params": {}
         }) + "\n").encode())
