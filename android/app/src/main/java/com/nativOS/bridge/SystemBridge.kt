@@ -51,6 +51,7 @@ class SystemBridge(private val service: BridgeService) {
             "open_display_settings" -> handleOpenAndroidSettings(request, Settings.ACTION_DISPLAY_SETTINGS, "Display settings")
             "open_sound_settings" -> handleOpenAndroidSettings(request, Settings.ACTION_SOUND_SETTINGS, "Sound settings")
             "open_location_settings" -> handleOpenAndroidSettings(request, Settings.ACTION_LOCATION_SOURCE_SETTINGS, "Location settings")
+            "open_notification_listener_settings" -> handleOpenAndroidSettings(request, Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS, "Notification access settings")
             else -> BridgeProtocol.response(
                 request.id, BridgeProtocol.STATUS_ERROR,
                 JSONObject().put("message", "Unknown system action: ${request.action}")
