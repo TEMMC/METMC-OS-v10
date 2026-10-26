@@ -13,9 +13,7 @@ import android.content.IntentFilter
 import android.net.LocalServerSocket
 import android.net.LocalSocket
 import android.os.IBinder
-import android.system.Os
 import android.util.Log
-import com.nativOS.launcher.KioskActivity
 import com.nativOS.settings.SettingsActivity
 import org.json.JSONObject
 import java.io.BufferedReader
