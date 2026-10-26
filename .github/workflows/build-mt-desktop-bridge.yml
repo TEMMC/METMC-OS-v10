@@ -10,6 +10,9 @@ on:
       - "linux/bridge-client/**"
       - "linux/tests/**"
       - "linux/README-bridge.md"
+      - "linux/README-gpu.md"
+      - "linux/setup/mt-gpu-status"
+      - "linux/config/mt-gpu.sh"
       - "linux/config/nativOS-bridge.service"
       - "linux/config/phoc.ini"
       - "linux/config/metmc-*.desktop"
@@ -60,6 +63,7 @@ jobs:
           test -s android/app/src/main/java/com/nativOS/bridge/BridgeService.kt
           test -s android/app/src/main/java/com/nativOS/bridge/BridgeProtocol.kt
           shellcheck -S error linux/setup/install-bridge.sh
+          bash -n linux/setup/mt-gpu-status
 
       - name: Compile Android app bridge integration
         shell: bash
@@ -78,6 +82,9 @@ jobs:
             "$OUT/android-bridge-source"
           cp -a linux/bridge-client/. "$OUT/linux/bridge-client/"
           cp linux/README-bridge.md "$OUT/README-bridge.md"
+          cp linux/README-gpu.md "$OUT/README-gpu.md"
+          cp linux/setup/mt-gpu-status "$OUT/linux/setup/mt-gpu-status"
+          cp linux/config/mt-gpu.sh "$OUT/linux/config/mt-gpu.sh"
           cp linux/config/nativOS-bridge.service linux/config/phoc.ini "$OUT/linux/config/"
           cp linux/config/metmc-*.desktop "$OUT/linux/config/"
           cp linux/setup/install-bridge.sh "$OUT/linux/setup/"
@@ -92,7 +99,10 @@ jobs:
           Contents:
           - linux/bridge-client: Linux-side Python bridge clients, including mt-bridge CLI
           - linux/config: bridge service, Phoc integration config, and launchers
-          - linux/setup/install-bridge.sh: Ubuntu/Debian-oriented bridge installer
+          - linux/setup/install-bridge.sh: Ubuntu/Debian-oriented bridge/GPU helper installer
+          - linux/setup/mt-gpu-status: OpenGL/EGL renderer and DRM diagnostics
+          - linux/config/mt-gpu.sh: safe graphics environment defaults
+          - README-gpu.md: hardware acceleration limitations and verification
           - android-bridge-source: Android-side Kotlin bridge implementation
           - README-bridge.md: feature usage and runtime contract
 
