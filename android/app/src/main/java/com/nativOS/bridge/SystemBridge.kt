@@ -40,6 +40,7 @@ class SystemBridge(private val service: BridgeService) {
             BridgeProtocol.ACTION_TORCH_OFF -> handleTorch(request, false)
             BridgeProtocol.ACTION_GET_SIGNAL -> handleGetSignal(request)
             "get_device_info" -> handleGetDeviceInfo(request)
+            "list_android_apps" -> handleListAndroidApps(request)
             "get_wifi" -> handleGetWifi(request)
             "open_wifi_settings" -> handleOpenWifiSettings(request)
             "open_bluetooth_settings" -> handleOpenAndroidSettings(request, Settings.ACTION_BLUETOOTH_SETTINGS, "Bluetooth")
@@ -272,6 +273,33 @@ class SystemBridge(private val service: BridgeService) {
         } catch (e: Exception) {
             BridgeProtocol.response(request.id, BridgeProtocol.STATUS_ERROR,
                 JSONObject().put("message", "Could not open $label: ${e.message}"))
+        }
+    }
+
+    /** Return launchable Android activities so Linux launchers can mirror the installed apps. */
+    private fun handleListAndroidApps(request: BridgeRequest): String {
+        return try {
+            val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+            @Suppress("DEPRECATION")
+            val resolved = service.packageManager.queryIntentActivities(launcherIntent, 0)
+                .filter { it.activityInfo.packageName != service.packageName }
+                .distinctBy { it.activityInfo.packageName + "/" + it.activityInfo.name }
+                .sortedBy { it.loadLabel(service.packageManager).toString().lowercase() }
+            val apps = org.json.JSONArray()
+            for (item in resolved) {
+                apps.put(JSONObject().apply {
+                    put("label", item.loadLabel(service.packageManager).toString())
+                    put("package", item.activityInfo.packageName)
+                    put("activity", item.activityInfo.name)
+                })
+            }
+            BridgeProtocol.response(request.id, BridgeProtocol.STATUS_OK, JSONObject().apply {
+                put("count", apps.length())
+                put("apps", apps)
+            })
+        } catch (e: Exception) {
+            BridgeProtocol.response(request.id, BridgeProtocol.STATUS_ERROR,
+                JSONObject().put("message", "Could not list Android launcher apps: ${e.message}"))
         }
     }
 
