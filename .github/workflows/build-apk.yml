@@ -17,6 +17,8 @@ on:
       - "linux/config/**"
       - "linux/bridge-client/**"
       - "linux/setup/**"
+      - "linux/tests/**"
+      - "linux/README-bridge.md"
       - "scripts/**"
       - "README.md"
       - ".github/workflows/build-apk.yml"
@@ -130,6 +132,11 @@ jobs:
           # Python locates shared helpers in the script directory; install a matching copy.
           sudo install -m 0644 linux/bridge-client/bridge_transport.py "$ROOTFS/usr/local/bin/bridge_transport.py"
           sudo install -m 0644 linux/README-bridge.md "$ROOTFS/usr/share/metmc/README-bridge.md"
+          sudo install -m 0755 linux/setup/mt-gpu-status "$ROOTFS/usr/local/bin/mt-gpu-status"
+          sudo install -d -m 0755 "$ROOTFS/etc/profile.d" "$ROOTFS/etc/nativOS" "$ROOTFS/usr/share/applications"
+          sudo install -m 0644 linux/config/mt-gpu.sh "$ROOTFS/etc/profile.d/mt-gpu.sh"
+          sudo install -m 0644 linux/config/phoc.ini "$ROOTFS/etc/nativOS/phoc.ini"
+          sudo cp linux/config/metmc-*.desktop "$ROOTFS/usr/share/applications/"
           sudo chmod 0755 "$ROOTFS/etc/skel/.config/labwc/autostart"
           sudo chroot "$ROOTFS" /bin/sh -eu -c '
             printf "nameserver 1.1.1.1\nnameserver 8.8.8.8\n" > /etc/resolv.conf
