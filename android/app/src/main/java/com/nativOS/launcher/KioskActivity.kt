@@ -728,11 +728,11 @@ class KioskActivity : Activity() {
             // install packages during startup; the bundled rootfs must contain
             // the complete desktop and essential tools.
             updateOverlay(0.74, "Checking offline desktop...", "")
-            if (!chrootManager.isLabwcInstalled()) {
+            if (!chrootManager.isPhoshInstalled() && !chrootManager.isLabwcInstalled()) {
                 updateOverlay(
                     -1.0,
                     "Offline desktop components missing",
-                    "The bundled Alpine rootfs is missing Labwc, Waybar or Xwayland. Rebuild the APK with the windowed desktop; boot will not install packages."
+                    "The bundled Linux rootfs has neither MT-Phosh/MT-Phoc nor the Labwc fallback. Rebuild the APK with a complete desktop; boot will not install packages."
                 )
                 return
             }
@@ -857,9 +857,9 @@ class KioskActivity : Activity() {
             Log.i(TAG, "Detected screen: ${screenWidth}x${screenHeight}")
 
             chrootManager.startLabwcSession(screenWidth, screenHeight)
-            updateOverlay(0.98, "Starting Labwc Wayland desktop...", "Starting window manager and taskbar")
+            updateOverlay(0.98, if (chrootManager.isPhoshInstalled()) "Starting MT-Phosh desktop..." else "Starting Labwc desktop...", if (chrootManager.isPhoshInstalled()) "Starting MT-Phoc compositor and mobile shell" else "Starting window manager and taskbar")
             if (!chrootManager.awaitLabwcReady()) {
-                throw IllegalStateException("Labwc compositor and taskbar did not become ready")
+                throw IllegalStateException(if (chrootManager.isPhoshInstalled()) "MT-Phosh/MT-Phoc did not become ready" else "Labwc compositor and taskbar did not become ready")
             }
             runOnUiThread {
                 overlayLayout?.visibility = View.GONE
