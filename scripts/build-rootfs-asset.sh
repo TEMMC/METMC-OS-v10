@@ -66,12 +66,13 @@ else
     ' "$staging/var/lib/dpkg/status" | LC_ALL=C sort > "$staging/usr/share/metmc/rootfs-packages.txt"
 fi
 
+if [ "$distro" = alpine ]; then desktop=labwc-wayland; else desktop=mt-phosh-phoc; fi
 cat > "$staging/usr/share/metmc/rootfs-build.txt" <<EOF
 schema=3
 distribution=$distro
 release=$release
 architecture=aarch64
-desktop=mt-phosh-phoc
+desktop=$desktop
 source_date_epoch=$source_date_epoch
 EOF
 
