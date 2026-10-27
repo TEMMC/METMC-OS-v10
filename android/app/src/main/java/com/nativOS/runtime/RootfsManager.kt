@@ -317,6 +317,7 @@ class RootfsManager(private val context: Context) {
 
     fun extractRootfs(onProgress: (progress: Double, status: String) -> Unit) {
         var previousRootfs: File? = null
+        var candidateCreated = false
         val previousSetupComplete = if (setupCompleteFile.isFile) setupCompleteFile.readText() else null
         try {
             val distro = getInstalledDistro().ifEmpty { DEFAULT_DISTRO }
@@ -348,6 +349,7 @@ class RootfsManager(private val context: Context) {
             if (!rootfsDir.mkdirs() && !rootfsDir.isDirectory) {
                 throw IllegalStateException("Could not create the new Linux rootfs directory")
             }
+            candidateCreated = true
 
             onProgress(0.1, "Extracting Linux filesystem...")
             Log.i(TAG, "Extracting rootfs from ${tarball.absolutePath}")
@@ -397,14 +399,12 @@ class RootfsManager(private val context: Context) {
         } catch (e: Exception) {
             if (previousSetupComplete == null) setupCompleteFile.delete()
             else setupCompleteFile.writeText(previousSetupComplete)
+            if (candidateCreated && rootfsDir.exists() && !rootfsDir.deleteRecursively()) {
+                Log.e(TAG, "Failed to remove incomplete rootfs candidate: ${rootfsDir.absolutePath}")
+            }
             previousRootfs?.let { backup ->
-                if (backup.exists()) {
-                    if (rootfsDir.exists() && !rootfsDir.deleteRecursively()) {
-                        Log.e(TAG, "Failed to remove incomplete rootfs candidate: ${rootfsDir.absolutePath}")
-                    }
-                    if (!rootfsDir.exists() && !backup.renameTo(rootfsDir)) {
-                        Log.e(TAG, "Failed to restore previous rootfs from ${backup.absolutePath}")
-                    }
+                if (backup.exists() && !rootfsDir.exists() && !backup.renameTo(rootfsDir)) {
+                    Log.e(TAG, "Failed to restore previous rootfs from ${backup.absolutePath}")
                 }
             }
             Log.e(TAG, "Extraction failed: ${e.message}", e)
