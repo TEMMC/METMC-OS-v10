@@ -16,6 +16,17 @@ on:
       - "integrations/**"
       - "android/app/src/main/java/com/nativOS/bridge/**"
       - ".github/workflows/build-apk.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "android/**"
+      - "linux/config/**"
+      - "linux/bridge-client/**"
+      - "linux/setup/**"
+      - "linux/README-bridge.md"
+      - "integrations/**"
+      - "android/app/src/main/java/com/nativOS/bridge/**"
+      - ".github/workflows/build-apk.yml"
 
 permissions:
   contents: read
