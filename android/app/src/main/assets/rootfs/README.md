@@ -1,16 +1,16 @@
-# METMC OS v10 — bundled Linux root filesystem
+# MT OS — bundled Ubuntu Linux root filesystem
 
-Every APK build requires `nativos-rootfs-arm64.tgz` and its matching `nativos-rootfs-arm64.tgz.sha256` in this directory. Gradle fails before packaging if either file is absent or the checksum does not match.
+Every APK build requires `nativos-rootfs-arm64.tar` and its matching `nativos-rootfs-arm64.tar.sha256` in this directory. Gradle verifies the archive checksum before packaging.
 
-Generate the archive from a clean, fully provisioned ARM64 root filesystem:
+Build the archive from a prepared Ubuntu ARM64 root filesystem that already contains the MT-Phosh and MT-Phoc runtime, Python 3, Xwayland, the MT bridge dependencies, essential networking tools, sudo, icons, and required compatibility libraries:
 
 ```sh
-scripts/build-rootfs-asset.sh /path/to/prepared-rootfs \
-  android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz
+scripts/build-rootfs-asset.sh /path/to/prepared-ubuntu-rootfs \
+  android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tar
 ```
 
-The prepared image must already contain Xfce/Xfwm4, Xfce Terminal, Thunar, essential networking tools, sudo, icons, and the compatibility libraries expected by the METMC OS runtime. Do not package a user's live root filesystem without reviewing it for accounts, tokens, history, and personal data.
+The packaging script requires GNU tar and normalizes ownership, ordering, timestamps, and metadata for reproducible builds. It records installed Debian package versions in `/usr/share/metmc/rootfs-packages.txt`. Set `SOURCE_DATE_EPOCH` when producing a reproducible release.
 
-The packaging script requires GNU tar (`gtar` on macOS), normalizes ownership, ordering, timestamps, and gzip metadata, and records installed package versions in `/usr/share/nativos/rootfs-packages.txt`. Set `SOURCE_DATE_EPOCH` when producing a reproducible release.
+The archive is a plain TAR, not gzip-compressed: Android extracts it with `tar xf`. The archive must contain the root filesystem contents at its top level (for example, `etc/os-release`), not an extra enclosing directory. Do not package a user's live root filesystem without reviewing it for accounts, tokens, history, and personal data.
 
 Internal paths and filenames beginning with `nativos` are retained for runtime compatibility; they are implementation identifiers, not the user-facing product name.
