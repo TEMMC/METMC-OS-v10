@@ -18,27 +18,18 @@ if ! "$tar_bin" --version 2>/dev/null | grep -q 'GNU tar'; then
     exit 2
 fi
 
-if [ -x "$rootfs/sbin/apk" ]; then
-    distro=alpine
-    release=3.22
-    for executable in bin/bash usr/bin/labwc usr/bin/waybar usr/bin/fuzzel usr/bin/foot usr/bin/thunar sbin/apk; do
-        test -x "$rootfs/$executable" || { echo "Missing Alpine runtime component: $executable" >&2; exit 1; }
-    done
-else
-    distro=ubuntu
-    release=noble
-    for executable in bin/bash usr/bin/apt-get usr/bin/phosh-session usr/bin/phoc usr/libexec/phosh; do
-        test -x "$rootfs/$executable" || { echo "Missing Ubuntu MT desktop component: $executable" >&2; exit 1; }
-    done
-fi
+distro=ubuntu
+release=noble
+for executable in bin/bash usr/bin/apt-get usr/bin/phosh-session usr/bin/phoc usr/libexec/phosh; do
+    test -x "$rootfs/$executable" || { echo "Missing Ubuntu MT desktop component: $executable" >&2; exit 1; }
+done
 
 staging=$(mktemp -d "${TMPDIR:-/tmp}/mt-rootfs.XXXXXX")
 trap 'rm -rf "$staging"' EXIT HUP INT TERM
 cp -a "$rootfs"/. "$staging"/
 
-# Bundle the Linux half of the Android hardware bridge into the rootfs itself.
-# The Alpine production image includes python3; fail the build instead of shipping
-# a launcher that silently cannot run.
+# Bundle the Linux half of the Android hardware bridge into the Ubuntu rootfs.
+# Fail the build if Python is missing rather than shipping a broken launcher.
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 bridge_source="$repo_root/linux/bridge-client"
 test -s "$bridge_source/mt_bridge.py" || {
@@ -58,37 +49,24 @@ EOF_BRIDGE
 chmod 0755 "$staging/usr/local/bin/mt-bridge"
 ln -sf mt-bridge "$staging/usr/local/bin/nativOS-bridge"
 rm -f "$staging/usr/bin/qemu-aarch64-static"
-rm -rf "$staging/tmp"/* "$staging/run"/* "$staging/var/cache/apt/archives"/* "$staging/var/lib/apt/lists"/* "$staging/var/cache/apk"/*
+rm -rf "$staging/tmp"/* "$staging/run"/* "$staging/var/cache/apt/archives"/* "$staging/var/lib/apt/lists"/*
 rm -f "$staging/etc/machine-id" "$staging/var/lib/dbus/machine-id"
 mkdir -p "$staging/tmp" "$staging/run" "$staging/var/tmp" "$staging/usr/share/metmc"
 chmod 1777 "$staging/tmp" "$staging/var/tmp"
 
-if [ "$distro" = alpine ]; then
-    awk -F: '
-      /^P:/ { package=substr($0,3) }
-      /^V:/ { version=substr($0,3) }
-      /^A:/ { arch=substr($0,3) }
-      /^$/ {
-        if (package != "" && version != "") print package "=" version " [" arch "]"
-        package=""; version=""; arch=""
-      }
-      END { if (package != "" && version != "") print package "=" version " [" arch "]" }
-    ' "$staging/lib/apk/db/installed" | LC_ALL=C sort > "$staging/usr/share/metmc/rootfs-packages.txt"
-else
-    awk '
-      /^Package: / { package=$2 }
-      /^Version: / { version=$2 }
-      /^Architecture: / { arch=$2 }
-      /^Status: install ok installed/ { installed=1 }
-      /^$/ {
-        if (installed && package != "" && version != "") print package "=" version " [" arch "]"
-        package=""; version=""; arch=""; installed=0
-      }
-      END { if (installed && package != "" && version != "") print package "=" version " [" arch "]" }
-    ' "$staging/var/lib/dpkg/status" | LC_ALL=C sort > "$staging/usr/share/metmc/rootfs-packages.txt"
-fi
+awk '
+  /^Package: / { package=$2 }
+  /^Version: / { version=$2 }
+  /^Architecture: / { arch=$2 }
+  /^Status: install ok installed/ { installed=1 }
+  /^$/ {
+    if (installed && package != "" && version != "") print package "=" version " [" arch "]"
+    package=""; version=""; arch=""; installed=0
+  }
+  END { if (installed && package != "" && version != "") print package "=" version " [" arch "]" }
+' "$staging/var/lib/dpkg/status" | LC_ALL=C sort > "$staging/usr/share/metmc/rootfs-packages.txt"
 
-if [ "$distro" = alpine ]; then desktop=labwc-wayland; else desktop=mt-phosh-phoc; fi
+desktop=mt-phosh-phoc
 cat > "$staging/usr/share/metmc/rootfs-build.txt" <<EOF
 schema=3
 distribution=$distro
