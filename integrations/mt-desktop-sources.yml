@@ -11,18 +11,19 @@ components:
     runtime: bundled-in-android-apk
   mt_phosh:
     repository: https://github.com/TEMMC/MT-phosh-.git
-    branch: main
-    ref: fbe7a6d58ea10a02cd837ec4db8d4493dc4b5b21
+    branch: mt-gnome-shell
+    ref: a666684c70338867034f889545d1b1da49e8cb64
     path: integrations/sources/MT-phosh
     runtime: source-bundle-only
   mt_phoc:
     repository: https://github.com/TEMMC/MT-phoc.git
-    branch: mt-desktop-abc-experimental
-    ref: 1d0282772d493b16e3e6f021accfa07655cdfe3f
+    branch: fedora-phoc-0.47.0
+    ref: 7207050415b30a99a985277dcca8a3393086d918
     path: integrations/sources/MT-phoc
     runtime: source-bundle-only
 compatibility:
-  current_apk_rootfs: Alpine Linux 3.22 ARM64
-  phosh_phoc_runtime: not-yet-bundled
-  reason: "MT-Phosh/MT-Phoc require a compatible Wayland/wlroots runtime and ABI; do not copy host-built binaries into Alpine blindly."
-  required_next_step: "Build both against the selected ARM64 rootfs and launch them from the Android-hosted display after device validation."
+  current_apk_rootfs: Ubuntu/Debian ARM64 rootfs from the upstream NativOS APK, provisioned with apt during CI
+  runtime_desktop: distro-packaged Phosh/Phoc retained as the safe fallback
+  mt_forks: pinned source bundle only; fork binaries are not yet installed in the APK
+  reason: "The experimental MT-Phoc branch repeatedly failed against wlroots 0.18. The selected Fedora-tested baseline build passed, but its workflow compiles upstream Phoc v0.47.0 rather than proving every fork modification is runtime-safe."
+  required_next_step: "Build and stage the selected MT-Phosh and stable MT-Phoc baseline against the same Ubuntu ARM64 rootfs before enabling fork binaries at startup."
