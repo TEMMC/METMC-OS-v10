@@ -211,7 +211,7 @@ jobs:
           retention-days: 30
 
   publish-release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/fix/restore-known-working-phosh'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/restore-known-working-phosh')
     needs: build
     runs-on: ubuntu-22.04
     permissions:
@@ -233,21 +233,21 @@ jobs:
           CHECKSUM="$(find release-assets -type f -name 'app-debug.apk.sha256' -print -quit)"
           test -n "$APK"
           test -n "$CHECKSUM"
-          cp "$APK" METMC-OS-V10.8.0-arm64.apk
+          cp "$APK" MT-OS-V10.9.0-arm64.apk
           (cd "$(dirname "$CHECKSUM")" && sha256sum "$(basename "$CHECKSUM")" >/dev/null)
-          sha256sum METMC-OS-V10.8.0-arm64.apk > METMC-OS-V10.8.0-arm64.apk.sha256
+          sha256sum MT-OS-V10.9.0-arm64.apk > MT-OS-V10.9.0-arm64.apk.sha256
           echo "Release APK prepared and checksum generated."
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v10.8.0
-          name: METMC OS V10 10.8.0
+          tag_name: v10.9.0
+          name: MT OS V10 10.9.0
           prerelease: true
           overwrite_files: true
           generate_release_notes: true
           body: |
-            METMC OS V10 10.8.0 development release for Android ARM64. This alpha is signed with the METMC OS V10 release keystore.
+            MT OS V10 10.9.0 development release for Android ARM64, built with the verified MT-Phosh and MT-Phoc ARM64 artifacts. This alpha is signed with the METMC OS V10 release keystore.
 
             - Package ID: `com.temmc.metmcosv10`
             - App label: `METMC OS V10`
@@ -266,11 +266,12 @@ jobs:
             - Improved Android/Linux clipboard text synchronization, including mixed plain-text and HTML clipboard items.
             - Removed the legacy root-shell redirect that could interfere with opening the terminal; Linux root password defaults to `metmc`.
             - Includes compact Phoc display scaling and a Phosh animation-disable tweak.
+            - Integrates the known-good prebuilt MT-Phosh and MT-Phoc desktop artifacts without recompiling their source in this workflow. The existing known-good Phoc display configuration is preserved.
             - This is an alpha build. Touch responsiveness and hardware acceleration may vary by device.
             - APK is signed with the METMC OS V10 release keystore; this does not imply Play Store certification.
             - Linux desktop and essential packages are installed during the GitHub Actions build. Normal boot uses the bundled rootfs and does not require internet. Review the operation log and close the Linux desktop before upgrades.
           files: |
-            METMC-OS-V10.8.0-arm64.apk
-            METMC-OS-V10.8.0-arm64.apk.sha256
+            MT-OS-V10.9.0-arm64.apk
+            MT-OS-V10.9.0-arm64.apk.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
