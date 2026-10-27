@@ -179,14 +179,18 @@ jobs:
           cd android/app/src/main/assets/rootfs
           sha256sum nativos-rootfs-arm64.tar > nativos-rootfs-arm64.tar.sha256
           sha256sum --check nativos-rootfs-arm64.tar.sha256
-          # Exercise the same Toybox tar implementation used by Android's app process.
-          # Run without sudo to catch extraction operations that require elevated privileges.
+          # Exercise Toybox tar without sudo, approximating the Android app UID.
           toybox tar -tf nativos-rootfs-arm64.tar > /tmp/mt-rootfs-tar-list.txt
           test -s /tmp/mt-rootfs-tar-list.txt
           mkdir -p /tmp/mt-rootfs-toybox-test
           toybox tar -xf nativos-rootfs-arm64.tar -C /tmp/mt-rootfs-toybox-test
           test -s /tmp/mt-rootfs-toybox-test/etc/os-release
-          grep -Eq '^ID=ubuntu
+          grep -Eq '^ID=ubuntu$' /tmp/mt-rootfs-toybox-test/etc/os-release
+          grep -Eq '^VERSION_CODENAME=noble$' /tmp/mt-rootfs-toybox-test/etc/os-release
+          test -x /tmp/mt-rootfs-toybox-test/usr/bin/phosh-session
+          test -x /tmp/mt-rootfs-toybox-test/usr/libexec/phosh
+          test -x /tmp/mt-rootfs-toybox-test/usr/local/bin/phoc
+          echo 'Toybox TAR integrity and non-root extraction test passed.'
 
       - name: Build and verify APK
         working-directory: android
@@ -194,17 +198,20 @@ jobs:
           set -euo pipefail
           chmod +x ./gradlew
           ./gradlew --no-daemon :app:assembleDebug
-          # Re-extract the exact rootfs payload from the APK, verify its SHA-256,
-          # then test listing and extraction again with Toybox tar.
-          APK="app/build/outputs/apk/debug/app-debug.apk"
-          mkdir -p /tmp/mt-apk-rootfs-test/assets /tmp/mt-apk-rootfs-test/extracted
-          unzip -p "$APK" assets/rootfs/nativos-rootfs-arm64.tar > /tmp/mt-apk-rootfs-test/assets/nativos-rootfs-arm64.tar
-          unzip -p "$APK" assets/rootfs/nativos-rootfs-arm64.tar.sha256 > /tmp/mt-apk-rootfs-test/assets/nativos-rootfs-arm64.tar.sha256
-          (cd /tmp/mt-apk-rootfs-test/assets && sha256sum --check nativos-rootfs-arm64.tar.sha256)
-          toybox tar -tf /tmp/mt-apk-rootfs-test/assets/nativos-rootfs-arm64.tar > /tmp/mt-apk-rootfs-test/archive-list.txt
-          toybox tar -xf /tmp/mt-apk-rootfs-test/assets/nativos-rootfs-arm64.tar -C /tmp/mt-apk-rootfs-test/extracted
-          grep -Eq '^ID=ubuntu
-
+          # Test the exact rootfs bytes stored inside the generated APK.
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          TEST_DIR='/tmp/mt-apk-rootfs-test'
+          mkdir -p "$TEST_DIR/assets" "$TEST_DIR/extracted"
+          unzip -p "$APK" assets/rootfs/nativos-rootfs-arm64.tar > "$TEST_DIR/assets/nativos-rootfs-arm64.tar"
+          unzip -p "$APK" assets/rootfs/nativos-rootfs-arm64.tar.sha256 > "$TEST_DIR/assets/nativos-rootfs-arm64.tar.sha256"
+          (cd "$TEST_DIR/assets" && sha256sum --check nativos-rootfs-arm64.tar.sha256)
+          toybox tar -tf "$TEST_DIR/assets/nativos-rootfs-arm64.tar" > "$TEST_DIR/archive-list.txt"
+          toybox tar -xf "$TEST_DIR/assets/nativos-rootfs-arm64.tar" -C "$TEST_DIR/extracted"
+          grep -Eq '^ID=ubuntu$' "$TEST_DIR/extracted/etc/os-release"
+          grep -Eq '^VERSION_CODENAME=noble$' "$TEST_DIR/extracted/etc/os-release"
+          test -x "$TEST_DIR/extracted/usr/bin/phosh-session"
+          test -x "$TEST_DIR/extracted/usr/local/bin/phoc"
+          echo 'Exact APK rootfs payload passed checksum and Toybox extraction checks.'
       - name: Sign APK with METMC OS release key
         shell: bash
         env:
