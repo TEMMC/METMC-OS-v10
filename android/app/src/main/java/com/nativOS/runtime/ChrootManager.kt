@@ -6,7 +6,7 @@ import java.io.File
 import java.security.MessageDigest
 
 /**
- * Manages the Alpine Linux chroot: mounting, Labwc session lifecycle, and command execution.\n * Labwc runs nested on METMC's Android-hosted X11 display.
+ * Manages the Ubuntu Linux chroot: mounting, MT-Phosh/MT-Phoc session lifecycle, and command execution.\n * Labwc runs nested on METMC's Android-hosted X11 display.
  */
 class ChrootManager(private val context: Context) {
 
@@ -904,7 +904,7 @@ METMC_LAUNCH_EOF
                 exit 127
             '
         """.trimIndent()
-        Log.i(TAG, "Starting Ubuntu Phosh/Phoc with Labwc fallback")
+        Log.i(TAG, "Starting Ubuntu MT-Phosh/MT-Phoc desktop")
         val su = rootShell.findSuPath() ?: return
         val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
         val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
