@@ -1,26 +1,20 @@
 name: Build METMC OS v10 APK
 
-# METMC OS V10 Alpine ARM64 + Labwc Wayland/Xwayland hacker desktop; validate before release.
-# Keep the bundled Alpine rootfs lean; do not publish until the windowed desktop build passes device validation.
-# Release publishing is gated on the commit message so only verified builds are published.
-# Labwc provides stacked Wayland windows; Waybar provides the touch-sized taskbar.
-# Labwc is nested on the Android-hosted X11 display; Xwayland serves legacy Linux X11 apps.
+# METMC OS V10 v10.8.0: prepare Linux packages during CI so device boot never needs network access.
+# Rootfs package changes happen in GitHub Actions; runtime boot uses only the bundled rootfs.
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches: [main]
   push:
-    branches: [main]
+    branches: [main, fix/restore-known-working-phosh]
     paths:
       - "android/**"
       - "linux/config/**"
       - "linux/bridge-client/**"
       - "linux/setup/**"
-      - "linux/tests/**"
       - "linux/README-bridge.md"
-      - "scripts/**"
-      - "README.md"
+      - "integrations/**"
+      - "android/app/src/main/java/com/nativOS/bridge/**"
       - ".github/workflows/build-apk.yml"
 
 permissions:
@@ -67,106 +61,69 @@ jobs:
       - name: Install Android SDK packages
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
-      - name: Build uncompressed Alpine 3.22 ARM64 Labwc rootfs offline-ready
+      - name: Download upstream rootfs from official NativOS APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_URL="https://github.com/orailnoor/NativOS/releases/download/v0.1.0-alpha/NativOS-v0.1.0-alpha-arm64.apk"
+          curl --fail --location --retry 3 --output /tmp/nativos-upstream.apk "$APK_URL"
+          unzip -l /tmp/nativos-upstream.apk | grep -F "assets/rootfs/nativos-rootfs-arm64.tgz"
+          mkdir -p android/app/src/main/assets/rootfs
+          unzip -p /tmp/nativos-upstream.apk assets/rootfs/nativos-rootfs-arm64.tgz > android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz
+          test "$(stat -c %s android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz)" -gt 104857600
+          cd android/app/src/main/assets/rootfs
+          sha256sum nativos-rootfs-arm64.tgz > nativos-rootfs-arm64.tgz.sha256
+          sha256sum --check nativos-rootfs-arm64.tgz.sha256
+
+      - name: Install Linux desktop and essential tools into bundled ARM64 rootfs (build time only)
         shell: bash
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y qemu-user-static binfmt-support curl
+          sudo apt-get install -y --no-install-recommends qemu-user-static binfmt-support
           sudo update-binfmts --enable qemu-aarch64 || true
-
-          ROOTFS="$RUNNER_TEMP/metmc-alpine-rootfs"
+          ROOTFS="$RUNNER_TEMP/metmc-rootfs"
           mkdir -p "$ROOTFS"
-          curl -fL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/alpine-minirootfs.tar.gz" \
-            "https://dl-cdn.alpinelinux.org/alpine/v3.22/releases/aarch64/alpine-minirootfs-3.22.0-aarch64.tar.gz"
-          sudo tar -xzf "$RUNNER_TEMP/alpine-minirootfs.tar.gz" -C "$ROOTFS"
+          tar -xzf android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz -C "$ROOTFS"
+          test -x "$ROOTFS/usr/bin/apt-get"
+          sudo rm -f "$ROOTFS/etc/resolv.conf"
+          sudo cp -L /etc/resolv.conf "$ROOTFS/etc/resolv.conf"
           sudo cp /usr/bin/qemu-aarch64-static "$ROOTFS/usr/bin/qemu-aarch64-static"
-
-          cleanup_mounts() {
+          sudo mount --bind /dev "$ROOTFS/dev"
+          sudo mount --bind /dev/pts "$ROOTFS/dev/pts"
+          sudo mount -t proc proc "$ROOTFS/proc"
+          sudo mount -t sysfs sysfs "$ROOTFS/sys"
+          cleanup() {
             sudo umount "$ROOTFS/sys" 2>/dev/null || true
             sudo umount "$ROOTFS/proc" 2>/dev/null || true
             sudo umount "$ROOTFS/dev/pts" 2>/dev/null || true
             sudo umount "$ROOTFS/dev" 2>/dev/null || true
           }
-          trap cleanup_mounts EXIT
-          sudo mkdir -p "$ROOTFS/dev/pts" "$ROOTFS/proc" "$ROOTFS/sys" "$ROOTFS/etc/apk"
-          sudo mount --bind /dev "$ROOTFS/dev"
-          sudo mount --bind /dev/pts "$ROOTFS/dev/pts"
-          sudo mount -t proc proc "$ROOTFS/proc"
-          sudo mount --bind /sys "$ROOTFS/sys"
-
-          sudo tee "$ROOTFS/etc/apk/repositories" >/dev/null <<'EOF'
-          https://dl-cdn.alpinelinux.org/alpine/v3.22/main
-          https://dl-cdn.alpinelinux.org/alpine/v3.22/community
-          EOF
-          # The minirootfs may not inherit the runner's resolver configuration.
-          sudo rm -f "$ROOTFS/etc/resolv.conf"
-          sudo tee "$ROOTFS/etc/resolv.conf" >/dev/null <<'EOF'
-          nameserver 1.1.1.1
-          nameserver 8.8.8.8
-          EOF
-          updated=0
-          for attempt in 1 2 3 4 5; do
-            if sudo chroot "$ROOTFS" /sbin/apk update; then updated=1; break; fi
-            sleep "$((attempt * 2))"
-          done
-          test "$updated" -eq 1
-          sudo chroot "$ROOTFS" /sbin/apk add --no-cache \
-            bash sudo shadow util-linux-login dbus dbus-x11 labwc waybar fuzzel foot thunar xwayland swaybg wl-clipboard \
-            nano less htop file procps psmisc ca-certificates curl wget git openssh-client-default \
-            iproute2 iputils bind-tools traceroute netcat-openbsd nmap whois jq python3 tmux rsync \
-            tar gzip unzip zip tree util-linux coreutils findutils grep sed gawk \
-            font-noto font-noto-emoji adwaita-icon-theme hicolor-icon-theme
-
-          # Copy the desktop design into the image; first boot must not fetch or install anything.
-          sudo mkdir -p "$ROOTFS/etc/skel" "$ROOTFS/usr/share/themes/METMC-Hacker/openbox-3" "$ROOTFS/usr/share/metmc"
-          sudo cp -a linux/config/skel/. "$ROOTFS/etc/skel/"
-          sudo cp linux/config/labwc/theme/METMC-Hacker/openbox-3/themerc "$ROOTFS/usr/share/themes/METMC-Hacker/openbox-3/themerc"
-          # Bundle the Android hardware bridge clients and shared socket transport into Alpine.
-          sudo install -d -m 0755 "$ROOTFS/usr/local/lib/mt-bridge"
+          trap cleanup EXIT
+          sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 update
+          sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl wget git nano less file unzip zip procps psmisc htop iproute2 iputils-ping dnsutils net-tools openssh-client python3 sudo dbus-x11 xwayland phosh phoc foot
+          # Keep the known-good Ubuntu/Debian rootfs and provision MT bridge at build time.
+          sudo install -d -m 0755 "$ROOTFS/usr/local/lib/mt-bridge" "$ROOTFS/usr/local/bin" "$ROOTFS/usr/share/metmc" "$ROOTFS/etc/nativOS" "$ROOTFS/etc/profile.d"
           sudo install -m 0644 linux/bridge-client/bridge_transport.py "$ROOTFS/usr/local/lib/mt-bridge/bridge_transport.py"
+          sudo install -m 0644 linux/bridge-client/bridge_transport.py "$ROOTFS/usr/local/bin/bridge_transport.py"
           sudo install -m 0755 linux/bridge-client/nativOS-bridge.py "$ROOTFS/usr/local/bin/nativOS-bridge"
           sudo install -m 0755 linux/bridge-client/mt-bridge.py "$ROOTFS/usr/local/bin/mt-bridge"
           sudo install -m 0755 linux/bridge-client/metmc-settings.py "$ROOTFS/usr/local/bin/metmc-settings"
           sudo install -m 0755 linux/bridge-client/metmc-wifi.py "$ROOTFS/usr/local/bin/metmc-wifi"
-          # Python locates shared helpers in the script directory; install a matching copy.
-          sudo install -m 0644 linux/bridge-client/bridge_transport.py "$ROOTFS/usr/local/bin/bridge_transport.py"
           sudo install -m 0644 linux/README-bridge.md "$ROOTFS/usr/share/metmc/README-bridge.md"
-          sudo install -m 0755 linux/setup/mt-gpu-status "$ROOTFS/usr/local/bin/mt-gpu-status"
-          sudo install -d -m 0755 "$ROOTFS/etc/profile.d" "$ROOTFS/etc/nativOS" "$ROOTFS/usr/share/applications"
-          sudo install -m 0644 linux/config/mt-gpu.sh "$ROOTFS/etc/profile.d/mt-gpu.sh"
+          # Preserve the project's known-good nested Phoc display settings unchanged.
           sudo install -m 0644 linux/config/phoc.ini "$ROOTFS/etc/nativOS/phoc.ini"
-          sudo cp linux/config/metmc-*.desktop "$ROOTFS/usr/share/applications/"
-          sudo chmod 0755 "$ROOTFS/etc/skel/.config/labwc/autostart"
-          sudo chroot "$ROOTFS" /bin/sh -eu -c '
-            printf "nameserver 1.1.1.1\nnameserver 8.8.8.8\n" > /etc/resolv.conf
-            printf "metmc-os\n" > /etc/hostname
-            printf "127.0.0.1 localhost\n127.0.1.1 metmc-os\n::1 localhost\n" > /etc/hosts
-            addgroup -S metmc 2>/dev/null || true
-            addgroup -S wheel 2>/dev/null || true
-            adduser -D -s /bin/bash -G wheel metmc 2>/dev/null || true
-            mkdir -p /etc/sudoers.d /home/metmc/.config
-            printf "%s\n" "Defaults !requiretty" "metmc ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/metmc
-            chmod 0440 /etc/sudoers.d/metmc
-            passwd -l root >/dev/null 2>&1 || true
-            chown -R metmc:metmc /home/metmc
-            chmod 0750 /home/metmc
-            mkdir -p /run/dbus /run/metmc /tmp/runtime-metmc /dev/shm /usr/share/metmc
-            chmod 1777 /tmp
-            chmod 0700 /tmp/runtime-metmc
-            printf "METMC OS V10 Alpine Labwc\n" > /etc/issue
-            printf "distribution=Alpine Linux 3.22\ndesktop=Labwc Wayland + Xwayland\n" > /usr/share/metmc/system-profile.txt
-            # Keep rootfs startup self-contained; update operations are user initiated.
-            rm -f /usr/bin/qemu-aarch64-static
-          '
-
-          cleanup_mounts
-          trap - EXIT
-          sudo chown -R "$USER":"$USER" "$ROOTFS"
-          scripts/build-rootfs-asset.sh "$ROOTFS" android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tar
+          sudo install -m 0644 linux/config/mt-gpu.sh "$ROOTFS/etc/profile.d/mt-gpu.sh"
+          printf 'MT-Phosh source: fbe7a6d58ea10a02cd837ec4db8d4493dc4b5b21\nMT-Phoc source: 1d0282772d493b16e3e6f021accfa07655cdfe3f\nRuntime: Ubuntu-rootfs packaged Phosh/Phoc retained until forked Phoc passes its build checks\n' | sudo tee "$ROOTFS/usr/share/metmc/mt-desktop-build-info.txt" >/dev/null
+          sudo chroot "$ROOTFS" apt-get clean
+          sudo rm -rf "$ROOTFS/var/lib/apt/lists/"* "$ROOTFS/var/cache/apt/archives/"*.deb
+          sudo rm -f "$ROOTFS/usr/bin/qemu-aarch64-static"
+          cleanup
+          sudo tar --numeric-owner -czf android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz -C "$ROOTFS" .
+          test "$(stat -c %s android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz)" -gt 104857600
           cd android/app/src/main/assets/rootfs
-          sha256sum nativos-rootfs-arm64.tar > nativos-rootfs-arm64.tar.sha256
-          sha256sum --check nativos-rootfs-arm64.tar.sha256
+          sha256sum nativos-rootfs-arm64.tgz > nativos-rootfs-arm64.tgz.sha256
+          sha256sum --check nativos-rootfs-arm64.tgz.sha256
 
       - name: Build and verify APK
         working-directory: android
@@ -195,9 +152,7 @@ jobs:
             --ks-pass env:STORE_PASSWORD --key-pass env:KEY_PASSWORD \
             --out "$APK.signed" "$APK"
           mv "$APK.signed" "$APK"
-          BADGING="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK")"
-          grep -F "package: name='com.temmc.metmcosv10' versionCode='16' versionName='10.7.0'" <<< "$BADGING"
-          grep -F "application-label:'METMC OS V10'" <<< "$BADGING"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -E "package: name='com.temmc.metmcosv10'|application-label:'METMC OS V10'"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
           sha256sum "$APK" > "$APK.sha256"
 
@@ -212,7 +167,7 @@ jobs:
           retention-days: 30
 
   publish-release:
-    if: github.event_name == 'push' && contains(github.event.head_commit.message, 'Publish METMC OS V10 v10.7.0')
+    if: github.event_name == 'push' && github.ref == 'refs/heads/fix/restore-known-working-phosh'
     needs: build
     runs-on: ubuntu-22.04
     permissions:
@@ -234,21 +189,21 @@ jobs:
           CHECKSUM="$(find release-assets -type f -name 'app-debug.apk.sha256' -print -quit)"
           test -n "$APK"
           test -n "$CHECKSUM"
-          cp "$APK" METMC-OS-V10.7.0-arm64.apk
+          cp "$APK" METMC-OS-V10.8.0-arm64.apk
           (cd "$(dirname "$CHECKSUM")" && sha256sum "$(basename "$CHECKSUM")" >/dev/null)
-          sha256sum METMC-OS-V10.7.0-arm64.apk > METMC-OS-V10.7.0-arm64.apk.sha256
+          sha256sum METMC-OS-V10.8.0-arm64.apk > METMC-OS-V10.8.0-arm64.apk.sha256
           echo "Release APK prepared and checksum generated."
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v10.7.0
-          name: METMC OS V10 10.7.0
+          tag_name: v10.8.0
+          name: METMC OS V10 10.8.0
           prerelease: true
           overwrite_files: true
           generate_release_notes: true
           body: |
-            METMC OS V10 10.7.0 development release for Android ARM64. This alpha is signed with the METMC OS V10 release keystore.
+            METMC OS V10 10.8.0 development release for Android ARM64. This alpha is signed with the METMC OS V10 release keystore.
 
             - Package ID: `com.temmc.metmcosv10`
             - App label: `METMC OS V10`
@@ -260,21 +215,18 @@ jobs:
             - Package commands run inside the Linux root filesystem only; they do not update Android's host packages. Package upgrades are not automatically reversible.
             - Clipboard bridge hooks and improved touch-focus handling.
             - Live CPU/RAM/battery/storage monitor, shared-folder picker and Linux configuration backup with SHA-256.
-            - Linux rootfs validation and update-center link; Linux package manager uses guarded Alpine apk.
+            - Linux rootfs validation and update-center link; Linux software center uses guarded apt/dpkg.
             - Quick-access Tools menu, shorter METMC OS V10 app name, NativOS upstream attribution retained.
             - Default Home mode is configured to launch METMC OS V10 at boot.
             - Keyboard no longer opens on ordinary taps near the bottom of the desktop; use a three-finger tap to toggle it.
             - Improved Android/Linux clipboard text synchronization, including mixed plain-text and HTML clipboard items.
-            - Removed the legacy root-shell redirect that could interfere with opening the terminal; the Linux root account is locked and administrative commands use `sudo` as `metmc`.
-            - Uses a compressed Alpine Linux 3.22 ARM64 rootfs with Labwc Wayland stacked windows, Xwayland compatibility, Waybar taskbar, Fuzzel launcher, Foot terminal, Thunar, and compact shell/network tools.
-            - Retains METMC launchers for Bluetooth, display, sound, location, and Android system settings; Android remains the owner of physical radios.
-            - Uses the Android-hosted X11 display directly; no Adreno-specific Turnip driver or nested Phoc compositor is bundled.
-            - Removed developer and network-scanning packages from the default image; install optional tools manually when needed.
-            - This is an alpha build. Labwc multi-window behavior, touch-friendly panel sizing, keyboard, Android app freeform windows, GPU behavior, RAM use, and first-boot extraction time still need testing on the A04e.
+            - Removed the legacy root-shell redirect that could interfere with opening the terminal; Linux root password defaults to `metmc`.
+            - Includes compact Phoc display scaling and a Phosh animation-disable tweak.
+            - This is an alpha build. Touch responsiveness and hardware acceleration may vary by device.
             - APK is signed with the METMC OS V10 release keystore; this does not imply Play Store certification.
-            - The bundled rootfs is a compressed Alpine Linux 3.22 ARM64 image; boot and first launch require no package downloads. Manual package operations require root access, a provisioned Linux rootfs, and an internet connection. Review the operation log and close the Linux desktop before upgrades.
+            - Linux desktop and essential packages are installed during the GitHub Actions build. Normal boot uses the bundled rootfs and does not require internet. Review the operation log and close the Linux desktop before upgrades.
           files: |
-            METMC-OS-V10.7.0-arm64.apk
-            METMC-OS-V10.7.0-arm64.apk.sha256
+            METMC-OS-V10.8.0-arm64.apk
+            METMC-OS-V10.8.0-arm64.apk.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
