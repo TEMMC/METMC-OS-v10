@@ -821,7 +821,7 @@ METMC_LAUNCH_EOF
     // ── Session management ──
 
     /**
-     * Start Labwc as the unprivileged Alpine user on the Android-hosted X11 display.
+     * Start the Ubuntu Linux desktop as the unprivileged metmc user on the Android-hosted X11 display.
      * Labwc's wlroots X11 backend renders the Wayland desktop into the existing Android X server.
      */
     @Synchronized
