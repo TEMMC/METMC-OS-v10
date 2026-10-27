@@ -174,7 +174,7 @@ class PackageManagerActivity : Activity() {
         }
         if (!isRootfsReady()) {
             Toast.makeText(this, "Linux root filesystem is not ready", Toast.LENGTH_LONG).show()
-            appendLog("ERROR: missing Alpine apt/dpkg rootfs at ${rootfs.absolutePath}")
+            appendLog("ERROR: missing Ubuntu apt/dpkg rootfs at ${rootfs.absolutePath}")
             return
         }
         setBusy(true)
