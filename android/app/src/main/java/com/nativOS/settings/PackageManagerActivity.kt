@@ -16,7 +16,7 @@ import java.io.File
 
 /**
  * A deliberately limited package manager for the Linux chroot.
- * All apk package commands are executed inside the Alpine rootfs, never on Android.
+ * All apt/dpkg package commands are executed inside the Ubuntu rootfs, never on Android.
  */
 // METMC OS V10 10.5.0: selectable package-operation logs.
 class PackageManagerActivity : Activity() {
@@ -59,12 +59,12 @@ class PackageManagerActivity : Activity() {
         })
         page.addView(warning, PremiumUi.matchWidth())
 
-        refreshButton = button("Refresh package lists", true) { runPackageCommand("Refresh package lists", "apk update") }
+        refreshButton = button("Refresh package lists", true) { runPackageCommand("Refresh package lists", "apt-get update") }
         page.addView(refreshButton, PremiumUi.matchWidth(dp(12)))
         checkButton = button("Check available updates") {
             runPackageCommand(
                 "Check available updates",
-                "apk update && apk version -l '<'"
+                "apt-get update && apt list --upgradable"
             )
         }
         page.addView(checkButton, PremiumUi.matchWidth(dp(8)))
@@ -129,13 +129,13 @@ class PackageManagerActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle("Upgrade Linux packages?")
             .setMessage(
-                "This runs apk upgrade only inside METMC OS's Alpine Linux root filesystem. It does not update Android itself. Close the Linux desktop first; package upgrades can break or restart Linux applications. Continue?"
+                "This runs DEBIAN_FRONTEND=noninteractive apt-get upgrade -y only inside METMC OS's Ubuntu Linux root filesystem. It does not update Android itself. Close the Linux desktop first; package upgrades can break or restart Linux applications. Continue?"
             )
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Upgrade") { _, _ ->
                 runPackageCommand(
                     "Upgrade Linux packages",
-                    "apk upgrade"
+                    "DEBIAN_FRONTEND=noninteractive apt-get upgrade -y"
                 )
             }
             .show()
@@ -144,7 +144,7 @@ class PackageManagerActivity : Activity() {
     private fun confirmInstall() {
         val name = packageInput.text.toString().trim()
         if (!name.matches(Regex("[a-z0-9][a-z0-9+.-]{0,99}"))) {
-            packageInput.error = "Enter one valid Alpine package name"
+            packageInput.error = "Enter one valid Linux package name"
             return
         }
         AlertDialog.Builder(this)
@@ -154,7 +154,7 @@ class PackageManagerActivity : Activity() {
             .setPositiveButton("Install") { _, _ ->
                 runPackageCommand(
                     "Install package: $name",
-                    "apk add --no-cache -- $name"
+                    "DEBIAN_FRONTEND=noninteractive apt-get install -y -- $name"
                 )
             }
             .show()
@@ -162,8 +162,8 @@ class PackageManagerActivity : Activity() {
 
     private fun isRootfsReady(): Boolean =
         File(rootfs, "bin/bash").exists() &&
-            (File(rootfs, "sbin/apk").exists() || File(rootfs, "usr/sbin/apk").exists()) &&
-            File(rootfs, "lib/apk/db/installed").exists()
+            File(rootfs, "usr/bin/apt-get").exists() &&
+            File(rootfs, "var/lib/dpkg/status").exists()
 
     private fun runPackageCommand(label: String, command: String) {
         if (busy) return
@@ -174,7 +174,7 @@ class PackageManagerActivity : Activity() {
         }
         if (!isRootfsReady()) {
             Toast.makeText(this, "Linux root filesystem is not ready", Toast.LENGTH_LONG).show()
-            appendLog("ERROR: missing Alpine apk rootfs at ${rootfs.absolutePath}")
+            appendLog("ERROR: missing Alpine apt/dpkg rootfs at ${rootfs.absolutePath}")
             return
         }
         setBusy(true)
