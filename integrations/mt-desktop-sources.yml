@@ -14,7 +14,7 @@ components:
     branch: mt-gnome-shell
     ref: a666684c70338867034f889545d1b1da49e8cb64
     path: integrations/sources/MT-phosh
-    runtime: source-bundle-only
+    runtime: compiled-and-overlaid-in-apk-rootfs
   mt_phoc:
     repository: https://github.com/TEMMC/MT-phoc.git
     branch: fedora-phoc-0.47.0
@@ -23,7 +23,7 @@ components:
     runtime: source-bundle-only
 compatibility:
   current_apk_rootfs: Ubuntu/Debian ARM64 rootfs from the upstream NativOS APK, provisioned with apt during CI
-  runtime_desktop: distro-packaged Phosh/Phoc retained as the safe fallback
-  mt_forks: pinned source bundle only; fork binaries are not yet installed in the APK
-  reason: "The experimental MT-Phoc branch repeatedly failed against wlroots 0.18. The selected Fedora-tested baseline build passed, but its workflow compiles upstream Phoc v0.47.0 rather than proving every fork modification is runtime-safe."
-  required_next_step: "Build and stage the selected MT-Phosh and stable MT-Phoc baseline against the same Ubuntu ARM64 rootfs before enabling fork binaries at startup."
+  runtime_desktop: MT-Phosh and MT-Phoc install trees are compiled on native Ubuntu ARM64 runners and overlaid into the bundled rootfs; distro packages remain for shared runtime dependencies
+  mt_forks: pinned source commits compiled during the APK workflow; install trees replace the packaged Phosh/Phoc files in the APK rootfs
+  reason: "The experimental MT-Phoc branch repeatedly failed against wlroots 0.18. The APK workflow now compiles the pinned fork source directly against Ubuntu ARM64 build dependencies; CI must confirm this exact build."
+  required_next_step: "Verify both source builds, APK build, artifact signing, and runtime compatibility on Galaxy A04e."
