@@ -146,11 +146,8 @@ jobs:
           curl --fail --location --retry 3 --output /tmp/nativos-upstream.apk "$APK_URL"
           unzip -l /tmp/nativos-upstream.apk | grep -F "assets/rootfs/nativos-rootfs-arm64.tgz"
           mkdir -p android/app/src/main/assets/rootfs
-          unzip -p /tmp/nativos-upstream.apk assets/rootfs/nativos-rootfs-arm64.tgz > android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz
-          test "$(stat -c %s android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz)" -gt 104857600
-          cd android/app/src/main/assets/rootfs
-          sha256sum nativos-rootfs-arm64.tgz > nativos-rootfs-arm64.tgz.sha256
-          sha256sum --check nativos-rootfs-arm64.tgz.sha256
+          unzip -p /tmp/nativos-upstream.apk assets/rootfs/nativos-rootfs-arm64.tgz > /tmp/nativos-rootfs-arm64.tgz
+          test "$(stat -c %s /tmp/nativos-rootfs-arm64.tgz)" -gt 104857600
 
       - name: Install Linux desktop and essential tools into bundled ARM64 rootfs (build time only)
         shell: bash
@@ -161,7 +158,7 @@ jobs:
           sudo update-binfmts --enable qemu-aarch64 || true
           ROOTFS="$RUNNER_TEMP/metmc-rootfs"
           mkdir -p "$ROOTFS"
-          tar -xzf android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz -C "$ROOTFS"
+          tar -xzf /tmp/nativos-rootfs-arm64.tgz -C "$ROOTFS"
           test -x "$ROOTFS/usr/bin/apt-get"
           sudo rm -f "$ROOTFS/etc/resolv.conf"
           sudo cp -L /etc/resolv.conf "$ROOTFS/etc/resolv.conf"
@@ -211,11 +208,11 @@ jobs:
           sudo rm -rf "$ROOTFS/var/lib/apt/lists/"* "$ROOTFS/var/cache/apt/archives/"*.deb
           sudo rm -f "$ROOTFS/usr/bin/qemu-aarch64-static"
           cleanup
-          sudo tar --numeric-owner -czf android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz -C "$ROOTFS" .
-          test "$(stat -c %s android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz)" -gt 104857600
+          sudo tar --numeric-owner -cf android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tar -C "$ROOTFS" .
+          test "$(stat -c %s android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tar)" -gt 104857600
           cd android/app/src/main/assets/rootfs
-          sha256sum nativos-rootfs-arm64.tgz > nativos-rootfs-arm64.tgz.sha256
-          sha256sum --check nativos-rootfs-arm64.tgz.sha256
+          sha256sum nativos-rootfs-arm64.tar > nativos-rootfs-arm64.tar.sha256
+          sha256sum --check nativos-rootfs-arm64.tar.sha256
 
       - name: Build and verify APK
         working-directory: android
