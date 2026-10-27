@@ -885,7 +885,7 @@ METMC_LAUNCH_EOF
                         exit 0
                     else
                         renderer_status=$?
-                        echo "Phosh/GLES2 exited with status ${'{renderer_status}; retrying with pixman software rendering"}{renderer_status}; retrying with pixman software rendering"
+                        echo "Phosh/GLES2 exited with status ${'$'}}{renderer_status}; retrying with pixman software rendering"
                         WLR_RENDERER=pixman exec dbus-run-session -- phosh-session
                     fi
                 fi
@@ -896,7 +896,7 @@ METMC_LAUNCH_EOF
                         exit 0
                     else
                         renderer_status=$?
-                        echo "Labwc GLES2 exited with status ${'{renderer_status}; retrying with pixman software rendering"}{renderer_status}; retrying with pixman software rendering"
+                        echo "Labwc GLES2 exited with status ${'$'}}{renderer_status}; retrying with pixman software rendering"
                         WLR_RENDERER=pixman exec dbus-run-session -- labwc
                     fi
                 fi
