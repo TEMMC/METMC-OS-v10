@@ -120,7 +120,8 @@ jobs:
           }
           trap cleanup EXIT
           sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 update
-          sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl wget git nano less file unzip zip procps psmisc htop iproute2 iputils-ping dnsutils net-tools openssh-client python3 sudo dbus-x11 xwayland phosh phoc foot
+          sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl wget git nano less file unzip zip procps psmisc htop iproute2 iputils-ping dnsutils net-tools openssh-client python3 sudo dbus-x11 xwayland foot
+          # Do not install Ubuntu stock Phosh/Phoc packages: MT builds are overlaid below, and the stock packages can fail in this ARM64 chroot.
           # Install the prebuilt ARM64 artifacts (do not compile MT desktop sources here).
           test -s /tmp/mt-phosh/mt-phosh-linux-install.tar.gz
           test -s /tmp/mt-phoc/MT-phoc-linux-install.tar.gz
