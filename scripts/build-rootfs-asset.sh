@@ -35,6 +35,28 @@ fi
 staging=$(mktemp -d "${TMPDIR:-/tmp}/mt-rootfs.XXXXXX")
 trap 'rm -rf "$staging"' EXIT HUP INT TERM
 cp -a "$rootfs"/. "$staging"/
+
+# Bundle the Linux half of the Android hardware bridge into the rootfs itself.
+# The Alpine production image includes python3; fail the build instead of shipping
+# a launcher that silently cannot run.
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+bridge_source="$repo_root/linux/bridge-client"
+test -s "$bridge_source/mt_bridge.py" || {
+    echo "Missing Linux bridge client: $bridge_source/mt_bridge.py" >&2
+    exit 1
+}
+test -x "$staging/usr/bin/python3" || {
+    echo "Rootfs must include python3 to run the MT OS Android bridge client" >&2
+    exit 1
+}
+install -d "$staging/usr/lib/mt-os-bridge" "$staging/usr/local/bin"
+install -m 0644 "$bridge_source/mt_bridge.py" "$staging/usr/lib/mt-os-bridge/mt_bridge.py"
+cat > "$staging/usr/local/bin/mt-bridge" <<'EOF_BRIDGE'
+#!/bin/sh
+exec /usr/bin/python3 /usr/lib/mt-os-bridge/mt_bridge.py "$@"
+EOF_BRIDGE
+chmod 0755 "$staging/usr/local/bin/mt-bridge"
+ln -sf mt-bridge "$staging/usr/local/bin/nativOS-bridge"
 rm -f "$staging/usr/bin/qemu-aarch64-static"
 rm -rf "$staging/tmp"/* "$staging/run"/* "$staging/var/cache/apt/archives"/* "$staging/var/lib/apt/lists"/* "$staging/var/cache/apk"/*
 rm -f "$staging/etc/machine-id" "$staging/var/lib/dbus/machine-id"
