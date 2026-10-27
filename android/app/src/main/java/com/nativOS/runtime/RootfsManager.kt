@@ -305,6 +305,8 @@ class RootfsManager(private val context: Context) {
                 }
             }
             connection.disconnect()
+            val checksum = sha256(targetFile)
+            File(downloadDir, "${distro}-rootfs.tar.gz.sha256").writeText("$checksum  ${targetFile.name}\n")
             configFile.writeText(distro)
             onProgress(1.0, "$distroName downloaded successfully")
         } catch (e: Exception) {
@@ -315,6 +317,7 @@ class RootfsManager(private val context: Context) {
 
     fun extractRootfs(onProgress: (progress: Double, status: String) -> Unit) {
         var previousRootfs: File? = null
+        val previousSetupComplete = if (setupCompleteFile.isFile) setupCompleteFile.readText() else null
         try {
             val distro = getInstalledDistro().ifEmpty { DEFAULT_DISTRO }
             val bundledUbuntu = distro == DEFAULT_DISTRO
@@ -392,7 +395,8 @@ class RootfsManager(private val context: Context) {
             checksumFile.delete()
             onProgress(1.0, "Ubuntu Linux filesystem ready")
         } catch (e: Exception) {
-            setupCompleteFile.delete()
+            if (previousSetupComplete == null) setupCompleteFile.delete()
+            else setupCompleteFile.writeText(previousSetupComplete)
             previousRootfs?.let { backup ->
                 if (backup.exists()) {
                     if (rootfsDir.exists() && !rootfsDir.deleteRecursively()) {
