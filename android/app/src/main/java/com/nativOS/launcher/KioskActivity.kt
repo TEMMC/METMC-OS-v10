@@ -54,7 +54,7 @@ import java.lang.ref.WeakReference
  *   1. Initialize X11 surface (LorieView)
  *   2. Download Linux rootfs (if first boot)
  *   3. Extract and configure rootfs
- *   4. Validate the bundled Alpine Labwc desktop (offline)
+ *   4. Validate the bundled MT-Phosh/MT-Phoc desktop (offline)
  *   5. Start the Linux desktop session
  *
  * Escape hatch: press Volume Up 5 times rapidly to show Android.
@@ -679,10 +679,10 @@ class KioskActivity : Activity() {
             }
             updateOverlay(0.05, "Root access confirmed", "")
 
-            // Step 2: Ensure the bundled Alpine ARM64 rootfs is installed.
+            // Step 2: Ensure the bundled Ubuntu ARM64 rootfs is installed.
             // Existing Linux installations are migrated once, preserving /home/metmc where possible.
             if (rootfsManager.isRootfsReady() && !rootfsManager.isBundledDistroReady()) {
-                updateOverlay(0.05, "Switching Linux system to Alpine Linux...", "One-time migration; preserving /home/metmc")
+                updateOverlay(0.05, "Switching Linux system to Ubuntu Linux...", "One-time migration; preserving /home/metmc")
                 chrootManager.stopSession()
             }
             if (!rootfsManager.isRootfsReady() || !rootfsManager.isBundledDistroReady()) {
@@ -714,7 +714,7 @@ class KioskActivity : Activity() {
             }
 
             if (!rootfsManager.isBundledDistroReady()) {
-                updateOverlay(-1.0, "ERROR: Alpine rootfs setup failed", "The Alpine Linux filesystem could not be prepared")
+                updateOverlay(-1.0, "ERROR: Ubuntu rootfs setup failed", "The Ubuntu Linux filesystem could not be prepared")
                 return
             }
 
@@ -724,146 +724,18 @@ class KioskActivity : Activity() {
             chrootManager.bindX11Socket()
             AndroidAppIntegration.sync(this)
 
-            // Step 4: Validate the offline Labwc Wayland desktop. Never run apk or
-            // install packages during startup; the bundled rootfs must contain
-            // the complete desktop and essential tools.
+            // Step 4: Validate the Ubuntu MT-Phosh/MT-Phoc desktop offline.
             updateOverlay(0.74, "Checking offline desktop...", "")
-            if (!chrootManager.isPhoshInstalled() && !chrootManager.isLabwcInstalled()) {
-                updateOverlay(
-                    -1.0,
-                    "Offline desktop components missing",
-                    "The bundled Linux rootfs has neither MT-Phosh/MT-Phoc nor the Labwc fallback. Rebuild the APK with a complete desktop; boot will not install packages."
-                )
+            if (!chrootManager.isPhoshInstalled()) {
+                updateOverlay(-1.0, "MT desktop components missing", "The bundled Ubuntu rootfs must include MT-Phosh and MT-Phoc. Rebuild the APK with the prepared desktop; boot will not install packages.")
                 return
             }
-
             updateOverlay(0.95, "Validating local desktop components...", "No downloads or updates")
-            val phoshSelected = chrootManager.isPhoshInstalled()
-            val runtimeReady = if (phoshSelected) {
-                rootfsManager.ensurePhoshRuntime()
-            } else {
-                rootfsManager.ensureLabwcRuntime(chrootManager)
-            }
-            if (!runtimeReady) {
-                val details = if (phoshSelected) {
-                    "MT-Phosh/MT-Phoc or the bundled mt-bridge client is incomplete. Rebuild the APK with the pinned desktop install tree and bridge client."
-                } else {
-                    "Labwc runtime is incomplete in the bundled rootfs. Rebuild the APK with Labwc, Waybar, Xwayland and the bridge client included."
-                }
-                updateOverlay(-1.0, "Offline desktop components missing", details)
+            if (!rootfsManager.ensurePhoshRuntime()) {
+                updateOverlay(-1.0, "MT desktop runtime incomplete", "MT-Phosh/MT-Phoc or the bundled mt-bridge client is missing. Rebuild the APK with the complete Ubuntu rootfs.")
                 return
             }
 
-            // Step 5: Attach the display surface to the bundled X11 service process.
-            updateOverlay(0.95, "Getting GUI ready...", "Preparing your desktop")
-            
-            // Android Views and the Termux Activity shim must be created on the UI thread.
-            lateinit var lorieView: LorieView
-            var viewCreationError: Throwable? = null
-            val viewCreated = CountDownLatch(1)
-            val surfaceReady = CountDownLatch(1)
-            val surfaceReadyCallback = object : SurfaceHolder.Callback {
-                override fun surfaceCreated(holder: SurfaceHolder) {
-                    surfaceReady.countDown()
-                }
-
-                override fun surfaceChanged(
-                    holder: SurfaceHolder,
-                    format: Int,
-                    width: Int,
-                    height: Int
-                ) {
-                    surfaceReady.countDown()
-                }
-
-                override fun surfaceDestroyed(holder: SurfaceHolder) = Unit
-            }
-
-            runOnUiThread {
-                try {
-                    val x11Activity = MainActivity.getInstance()
-                    x11Activity.initLorieView(this@KioskActivity)
-                    lorieView = x11Activity.lorieView
-                    lorieView.holder.addCallback(surfaceReadyCallback)
-                    (lorieView.parent as? ViewGroup)?.removeView(lorieView)
-                    lorieView.layoutParams = FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        FrameLayout.LayoutParams.MATCH_PARENT
-                    )
-                    desktopView = lorieView
-                    applyDesktopSafeArea(lorieView)
-                    lorieView.setZOrderOnTop(false)
-                    rootLayout?.addView(lorieView, 0)
-                } catch (error: Throwable) {
-                    viewCreationError = error
-                } finally {
-                    viewCreated.countDown()
-                }
-            }
-
-            if (!viewCreated.await(10, TimeUnit.SECONDS)) {
-                throw IllegalStateException("Timed out creating the X11 display surface")
-            }
-            viewCreationError?.let { throw it }
-
-            if (!surfaceReady.await(10, TimeUnit.SECONDS)) {
-                lorieView.holder.removeCallback(surfaceReadyCallback)
-                throw IllegalStateException("Timed out waiting for the X11 display surface")
-            }
-            lorieView.holder.removeCallback(surfaceReadyCallback)
-            
-            val rendererAttached = CountDownLatch(1)
-            var rendererError: Throwable? = null
-            x11ServiceClient = X11ServiceClient(
-                context = this,
-                onConnected = { connectionFd, logcatFd ->
-                    try {
-                        lorieView.connect(connectionFd.detachFd())
-                        logcatFd?.let { lorieView.startLogcat(it.detachFd()) }
-                        x11InputController = X11InputController(lorieView)
-                        lorieView.requestFocus()
-                        Log.i(TAG, "LorieView attached to the bundled X11 service")
-                        rendererAttached.countDown()
-                    } catch (error: Throwable) {
-                        rendererError = error
-                        connectionFd.close()
-                        logcatFd?.close()
-                        rendererAttached.countDown()
-                    }
-                },
-                onError = { message, error ->
-                    rendererError = IllegalStateException(message, error)
-                    rendererAttached.countDown()
-                }
-            ).also { it.connect() }
-
-            if (!rendererAttached.await(10, TimeUnit.SECONDS)) {
-                throw rendererError
-                    ?: IllegalStateException("Display service connection timed out")
-            }
-            rendererError?.let { throw it }
-
-            // Binder delivers the renderer file descriptor before the native
-            // render thread has necessarily consumed it. Cold boot as the HOME
-            // launcher makes that race visible, so wait briefly for native
-            // readiness instead of treating a successful attachment as failed.
-            val rendererReadyDeadline = SystemClock.elapsedRealtime() + 5_000L
-            while (!lorieView.connected() &&
-                SystemClock.elapsedRealtime() < rendererReadyDeadline) {
-                Thread.sleep(50)
-            }
-            if (!lorieView.connected()) {
-                throw IllegalStateException("Display renderer did not become ready")
-            }
-
-            Log.i(TAG, "Starting test session...")
-
-            // Match the Labwc session to the current Android X11 surface dimensions.
-            val screenWidth = lorieView.width
-            val screenHeight = lorieView.height
-            Log.i(TAG, "Detected screen: ${screenWidth}x${screenHeight}")
-
-            chrootManager.startLabwcSession(screenWidth, screenHeight)
             updateOverlay(0.98, if (chrootManager.isPhoshInstalled()) "Starting MT-Phosh desktop..." else "Starting Labwc desktop...", if (chrootManager.isPhoshInstalled()) "Starting MT-Phoc compositor and mobile shell" else "Starting window manager and taskbar")
             if (!chrootManager.awaitLabwcReady()) {
                 throw IllegalStateException(if (chrootManager.isPhoshInstalled()) "MT-Phosh/MT-Phoc did not become ready" else "Labwc compositor and taskbar did not become ready")
