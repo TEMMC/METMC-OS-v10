@@ -25,14 +25,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: TEMMC/MT-phosh-
-          ref: fbe7a6d58ea10a02cd837ec4db8d4493dc4b5b21
+          ref: a666684c70338867034f889545d1b1da49e8cb64
           path: integrations/sources/MT-phosh
 
       - name: Checkout MT-Phoc
         uses: actions/checkout@v4
         with:
           repository: TEMMC/MT-phoc
-          ref: 1d0282772d493b16e3e6f021accfa07655cdfe3f
+          ref: 7207050415b30a99a985277dcca8a3393086d918
           path: integrations/sources/MT-phoc
 
       - name: Validate source trees and bridge files
