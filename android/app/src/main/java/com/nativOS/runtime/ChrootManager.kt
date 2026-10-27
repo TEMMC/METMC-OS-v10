@@ -900,11 +900,11 @@ METMC_LAUNCH_EOF
                         WLR_RENDERER=pixman exec dbus-run-session -- labwc
                     fi
                 fi
-                echo "ERROR: Alpine Labwc, Waybar, or Fuzzel is missing from the bundled rootfs" >&2
+                echo "ERROR: Ubuntu Phosh/Phoc and the fallback desktop are missing from the bundled rootfs" >&2
                 exit 127
             '
         """.trimIndent()
-        Log.i(TAG, "Starting Alpine Labwc Wayland multi-window desktop")
+        Log.i(TAG, "Starting Ubuntu Phosh/Phoc with Labwc fallback")
         val su = rootShell.findSuPath() ?: return
         val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
         val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
