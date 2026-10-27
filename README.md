@@ -40,7 +40,7 @@ Wi-Fi connectivity is normally shared from Android into Debian. Android 10+ rest
 
 ## Offline startup guarantee
 
-GitHub Actions prepares a compact Alpine Linux 3.22 ARM64 root filesystem with Labwc, Wayland/Xwayland support, Waybar, Fuzzel, Foot, Thunar, a non-root `metmc` user, `sudo`, and compact shell/network diagnostics tools. The root filesystem is compressed as a reproducible `.tgz` asset and bundled inside the APK. First launch copies and extracts that asset locally; boot must never run `apk update`, install packages, download a rootfs, or contact update servers. Package updates and new installs remain explicitly user-initiated.
+GitHub Actions prepares a Ubuntu 24.04 ARM64 root filesystem with pinned MT-Phosh and MT-Phoc runtime artifacts, Xwayland, the MT Android bridge, a non-root `metmc` user, `sudo`, and essential networking tools. The prepared root filesystem is packaged as a plain TAR asset and bundled inside the APK. First launch copies and extracts that asset locally; boot must never download a rootfs or install packages.
 
 ## Windowed desktop and multitasking
 
@@ -56,7 +56,7 @@ The initial desktop configuration lives under `linux/config/skel/` and `linux/co
 
 ## Current status
 
-The Alpine/Labwc migration has been committed to the draft pull request, but the new rootfs and Android session have not yet been confirmed by a successful CI build or tested on the Galaxy A04e. Do not treat it as a verified release until the build succeeds and the desktop is tested on-device. Touch input, keyboard behavior, window decorations, panel usability, Android freeform windows, hardware bridging, GPU behavior, RAM use, and boot time remain device-test items. No claim of full compatibility is made until those checks pass.
+Ubuntu with MT-Phosh/MT-Phoc is the only supported Linux runtime. The bundled rootfs asset, checksum, packaging script, and APK extraction format must stay aligned.
 
 ## Build requirements
 
@@ -84,4 +84,4 @@ The repository now pins the MT desktop sources in `integrations/mt-desktop-sourc
 
 The **Integrate MT Desktop Sources** GitHub Actions workflow checks out those exact source branches, validates the source trees and bridge files, and publishes a checksum-protected source bundle. The Android APK build also bundles the MT bridge CLI and shared socket transport into the Linux rootfs.
 
-**Runtime status:** the current APK workflow still builds an Alpine Linux 3.22 ARM64 rootfs with Labwc. MT-Phosh and MT-Phoc are pinned and bundled as source, but their compiled binaries are not yet installed into the APK or selected at startup. They must be built for the exact ARM64 rootfs/runtime ABI and tested with the Android-hosted display before safely replacing Labwc. The source-bundle workflow does not claim that Phosh/Phoc run on the phone. No boot-time downloads are introduced.
+**Runtime status:** the APK workflow prepares an Ubuntu ARM64 rootfs and overlays pinned MT-Phosh and MT-Phoc install artifacts. CI success and on-device Galaxy A04e validation are still required before claiming the runtime is verified.
