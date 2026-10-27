@@ -18,15 +18,7 @@ class RootfsManager(private val context: Context) {
         private const val BUFFER_SIZE = 8192
         private const val BUNDLED_ROOTFS_ASSET = "rootfs/nativos-rootfs-arm64.tar"
 
-        val DISTRO_URLS = mapOf(
-            "alpine" to "https://dl-cdn.alpinelinux.org/alpine/v3.22/releases/aarch64/alpine-minirootfs-3.22.0-aarch64.tar.gz",
-            "ubuntu" to "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.4-base-arm64.tar.gz"
-        )
-        val DISTRO_NAMES = mapOf(
-            "alpine" to "Alpine Linux 3.22 (bundled)",
-            "ubuntu" to "Ubuntu 24.04 Base"
-        )
-        const val DEFAULT_DISTRO = "alpine"
+        const val DEFAULT_DISTRO = "ubuntu"
     }
 
     private val baseDir: File get() = context.filesDir
@@ -44,15 +36,14 @@ class RootfsManager(private val context: Context) {
         rootfsDir.exists() && File(rootfsDir, "bin").exists() &&
         File(rootfsDir, "usr").exists() && File(rootfsDir, "etc").exists()
 
-    /** The APK bundles Alpine ARM64; startup never bootstraps Linux over the network. */
-    fun isBundledDistroReady(): Boolean = isRootfsReady() && isAlpineRootfs()
+    /** The APK bundles the prepared Ubuntu ARM64 rootfs; startup is fully offline. */
+    fun isBundledDistroReady(): Boolean = isRootfsReady() && isUbuntuRootfs()
 
-    private fun isAlpineRootfs(): Boolean {
+    private fun isUbuntuRootfs(): Boolean {
         val release = File(rootfsDir, "etc/os-release")
         if (!release.exists()) return false
         val contents = runCatching { release.readText() }.getOrDefault("")
-        return Regex("(?m)^ID=alpine$").containsMatchIn(contents) &&
-            Regex("(?m)^VERSION_ID=3\\.22(?:\\.|$)").containsMatchIn(contents)
+        return Regex("(?m)^ID=ubuntu$").containsMatchIn(contents)
     }
 
     fun isSetupComplete(): Boolean = setupCompleteFile.exists()
@@ -136,53 +127,6 @@ class RootfsManager(private val context: Context) {
         return true
     }
 
-    /** Verify the bundled Labwc desktop and compact basic-tool set without networking. */
-    fun ensureLabwcRuntime(chrootManager: ChrootManager): Boolean {
-        val required = listOf(
-            "usr/bin/labwc", "usr/bin/waybar", "usr/bin/fuzzel",
-            "usr/bin/foot", "usr/bin/thunar", "sbin/apk",
-            "usr/bin/curl", "sbin/ip", "usr/bin/htop",
-            "usr/local/bin/nativOS-bridge", "usr/local/bin/mt-bridge",
-            "usr/lib/mt-os-bridge/mt_bridge.py",
-            "usr/local/bin/metmc-settings", "usr/local/bin/metmc-wifi"
-        )
-        val missing = required.filterNot { File(rootfsDir, it).exists() }
-        if (missing.isNotEmpty()) {
-            Log.w(TAG, "Offline Alpine/Labwc rootfs is missing: ${missing.joinToString()}")
-            return false
-        }
-        if (!File(rootfsDir, "usr/local/bin/mt-bridge").canExecute()) {
-            Log.w(TAG, "MT OS bridge launcher is not executable")
-            return false
-        }
-        Log.i(TAG, "Alpine Labwc desktop, bridge client and compact tools are present")
-        return configureLabwcTouchLayout(chrootManager)
-    }
-
-    /** Seed the neon hacker theme and touch-first desktop config without downloads. */
-    fun configureLabwcTouchLayout(chrootManager: ChrootManager): Boolean {
-        val result = chrootManager.execChroot(
-            """
-                set -e
-                id metmc >/dev/null 2>&1 || exit 1
-                mkdir -p /home/metmc/.config/labwc /home/metmc/.config/waybar /home/metmc/.config/fuzzel /home/metmc/.config/foot /home/metmc/.config/gtk-3.0
-                for item in labwc/rc.xml labwc/autostart labwc/menu.xml waybar/config.jsonc waybar/style.css fuzzel/fuzzel.ini foot/foot.ini gtk-3.0/settings.ini; do
-                    source="/etc/skel/.config/${'$'}item"
-                    target="/home/metmc/.config/${'$'}item"
-                    if [ ! -e "${'$'}target" ] && [ -f "${'$'}source" ]; then cp "${'$'}source" "${'$'}target"; fi
-                done
-                mkdir -p /home/metmc/.local/share/themes/METMC-Hacker/openbox-3
-                if [ -f /usr/share/themes/METMC-Hacker/openbox-3/themerc ]; then
-                    cp /usr/share/themes/METMC-Hacker/openbox-3/themerc /home/metmc/.local/share/themes/METMC-Hacker/openbox-3/themerc
-                fi
-                chown -R metmc:metmc /home/metmc/.config /home/metmc/.local
-            """.trimIndent()
-        )
-        if (result == 0) Log.i(TAG, "Labwc hacker theme configured")
-        else Log.w(TAG, "Labwc theme setup failed (exit $result)")
-        return result == 0
-    }
-
     /** Add or repair the signed per-user Flathub remote used by GNOME Software. */
     fun ensureFlathub(chrootManager: ChrootManager): Boolean {
         if (!isFlatpakInstalled()) return false
@@ -206,77 +150,17 @@ class RootfsManager(private val context: Context) {
         return result == 0
     }
 
+    /** Stage only the Ubuntu rootfs bundled in the APK; never download a distro at boot. */
     fun downloadRootfs(
         distro: String = DEFAULT_DISTRO,
         onProgress: (progress: Double, status: String) -> Unit
     ) {
-        if (distro == "alpine") {
-            if (!stageBundledRootfs(onProgress)) {
-                onProgress(-1.0, "Bundled Alpine rootfs is missing from this APK")
-            }
+        if (distro != DEFAULT_DISTRO) {
+            onProgress(-1.0, "Unsupported Linux distribution: $distro. MT OS uses Ubuntu only.")
             return
         }
-        try {
-            val url = DISTRO_URLS[distro] ?: throw IllegalArgumentException("Unknown distro: $distro")
-            val distroName = DISTRO_NAMES[distro] ?: distro
-            downloadDir.mkdirs()
-            val targetFile = File(downloadDir, "${distro}-rootfs.tar.gz")
-
-            onProgress(0.0, "Connecting to download server...")
-            Log.i(TAG, "Downloading $distroName from $url")
-
-            val connection = URL(url).openConnection() as HttpURLConnection
-            connection.connectTimeout = 30000
-            connection.readTimeout = 30000
-            connection.instanceFollowRedirects = true
-
-            var downloadedBytes = 0L
-            if (targetFile.exists()) {
-                downloadedBytes = targetFile.length()
-                connection.setRequestProperty("Range", "bytes=$downloadedBytes-")
-            }
-            connection.requestMethod = "GET"
-
-            if (connection.responseCode == 416) {
-                onProgress(1.0, "$distroName already downloaded")
-                configFile.writeText(distro)
-                return
-            }
-            if (connection.responseCode == 200 && downloadedBytes > 0) {
-                targetFile.delete()
-                downloadedBytes = 0L
-            }
-
-            val totalBytes = connection.contentLengthLong
-            val expectedTotal = downloadedBytes + totalBytes
-            if (totalBytes == 0L) {
-                onProgress(1.0, "$distroName downloaded")
-                configFile.writeText(distro)
-                return
-            }
-
-            val buffer = ByteArray(BUFFER_SIZE)
-            connection.inputStream.use { input ->
-                FileOutputStream(targetFile, downloadedBytes > 0).use { output ->
-                    var bytesRead: Int
-                    while (input.read(buffer).also { bytesRead = it } != -1) {
-                        output.write(buffer, 0, bytesRead)
-                        downloadedBytes += bytesRead
-                        if (expectedTotal > 0) {
-                            val progress = downloadedBytes.toDouble() / expectedTotal
-                            val dlMB = downloadedBytes / (1024 * 1024)
-                            val totMB = expectedTotal / (1024 * 1024)
-                            onProgress(progress, "Downloading: ${dlMB}MB / ${totMB}MB")
-                        }
-                    }
-                }
-            }
-            connection.disconnect()
-            configFile.writeText(distro)
-            onProgress(1.0, "$distroName downloaded successfully")
-        } catch (e: Exception) {
-            Log.e(TAG, "Download failed: ${e.message}", e)
-            onProgress(-1.0, "Download failed: ${e.message}")
+        if (!stageBundledRootfs(onProgress)) {
+            onProgress(-1.0, "Bundled Ubuntu rootfs is missing from this APK")
         }
     }
 
@@ -284,7 +168,8 @@ class RootfsManager(private val context: Context) {
         var previousRootfs: File? = null
         try {
             val distro = getInstalledDistro().ifEmpty { DEFAULT_DISTRO }
-            val tarball = File(downloadDir, if (distro == "alpine") "${distro}-rootfs.tar" else "${distro}-rootfs.tar.gz")
+            if (distro != DEFAULT_DISTRO) throw IllegalStateException("Unsupported Linux distribution: $distro")
+            val tarball = File(downloadDir, "ubuntu-rootfs.tar")
             if (!tarball.exists()) {
                 onProgress(-1.0, "Rootfs tarball not found.")
                 return
@@ -306,8 +191,7 @@ class RootfsManager(private val context: Context) {
 
             onProgress(0.1, "Extracting Linux filesystem...")
             Log.i(TAG, "Extracting rootfs from ${tarball.absolutePath}")
-            val tarArgs = if (distro == "alpine") "xf" else "zxf"
-            val process = ProcessBuilder("tar", tarArgs, tarball.absolutePath, "-C", rootfsDir.absolutePath)
+            val process = ProcessBuilder("tar", "xf", tarball.absolutePath, "-C", rootfsDir.absolutePath)
                 .redirectErrorStream(true).start()
             val reader = process.inputStream.bufferedReader()
             var line: String?
@@ -323,8 +207,8 @@ class RootfsManager(private val context: Context) {
 
             onProgress(0.7, "Configuring Linux environment...")
             configureRootfs()
-            if (distro == "alpine" && !isAlpineRootfs()) {
-                throw IllegalStateException("Bundled rootfs is not Alpine Linux 3.22")
+            if (!isUbuntuRootfs()) {
+                throw IllegalStateException("Bundled rootfs is not an Ubuntu root filesystem")
             }
             setupCompleteFile.writeText("done")
 
@@ -388,32 +272,6 @@ class RootfsManager(private val context: Context) {
             writeText("Defaults !requiretty\nmetmc ALL=(ALL:ALL) NOPASSWD: ALL\n")
         }
         listOf("tmp", "tmp/runtime-root", "tmp/runtime-metmc", "run", "var/run", "dev/shm").forEach { File(rootfsDir, it).mkdirs() }
-    }
-
-    /** User-initiated repair/install path; never called during boot. */
-    fun installLabwcDesktop(chrootManager: ChrootManager, onProgress: (Double, String) -> Unit) {
-        try {
-            onProgress(0.0, "Refreshing Alpine package index (user requested)...")
-            if (chrootManager.execChroot("apk update") != 0) throw IllegalStateException("Could not refresh Alpine package index")
-            onProgress(0.25, "Installing Labwc desktop packages...")
-            val desktopResult = chrootManager.execChroot(
-                "apk add bash sudo util-linux-login dbus dbus-x11 labwc waybar fuzzel foot thunar xwayland swaybg wl-clipboard font-noto font-noto-emoji adwaita-icon-theme"
-            )
-            if (desktopResult != 0) throw IllegalStateException("Labwc package installation failed")
-            onProgress(0.55, "Installing compact hacker and networking tools...")
-            val toolsResult = chrootManager.execChroot(
-                "apk add nano less htop file procps psmisc ca-certificates curl wget git openssh-client iproute2 iputils bind-tools traceroute netcat-openbsd nmap whois jq python3 tmux rsync tar gzip unzip zip tree util-linux util-linux-login coreutils findutils grep sed gawk"
-            )
-            if (toolsResult != 0) Log.w(TAG, "Some optional diagnostics packages could not be installed")
-            onProgress(0.78, "Applying hacker theme and touch taskbar...")
-            configureLabwcTouchLayout(chrootManager)
-            onProgress(0.9, "Preparing non-root desktop user...")
-            chrootManager.ensureDefaultLinuxUser()
-            onProgress(1.0, "METMC OS Alpine Labwc desktop ready")
-        } catch (error: Throwable) {
-            Log.e(TAG, "Labwc desktop installation failed", error)
-            onProgress(-1.0, error.message ?: "Labwc installation failed")
-        }
     }
 
     private fun calculateDirSize(dir: File): Long =
