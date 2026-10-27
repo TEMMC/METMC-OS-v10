@@ -6,13 +6,16 @@ name: Build METMC OS v10 APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, fix/restore-known-working-phosh]
+    branches: [main, fix/restore-known-working-phosh, fix/bundle-mt-bridge]
     paths:
       - "android/**"
       - "linux/config/**"
       - "linux/bridge-client/**"
       - "linux/setup/**"
       - "linux/README-bridge.md"
+      - "scripts/build-rootfs-asset.sh"
+      - "README.md"
+      - "PRODUCTION_READINESS.md"
       - "integrations/**"
       - "android/app/src/main/java/com/nativOS/bridge/**"
       - ".github/workflows/build-apk.yml"
