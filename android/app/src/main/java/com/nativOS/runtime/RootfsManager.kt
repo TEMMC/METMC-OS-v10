@@ -114,20 +114,48 @@ class RootfsManager(private val context: Context) {
         }
     }
 
+    /** Validate MT-Phosh independently; do not require fallback Labwc components. */
+    fun ensurePhoshRuntime(): Boolean {
+        val required = listOf(
+            "usr/bin/phosh-session", "usr/bin/phoc", "usr/libexec/phosh",
+            "usr/bin/python3", "usr/local/bin/mt-bridge",
+            "usr/lib/mt-os-bridge/mt_bridge.py"
+        )
+        val missing = required.filterNot { File(rootfsDir, it).exists() }
+        if (missing.isNotEmpty()) {
+            Log.w(TAG, "Offline MT-Phosh/MT-Phoc rootfs is missing: ${missing.joinToString()}")
+            return false
+        }
+        val executable = listOf("usr/bin/phosh-session", "usr/bin/phoc", "usr/local/bin/mt-bridge")
+        val notExecutable = executable.filterNot { File(rootfsDir, it).canExecute() }
+        if (notExecutable.isNotEmpty()) {
+            Log.w(TAG, "MT desktop/bridge entry points are not executable: ${notExecutable.joinToString()}")
+            return false
+        }
+        Log.i(TAG, "MT-Phosh/MT-Phoc and bundled Android bridge client are present")
+        return true
+    }
+
     /** Verify the bundled Labwc desktop and compact basic-tool set without networking. */
     fun ensureLabwcRuntime(chrootManager: ChrootManager): Boolean {
         val required = listOf(
             "usr/bin/labwc", "usr/bin/waybar", "usr/bin/fuzzel",
             "usr/bin/foot", "usr/bin/thunar", "sbin/apk",
             "usr/bin/curl", "sbin/ip", "usr/bin/htop",
-            "usr/local/bin/nativOS-bridge", "usr/local/bin/metmc-settings", "usr/local/bin/metmc-wifi"
+            "usr/local/bin/nativOS-bridge", "usr/local/bin/mt-bridge",
+            "usr/lib/mt-os-bridge/mt_bridge.py",
+            "usr/local/bin/metmc-settings", "usr/local/bin/metmc-wifi"
         )
         val missing = required.filterNot { File(rootfsDir, it).exists() }
         if (missing.isNotEmpty()) {
             Log.w(TAG, "Offline Alpine/Labwc rootfs is missing: ${missing.joinToString()}")
             return false
         }
-        Log.i(TAG, "Alpine Labwc desktop and compact tools are present")
+        if (!File(rootfsDir, "usr/local/bin/mt-bridge").canExecute()) {
+            Log.w(TAG, "MT OS bridge launcher is not executable")
+            return false
+        }
+        Log.i(TAG, "Alpine Labwc desktop, bridge client and compact tools are present")
         return configureLabwcTouchLayout(chrootManager)
     }
 
