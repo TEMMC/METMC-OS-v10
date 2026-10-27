@@ -787,7 +787,7 @@ shift
 [ "${'$'}#" -gt 0 ] || usage
 BASE=${'$'}{${'$'}1##*/}
 case "${'$'}BASE" in
-  apk|rc-service|rc-update|mount|umount|parted|mkfs*|fsck*|useradd|usermod|userdel|groupadd|groupdel|passwd|chpasswd|systemctl|service|reboot|poweroff|shutdown|fwupdmgr)
+  apt|apt-get|dpkg|dpkg-query|rc-service|rc-update|mount|umount|parted|mkfs*|fsck*|useradd|usermod|userdel|groupadd|groupdel|passwd|chpasswd|systemctl|service|reboot|poweroff|shutdown|fwupdmgr)
     [ "${'$'}MODE" = auto ] && MODE=root ;;
 esac
 if [ "${'$'}MODE" = root ]; then
