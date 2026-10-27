@@ -859,7 +859,7 @@ METMC_LAUNCH_EOF
                 echo '=== input ==='; ls -la /dev/input 2>/dev/null || true
             } > /run/metmc/hardware-status.txt
             chmod 0644 /run/metmc/hardware-status.txt
-            id metmc >/dev/null 2>&1 || adduser -D -s /bin/bash metmc
+            id metmc >/dev/null 2>&1 || useradd --create-home --shell /bin/bash metmc
             METMC_HOME=$(getent passwd metmc | cut -d: -f6)
             mkdir -p "${'$'}METMC_HOME" /tmp/runtime-metmc
             chown -R metmc:metmc "${'$'}METMC_HOME" /tmp/runtime-metmc
