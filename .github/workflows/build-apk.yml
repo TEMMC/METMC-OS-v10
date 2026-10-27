@@ -39,8 +39,11 @@ jobs:
           set -euo pipefail
           sudo sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ca-certificates git meson ninja-build pkg-config build-essential
+          sudo apt-get install -y --no-install-recommends ca-certificates git python3-venv ninja-build pkg-config build-essential
           sudo apt-get build-dep -y phosh
+          python3 -m venv "$RUNNER_TEMP/meson-venv"
+          "$RUNNER_TEMP/meson-venv/bin/pip" install --upgrade 'meson>=1.7.0'
+          echo "$RUNNER_TEMP/meson-venv/bin" >> "$GITHUB_PATH"
       - name: Compile MT-Phosh source
         working-directory: MT-phosh
         run: |
@@ -70,8 +73,19 @@ jobs:
           set -euo pipefail
           sudo sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ca-certificates git meson ninja-build pkg-config build-essential
+          sudo apt-get install -y --no-install-recommends ca-certificates git curl xz-utils python3-venv ninja-build pkg-config build-essential
           sudo apt-get build-dep -y phoc
+          # Ubuntu 24.04 ships Pixman 0.42.2; this MT-Phoc source requires >=0.43.4.
+          curl --fail --location --retry 5 https://www.cairographics.org/releases/pixman-0.44.2.tar.gz -o "$RUNNER_TEMP/pixman.tar.gz"
+          tar -xzf "$RUNNER_TEMP/pixman.tar.gz" -C "$RUNNER_TEMP"
+          python3 -m venv "$RUNNER_TEMP/meson-venv"
+          "$RUNNER_TEMP/meson-venv/bin/pip" install --upgrade 'meson>=1.7.0'
+          echo "$RUNNER_TEMP/meson-venv/bin" >> "$GITHUB_PATH"
+          cd "$RUNNER_TEMP/pixman-0.44.2"
+          "$RUNNER_TEMP/meson-venv/bin/meson" setup _build --prefix=/usr/local --libdir=lib/aarch64-linux-gnu
+          "$RUNNER_TEMP/meson-venv/bin/meson" compile -C _build
+          sudo "$RUNNER_TEMP/meson-venv/bin/meson" install -C _build
+          echo "PKG_CONFIG_PATH=/usr/local/lib/aarch64-linux-gnu/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig" >> "$GITHUB_ENV"
       - name: Compile MT-Phoc source with XWayland
         working-directory: MT-phoc
         env:
