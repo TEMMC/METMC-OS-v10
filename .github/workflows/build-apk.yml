@@ -25,102 +25,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-mt-phosh:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: TEMMC/MT-phosh-
-          ref: a666684c70338867034f889545d1b1da49e8cb64
-          path: MT-phosh
-      - name: Install Ubuntu ARM64 build dependencies
-        run: |
-          set -euo pipefail
-          sudo sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ca-certificates git python3-venv ninja-build pkg-config build-essential
-          sudo apt-get build-dep -y phosh
-          python3 -m venv "$RUNNER_TEMP/meson-venv"
-          "$RUNNER_TEMP/meson-venv/bin/pip" install --upgrade 'meson>=1.7.0'
-          echo "$RUNNER_TEMP/meson-venv/bin" >> "$GITHUB_PATH"
-      - name: Compile MT-Phosh source
-        working-directory: MT-phosh
-        run: |
-          set -euo pipefail
-          meson setup _build --prefix=/usr
-          meson compile -C _build
-          DESTDIR="$GITHUB_WORKSPACE/mt-phosh-stage" meson install -C _build
-          tar -C "$GITHUB_WORKSPACE/mt-phosh-stage" -czf "$GITHUB_WORKSPACE/mt-phosh-install.tar.gz" .
-      - uses: actions/upload-artifact@v4
-        with:
-          name: mt-phosh-install
-          path: mt-phosh-install.tar.gz
-          if-no-files-found: error
-          retention-days: 7
-
-  build-mt-phoc:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: TEMMC/MT-phoc
-          ref: 7207050415b30a99a985277dcca8a3393086d918
-          path: MT-phoc
-      - name: Install Ubuntu ARM64 build dependencies
-        run: |
-          set -euo pipefail
-          sudo sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ca-certificates git curl xz-utils python3-venv ninja-build pkg-config build-essential
-          sudo apt-get build-dep -y phoc
-          # Ubuntu 24.04 ships Pixman 0.42.2; this MT-Phoc source requires >=0.43.4.
-          curl --fail --location --retry 5 https://www.cairographics.org/releases/pixman-0.44.2.tar.gz -o "$RUNNER_TEMP/pixman.tar.gz"
-          tar -xzf "$RUNNER_TEMP/pixman.tar.gz" -C "$RUNNER_TEMP"
-          python3 -m venv "$RUNNER_TEMP/meson-venv"
-          "$RUNNER_TEMP/meson-venv/bin/pip" install --upgrade 'meson>=1.7.0'
-          echo "$RUNNER_TEMP/meson-venv/bin" >> "$GITHUB_PATH"
-          cd "$RUNNER_TEMP/pixman-0.44.2"
-          "$RUNNER_TEMP/meson-venv/bin/meson" setup _build --prefix=/usr/local --libdir=lib/aarch64-linux-gnu
-          "$RUNNER_TEMP/meson-venv/bin/meson" compile -C _build
-          sudo "$RUNNER_TEMP/meson-venv/bin/meson" install -C _build
-          echo "PKG_CONFIG_PATH=/usr/local/lib/aarch64-linux-gnu/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig" >> "$GITHUB_ENV"
-      - name: Compile MT-Phoc source with XWayland
-        working-directory: MT-phoc
-        env:
-          CFLAGS: -Wno-error=switch -Wno-error=discarded-qualifiers
-        run: |
-          set -euo pipefail
-          meson setup _build --prefix=/usr -Dembed-wlroots=enabled -Dxwayland=enabled -Dtests=false
-          meson compile -C _build
-          DESTDIR="$GITHUB_WORKSPACE/mt-phoc-stage" meson install -C _build --skip-subprojects
-          tar -C "$GITHUB_WORKSPACE/mt-phoc-stage" -czf "$GITHUB_WORKSPACE/mt-phoc-install.tar.gz" .
-      - uses: actions/upload-artifact@v4
-        with:
-          name: mt-phoc-install
-          path: mt-phoc-install.tar.gz
-          if-no-files-found: error
-          retention-days: 7
-
   build:
-    needs: [build-mt-phosh, build-mt-phoc]
     runs-on: ubuntu-22.04
     timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Download MT-Phosh install tree
+      # Reuse the already successful ARM64 build artifacts. No source compilation here.
+      - name: Download successful MT-Phosh artifact
         uses: actions/download-artifact@v4
         with:
-          name: mt-phosh-install
+          name: mt-phosh-linux-install
+          repository: TEMMC/MT-phosh-
+          run-id: 40153637822
+          github-token: ${{ secrets.MT_ARTIFACTS_TOKEN }}
           path: /tmp/mt-phosh
 
-      - name: Download MT-Phoc install tree
+      - name: Download successful MT-Phoc artifact
         uses: actions/download-artifact@v4
         with:
-          name: mt-phoc-install
+          name: MT-phoc-0.47.0-arm64
+          repository: TEMMC/MT-phoc
+          run-id: 40344456949
+          github-token: ${{ secrets.MT_ARTIFACTS_TOKEN }}
           path: /tmp/mt-phoc
 
       - name: Set up Java 17
@@ -190,11 +121,15 @@ jobs:
           trap cleanup EXIT
           sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 update
           sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl wget git nano less file unzip zip procps psmisc htop iproute2 iputils-ping dnsutils net-tools openssh-client python3 sudo dbus-x11 xwayland phosh phoc foot
-          # Overlay ARM64 install trees built from the pinned MT fork sources.
-          sudo tar -xzf /tmp/mt-phosh/mt-phosh-install.tar.gz -C "$ROOTFS"
-          sudo tar -xzf /tmp/mt-phoc/mt-phoc-install.tar.gz -C "$ROOTFS"
+          # Install the prebuilt ARM64 artifacts (do not compile MT desktop sources here).
+          test -s /tmp/mt-phosh/mt-phosh-linux-install.tar.gz
+          test -s /tmp/mt-phoc/MT-phoc-linux-install.tar.gz
+          sudo tar -xzf /tmp/mt-phosh/mt-phosh-linux-install.tar.gz -C "$ROOTFS"
+          sudo tar -xzf /tmp/mt-phoc/MT-phoc-linux-install.tar.gz -C "$ROOTFS"
+          # MT-Phoc artifact installs to /usr/local/bin; prefer it over Ubuntu's stock /usr/bin/phoc.
+          sudo test -x "$ROOTFS/usr/local/bin/phoc"
+          sudo ln -sfn /usr/local/bin/phoc "$ROOTFS/usr/bin/phoc"
           sudo test -x "$ROOTFS/usr/bin/phosh"
-          sudo test -x "$ROOTFS/usr/bin/phoc"
           # Keep the known-good Ubuntu/Debian rootfs and provision MT bridge at build time.
           sudo install -d -m 0755 "$ROOTFS/usr/local/lib/mt-bridge" "$ROOTFS/usr/local/bin" "$ROOTFS/usr/share/metmc" "$ROOTFS/etc/nativOS" "$ROOTFS/etc/profile.d"
           sudo install -m 0644 linux/bridge-client/bridge_transport.py "$ROOTFS/usr/local/lib/mt-bridge/bridge_transport.py"
@@ -217,7 +152,7 @@ jobs:
             chown -R metmc:metmc /home/metmc
           '
           sudo install -m 0644 linux/config/mt-gpu.sh "$ROOTFS/etc/profile.d/mt-gpu.sh"
-          printf 'MT-Phosh source: fbe7a6d58ea10a02cd837ec4db8d4493dc4b5b21\nMT-Phoc source: 1d0282772d493b16e3e6f021accfa07655cdfe3f\nRuntime: Ubuntu-rootfs packaged Phosh/Phoc retained until forked Phoc passes its build checks\n' | sudo tee "$ROOTFS/usr/share/metmc/mt-desktop-build-info.txt" >/dev/null
+          printf 'MT-Phosh artifact: run 40153637822 (ARM64 install tree)\nMT-Phoc artifact: run 40344456949 (ARM64 Phoc 0.47.0 install tree)\nRuntime: prebuilt MT desktop artifacts overlaid on Ubuntu rootfs\n' | sudo tee "$ROOTFS/usr/share/metmc/mt-desktop-build-info.txt" >/dev/null
           sudo chroot "$ROOTFS" apt-get clean
           sudo rm -rf "$ROOTFS/var/lib/apt/lists/"* "$ROOTFS/var/cache/apt/archives/"*.deb
           sudo rm -f "$ROOTFS/usr/bin/qemu-aarch64-static"
