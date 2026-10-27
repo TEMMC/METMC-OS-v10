@@ -25,12 +25,89 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  build-mt-phosh:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: TEMMC/MT-phosh-
+          ref: a666684c70338867034f889545d1b1da49e8cb64
+          path: MT-phosh
+      - name: Install Ubuntu ARM64 build dependencies
+        run: |
+          set -euo pipefail
+          sudo sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ca-certificates git meson ninja-build pkg-config build-essential
+          sudo apt-get build-dep -y phosh
+      - name: Compile MT-Phosh source
+        working-directory: MT-phosh
+        run: |
+          set -euo pipefail
+          meson setup _build --prefix=/usr
+          meson compile -C _build
+          DESTDIR="$GITHUB_WORKSPACE/mt-phosh-stage" meson install -C _build
+          tar -C "$GITHUB_WORKSPACE/mt-phosh-stage" -czf "$GITHUB_WORKSPACE/mt-phosh-install.tar.gz" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mt-phosh-install
+          path: mt-phosh-install.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  build-mt-phoc:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: TEMMC/MT-phoc
+          ref: 7207050415b30a99a985277dcca8a3393086d918
+          path: MT-phoc
+      - name: Install Ubuntu ARM64 build dependencies
+        run: |
+          set -euo pipefail
+          sudo sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ca-certificates git meson ninja-build pkg-config build-essential
+          sudo apt-get build-dep -y phoc
+      - name: Compile MT-Phoc source with XWayland
+        working-directory: MT-phoc
+        env:
+          CFLAGS: -Wno-error=switch -Wno-error=discarded-qualifiers
+        run: |
+          set -euo pipefail
+          meson setup _build --prefix=/usr -Dembed-wlroots=enabled -Dxwayland=enabled -Dtests=false
+          meson compile -C _build
+          DESTDIR="$GITHUB_WORKSPACE/mt-phoc-stage" meson install -C _build --skip-subprojects
+          tar -C "$GITHUB_WORKSPACE/mt-phoc-stage" -czf "$GITHUB_WORKSPACE/mt-phoc-install.tar.gz" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mt-phoc-install
+          path: mt-phoc-install.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
   build:
+    needs: [build-mt-phosh, build-mt-phoc]
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+
+      - name: Download MT-Phosh install tree
+        uses: actions/download-artifact@v4
+        with:
+          name: mt-phosh-install
+          path: /tmp/mt-phosh
+
+      - name: Download MT-Phoc install tree
+        uses: actions/download-artifact@v4
+        with:
+          name: mt-phoc-install
+          path: /tmp/mt-phoc
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -102,6 +179,11 @@ jobs:
           trap cleanup EXIT
           sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 update
           sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl wget git nano less file unzip zip procps psmisc htop iproute2 iputils-ping dnsutils net-tools openssh-client python3 sudo dbus-x11 xwayland phosh phoc foot
+          # Overlay ARM64 install trees built from the pinned MT fork sources.
+          sudo tar -xzf /tmp/mt-phosh/mt-phosh-install.tar.gz -C "$ROOTFS"
+          sudo tar -xzf /tmp/mt-phoc/mt-phoc-install.tar.gz -C "$ROOTFS"
+          sudo test -x "$ROOTFS/usr/bin/phosh"
+          sudo test -x "$ROOTFS/usr/bin/phoc"
           # Keep the known-good Ubuntu/Debian rootfs and provision MT bridge at build time.
           sudo install -d -m 0755 "$ROOTFS/usr/local/lib/mt-bridge" "$ROOTFS/usr/local/bin" "$ROOTFS/usr/share/metmc" "$ROOTFS/etc/nativOS" "$ROOTFS/etc/profile.d"
           sudo install -m 0644 linux/bridge-client/bridge_transport.py "$ROOTFS/usr/local/lib/mt-bridge/bridge_transport.py"
