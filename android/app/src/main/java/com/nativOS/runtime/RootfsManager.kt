@@ -69,6 +69,21 @@ class RootfsManager(private val context: Context) {
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
+    /** Verify an archive against its adjacent SHA-256 sidecar before extraction. */
+    private fun verifyChecksum(archive: File, checksumFile: File) {
+        require(archive.isFile && archive.length() > 0L) { "Rootfs archive is missing or empty: ${archive.absolutePath}" }
+        require(checksumFile.isFile) { "Rootfs SHA-256 sidecar is missing: ${checksumFile.absolutePath}" }
+        val expected = checksumFile.readText().trim().split(Regex("\\s+")).firstOrNull()?.lowercase()
+        require(expected != null && expected.matches(Regex("[0-9a-f]{64}"))) {
+            "Rootfs SHA-256 sidecar has invalid format"
+        }
+        val actual = sha256(archive)
+        require(actual == expected) {
+            "Rootfs SHA-256 mismatch: expected $expected, got $actual"
+        }
+        Log.i(TAG, "Rootfs archive SHA-256 verified: $actual")
+    }
+
     /** Run the device's own tar implementation; retain complete extraction diagnostics. */
     private fun runTar(args: List<String>, phase: String, onProgress: ((Double, String) -> Unit)? = null): Int {
         val process = ProcessBuilder(listOf("tar") + args).redirectErrorStream(true).start()
