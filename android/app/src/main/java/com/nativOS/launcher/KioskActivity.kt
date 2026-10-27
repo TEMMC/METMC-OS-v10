@@ -738,12 +738,19 @@ class KioskActivity : Activity() {
             }
 
             updateOverlay(0.95, "Validating local desktop components...", "No downloads or updates")
-            if (!rootfsManager.ensureLabwcRuntime(chrootManager)) {
-                updateOverlay(
-                    -1.0,
-                    "Offline desktop components missing",
-                    "Labwc runtime is incomplete in the bundled rootfs. Rebuild the APK with Labwc, Waybar, Xwayland and the basic tools included."
-                )
+            val phoshSelected = chrootManager.isPhoshInstalled()
+            val runtimeReady = if (phoshSelected) {
+                rootfsManager.ensurePhoshRuntime()
+            } else {
+                rootfsManager.ensureLabwcRuntime(chrootManager)
+            }
+            if (!runtimeReady) {
+                val details = if (phoshSelected) {
+                    "MT-Phosh/MT-Phoc or the bundled mt-bridge client is incomplete. Rebuild the APK with the pinned desktop install tree and bridge client."
+                } else {
+                    "Labwc runtime is incomplete in the bundled rootfs. Rebuild the APK with Labwc, Waybar, Xwayland and the bridge client included."
+                }
+                updateOverlay(-1.0, "Offline desktop components missing", details)
                 return
             }
 
