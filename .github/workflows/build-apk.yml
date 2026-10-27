@@ -131,10 +131,10 @@ jobs:
           sudo tar -xzf /tmp/mt-phoc/MT-phoc-linux-install.tar.gz -C "$ROOTFS"
           # MT-Phoc artifact installs to /usr/local/bin; prefer it over Ubuntu's stock /usr/bin/phoc.
           sudo test -x "$ROOTFS/usr/local/bin/phoc"
-          sudo ln -sfn /usr/local/bin/phoc "$ROOTFS/usr/bin/phoc"
+          sudo ln -sfn ../local/bin/phoc "$ROOTFS/usr/bin/phoc"
           # MT-Phosh installs its executable under /usr/libexec; expose the usual command path.
           sudo test -x "$ROOTFS/usr/libexec/phosh"
-          sudo ln -sfn /usr/libexec/phosh "$ROOTFS/usr/bin/phosh"
+          sudo ln -sfn ../libexec/phosh "$ROOTFS/usr/bin/phosh"
           sudo test -x "$ROOTFS/usr/bin/phosh"
           # Keep the known-good Ubuntu/Debian rootfs and provision MT bridge at build time.
           sudo install -d -m 0755 "$ROOTFS/usr/local/lib/mt-bridge" "$ROOTFS/usr/local/bin" "$ROOTFS/usr/share/metmc" "$ROOTFS/etc/nativOS" "$ROOTFS/etc/profile.d"
