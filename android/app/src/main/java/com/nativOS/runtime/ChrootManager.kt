@@ -841,48 +841,25 @@ METMC_LAUNCH_EOF
             set -u
             export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
             export TMPDIR=${tmpPath} DISPLAY=:0 LANG=C.UTF-8 LC_ALL=C.UTF-8
-            export WLR_BACKENDS=x11 WLR_RENDERER=gles2 WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
-            export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
-            export XDG_DATA_DIRS=/usr/local/share:/usr/share
-            mkdir -p /run/dbus /run/metmc
+            mkdir -p /run/dbus /run/metmc /tmp/.X11-unix
             rm -f /run/dbus/pid /run/dbus/system_bus_socket
-            if command -v dbus-uuidgen >/dev/null 2>&1; then dbus-uuidgen --ensure=/etc/machine-id; fi
-            if command -v dbus-daemon >/dev/null 2>&1; then dbus-daemon --system --fork --nopidfile 2>/tmp/metmc-dbus.log || true; fi
-            if [ -x /usr/local/bin/nativOS-bridge ]; then
-                /usr/local/bin/nativOS-bridge >/tmp/metmc-bridge.log 2>&1 &
-            fi
-            {
-                date -Is 2>/dev/null || date
-                echo '=== power supplies ==='; ls -la /sys/class/power_supply 2>/dev/null || true
-                echo '=== backlight ==='; ls -la /sys/class/backlight 2>/dev/null || true
-                echo '=== graphics ==='; ls -la /dev/dri 2>/dev/null || true
-                echo '=== input ==='; ls -la /dev/input 2>/dev/null || true
-            } > /run/metmc/hardware-status.txt
+            command -v dbus-uuidgen >/dev/null 2>&1 && dbus-uuidgen --ensure=/etc/machine-id || true
+            command -v dbus-daemon >/dev/null 2>&1 && dbus-daemon --system --fork --nopidfile 2>/tmp/metmc-dbus.log || true
+            if [ -x /usr/local/bin/nativOS-bridge ]; then /usr/local/bin/nativOS-bridge >/tmp/metmc-bridge.log 2>&1 & fi
+            { date -Is 2>/dev/null || date; echo "=== power supplies ==="; ls -la /sys/class/power_supply 2>/dev/null || true; echo "=== backlight ==="; ls -la /sys/class/backlight 2>/dev/null || true; echo "=== graphics ==="; ls -la /dev/dri 2>/dev/null || true; echo "=== input ==="; ls -la /dev/input 2>/dev/null || true; } > /run/metmc/hardware-status.txt
             chmod 0644 /run/metmc/hardware-status.txt
             id metmc >/dev/null 2>&1 || useradd --create-home --shell /bin/bash metmc
             METMC_HOME=$(getent passwd metmc | cut -d: -f6)
-            mkdir -p "${'$'}METMC_HOME" /tmp/runtime-metmc
-            chown -R metmc:metmc "${'$'}METMC_HOME" /tmp/runtime-metmc
+            mkdir -p "${'$'METMC_HOME}" /tmp/runtime-metmc
+            chown -R metmc:metmc "${'$'METMC_HOME}" /tmp/runtime-metmc
             chmod 0700 /tmp/runtime-metmc
-            PRELOAD=""
-            for lib in /usr/local/lib/libsocket_hook.so /usr/local/lib/libnativos-close-range.so /usr/local/lib/libandroid-shmem.so; do
-                if [ -f "${'$'}lib" ]; then PRELOAD="${'$'}{PRELOAD:+${'$'}PRELOAD:}${'$'}lib"; fi
-            done
-            export METMC_HOME PRELOAD
-
-            # Match the proven NativOS nested-X11 startup instead of calling
-            # phosh-session (which defaults to DRM/libinput and the wrong config path).
             if [ -x /usr/local/bin/phoc ] && [ -x /usr/libexec/phosh ]; then
-                echo "Starting MT-Phoc/MT-Phosh with the NativOS X11 session configuration"
-                export HOME=/root USER=root LOGNAME=root
-                export DISPLAY=:0
-                export TMPDIR=${tmpPath}
-                export XDG_RUNTIME_DIR=/tmp/runtime-root
-                export XDG_SESSION_TYPE=x11
+                echo "Starting MT-Phoc/MT-Phosh using the NativOS nested-X11 startup path"
+                export HOME=/root USER=root LOGNAME=root DISPLAY=:0 TMPDIR=${tmpPath}
+                export XDG_RUNTIME_DIR=/tmp/runtime-root XDG_SESSION_TYPE=x11
                 export XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh DESKTOP_SESSION=phosh
-                export XDG_DATA_DIRS=/root/.local/share:/usr/local/share:/usr/share
-                export WLR_BACKENDS=x11 WLR_X11_OUTPUTS=1 WLR_RENDERER=pixman
-                export WLR_DRM_NO_ATOMIC=1
+                export XDG_DATA_HOME=/root/.local/share XDG_DATA_DIRS=/root/.local/share:/usr/local/share:/usr/share
+                export WLR_BACKENDS=x11 WLR_X11_OUTPUTS=1 WLR_RENDERER=pixman WLR_DRM_NO_ATOMIC=1
                 unset WLR_DRM_DEVICES
                 mkdir -p /tmp/runtime-root /etc/nativOS
                 chmod 0700 /tmp/runtime-root
@@ -896,7 +873,29 @@ scale=1.25
 PHOCEOF
                 PRELOAD=""
                 for lib in /usr/local/lib/libsocket_hook.so /usr/local/lib/libnativos-close-range.so /usr/local/lib/libnodri3.so /usr/local/lib/libandroid-shmem.so; do
-                    if [ -f "$lib" ]; then PRELOAD="${'
+                    if [ -f "${'$'lib}" ]; then PRELOAD="${'$'{PRELOAD:+${'$'PRELOAD:}${'$'lib}"; fi
+                done
+                APP_PRELOAD=""
+                for lib in /usr/local/lib/libsocket_hook.so /usr/local/lib/libnativos-close-range.so /usr/local/lib/libandroid-shmem.so; do
+                    if [ -f "${'$'lib}" ]; then APP_PRELOAD="${'$'{APP_PRELOAD:+${'$'APP_PRELOAD:}${'$'lib}"; fi
+                done
+                export LD_PRELOAD="${'$'PRELOAD}" NATIVOS_APP_LD_PRELOAD="${'$'APP_PRELOAD}"
+                echo "MT session: DISPLAY=${'$'DISPLAY} TMPDIR=${'$'TMPDIR} WLR_BACKENDS=${'$'WLR_BACKENDS}"
+                exec dbus-run-session -- /usr/local/bin/phoc -C /etc/nativOS/phoc.ini -E "bash -c 'export LD_PRELOAD=\"${'$'NATIVOS_APP_LD_PRELOAD}\"; exec /usr/libexec/phosh -U'"
+            fi
+            runuser -u metmc --preserve-environment -- /bin/bash -c '
+                export HOME="${'$'METMC_HOME}" USER=metmc LOGNAME=metmc DISPLAY=:0 TMPDIR=/tmp
+                export XDG_RUNTIME_DIR=/tmp/runtime-metmc WAYLAND_DISPLAY=wayland-0
+                export WLR_BACKENDS=x11 WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
+                export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
+                export GDK_BACKEND=wayland,x11 QT_QPA_PLATFORM="wayland;xcb" MOZ_ENABLE_WAYLAND=1 SDL_VIDEODRIVER=wayland,x11
+                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
+                    echo "Starting nested Labwc fallback desktop on Android X11"
+                    exec dbus-run-session -- labwc
+                fi
+                echo "ERROR: MT-Phoc/MT-Phosh and fallback desktop are missing from the bundled rootfs" >&2
+                exit 127
+            '
         """.trimIndent()
         Log.i(TAG, "Starting Ubuntu Phosh/Phoc with Labwc fallback")
         val su = rootShell.findSuPath() ?: return
