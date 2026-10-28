@@ -883,7 +883,7 @@ PHOCEOF
                 export HOME="${'$'}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
                 export XDG_RUNTIME_DIR=/tmp/runtime-metmc WAYLAND_DISPLAY=wayland-0
                 export LD_PRELOAD="${'$'}PRELOAD"
-                export WLR_BACKENDS=x11 WLR_RENDERER=gles2 WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
+                export WLR_BACKENDS=x11 WLR_X11_OUTPUTS=1 WLR_RENDERER=pixman WLR_DRM_NO_ATOMIC=1 WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
                 export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
                 export GDK_BACKEND=wayland,x11 QT_QPA_PLATFORM='wayland;xcb' MOZ_ENABLE_WAYLAND=1 SDL_VIDEODRIVER=wayland,x11
                 if [ -x /usr/bin/phosh-session ] && [ -x /usr/bin/phoc ] && [ -x /usr/libexec/phosh ]; then
