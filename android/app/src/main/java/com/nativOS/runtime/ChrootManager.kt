@@ -841,7 +841,7 @@ METMC_LAUNCH_EOF
             set -u
             export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
             export TMPDIR=${tmpPath} DISPLAY=:0 LANG=C.UTF-8 LC_ALL=C.UTF-8
-            export WLR_BACKENDS=x11 WLR_RENDERER=gles2 WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
+            export WLR_BACKENDS=x11 WLR_X11_OUTPUTS=1 WLR_RENDERER=pixman WLR_DRM_NO_ATOMIC=1 WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
             export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
             export XDG_DATA_DIRS=/usr/local/share:/usr/share
             mkdir -p /run/dbus /run/metmc
@@ -865,13 +865,23 @@ METMC_LAUNCH_EOF
             chown -R metmc:metmc "${'$'}METMC_HOME" /tmp/runtime-metmc
             chmod 0700 /tmp/runtime-metmc
             PRELOAD=""
-            for lib in /usr/local/lib/libsocket_hook.so /usr/local/lib/libnativos-close-range.so /usr/local/lib/libandroid-shmem.so; do
+            for lib in /usr/local/lib/libsocket_hook.so /usr/local/lib/libnativos-close-range.so /usr/local/lib/libnodri3.so /usr/local/lib/libandroid-shmem.so; do
                 if [ -f "${'$'}lib" ]; then PRELOAD="${'$'}{PRELOAD:+${'$'}PRELOAD:}${'$'}lib"; fi
             done
             export METMC_HOME PRELOAD
+            # Mirror upstream NativOS nested-X11 Phoc configuration.
+            mkdir -p /etc/nativOS
+            cat > /etc/nativOS/phoc.ini << PHOCEOF
+[core]
+xwayland=false
+
+[output:X11-1]
+mode=${screenWidth}x${screenHeight}
+scale=1.25
+PHOCEOF
             runuser -u metmc --preserve-environment -- /bin/bash -c '
                 export HOME="${'$'}METMC_HOME" USER=metmc LOGNAME=metmc DISPLAY=:0
-                export TMPDIR=/tmp XDG_RUNTIME_DIR=/tmp/runtime-metmc WAYLAND_DISPLAY=wayland-0
+                export XDG_RUNTIME_DIR=/tmp/runtime-metmc WAYLAND_DISPLAY=wayland-0
                 export LD_PRELOAD="${'$'}PRELOAD"
                 export WLR_BACKENDS=x11 WLR_RENDERER=gles2 WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
                 export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
@@ -881,12 +891,12 @@ METMC_LAUNCH_EOF
                     echo "Graphics: trying GLES2/EGL hardware rendering first"
                     ls -l /dev/dri 2>/dev/null || true
                     export XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh
-                    if WLR_RENDERER=gles2 dbus-run-session -- phosh-session; then
+                    if dbus-run-session -- /usr/local/bin/phoc -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"; then
                         exit 0
                     else
                         renderer_status=$?
                         echo "Phosh/GLES2 exited with status ${renderer_status}; retrying with pixman software rendering"
-                        WLR_RENDERER=pixman exec dbus-run-session -- phosh-session
+                        WLR_RENDERER=pixman exec dbus-run-session -- /usr/local/bin/phoc -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"
                     fi
                 fi
                 if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
