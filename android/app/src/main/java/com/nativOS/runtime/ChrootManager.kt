@@ -895,7 +895,7 @@ PHOCEOF
                         exit 0
                     else
                         renderer_status=$?
-                        echo "Phosh/GLES2 exited with status ${'; retrying with pixman software rendering"
+                        echo "Phosh/GLES2 exited with status ${'renderer_status; retrying with pixman software rendering"}renderer_status; retrying with pixman software rendering"
                         WLR_RENDERER=pixman exec dbus-run-session -- /usr/local/bin/phoc -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"
                     fi
                 fi
@@ -906,7 +906,7 @@ PHOCEOF
                         exit 0
                     else
                         renderer_status=$?
-                        echo "Labwc GLES2 exited with status ${renderer_status}; retrying with pixman software rendering"
+                        echo "Labwc GLES2 exited with status ${'renderer_status; retrying with pixman software rendering"}renderer_status; retrying with pixman software rendering"
                         WLR_RENDERER=pixman exec dbus-run-session -- labwc
                     fi
                 fi
