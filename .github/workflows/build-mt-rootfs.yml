@@ -111,18 +111,23 @@ jobs:
           BRIDGE="$RUNNER_TEMP/prebuilt/bridge/payload"
           sudo install -d "$ROOTFS/usr/local/bin" "$ROOTFS/etc/systemd/system" \
             "$ROOTFS/run/nativOS" "$ROOTFS/etc/nativOS" "$ROOTFS/usr/share/mt-os"
-          for item in nativOS-bridge.py mt-bridge.py metmc-settings.py metmc-wifi.py; do
+          # Match the real contents of the published bridge artifact; do not assume
+          # mt-bridge.py, bridge_transport.py, or README-bridge.md exist in this build.
+          for item in nativOS-bridge.py metmc-settings.py metmc-wifi.py; do
             test -s "$BRIDGE/linux/bridge-client/$item"
           done
+          test -s "$BRIDGE/linux/config/nativOS-bridge.service"
           sudo install -m 0755 "$BRIDGE/linux/bridge-client/nativOS-bridge.py" "$ROOTFS/usr/local/bin/nativOS-bridge"
-          sudo install -m 0755 "$BRIDGE/linux/bridge-client/mt-bridge.py" "$ROOTFS/usr/local/bin/mt-bridge"
           sudo install -m 0755 "$BRIDGE/linux/bridge-client/metmc-settings.py" "$ROOTFS/usr/local/bin/mt-settings"
           sudo install -m 0755 "$BRIDGE/linux/bridge-client/metmc-wifi.py" "$ROOTFS/usr/local/bin/mt-wifi"
           sudo install -m 0644 "$BRIDGE/linux/config/nativOS-bridge.service" "$ROOTFS/etc/systemd/system/nativOS-bridge.service"
-          sudo install -m 0644 "$BRIDGE/README-bridge.md" "$ROOTFS/usr/share/mt-os/README-bridge.md"
-          python3 -m py_compile "$BRIDGE/linux/bridge-client/bridge_transport.py" \
+          if [ -s "$BRIDGE/README-bridge.md" ]; then
+            sudo install -m 0644 "$BRIDGE/README-bridge.md" "$ROOTFS/usr/share/mt-os/README-bridge.md"
+          elif [ -s "$BRIDGE/README.txt" ]; then
+            sudo install -m 0644 "$BRIDGE/README.txt" "$ROOTFS/usr/share/mt-os/README-bridge.txt"
+          fi
+          python3 -m py_compile \
             "$BRIDGE/linux/bridge-client/nativOS-bridge.py" \
-            "$BRIDGE/linux/bridge-client/mt-bridge.py" \
             "$BRIDGE/linux/bridge-client/metmc-settings.py" \
             "$BRIDGE/linux/bridge-client/metmc-wifi.py"
 
@@ -153,7 +158,6 @@ jobs:
           test -x "$ROOTFS/usr/libexec/phosh" || test -x "$ROOTFS/usr/bin/phosh"
           test -x "$ROOTFS/usr/local/bin/phoc" || test -x "$ROOTFS/usr/bin/phoc"
           test -x "$ROOTFS/usr/local/bin/nativOS-bridge"
-          test -x "$ROOTFS/usr/local/bin/mt-bridge"
           test -s "$ROOTFS/etc/nativOS/phoc.ini"
           cmp "$ROOTFS/etc/nativOS/phoc.ini" "$ROOTFS/usr/share/mt-os/phoc-nativos-reference.ini"
           mkdir -p "$RUNNER_TEMP/output"
@@ -164,7 +168,7 @@ jobs:
             | tee "$RUNNER_TEMP/output/SHA256SUMS.txt"
           du -h "$RUNNER_TEMP/output/MT-OS-Rootfs-arm64.tar.gz"
           tar -tzf "$RUNNER_TEMP/output/MT-OS-Rootfs-arm64.tar.gz" \
-            | grep -E '(^|/)(phosh|phoc|mt-bridge|nativOS-bridge)$|etc/nativOS/phoc.ini|MT-ROOTFS-MANIFEST'
+            | grep -E '(^|/)(phosh|phoc|nativOS-bridge|mt-settings|mt-wifi)$|etc/nativOS/phoc.ini|MT-ROOTFS-MANIFEST'
 
       - name: Upload separate MT OS rootfs
         uses: actions/upload-artifact@v4
