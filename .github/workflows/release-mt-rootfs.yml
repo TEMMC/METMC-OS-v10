@@ -29,11 +29,15 @@ jobs:
           set -euxo pipefail
           test -s downloaded/MT-OS-Rootfs-arm64.tar.gz
           test -s downloaded/SHA256SUMS.txt
-          (cd downloaded && sha256sum -c SHA256SUMS.txt)
+          EXPECTED="$(awk 'NR==1 {print $1}' downloaded/SHA256SUMS.txt)"
+          ACTUAL="$(sha256sum downloaded/MT-OS-Rootfs-arm64.tar.gz | awk '{print $1}')"
+          test -n "$EXPECTED"
+          test "$EXPECTED" = "$ACTUAL"
           mkdir -p release
           cp downloaded/MT-OS-Rootfs-arm64.tar.gz release/MT-OS-Rootfs-arm64.tar.gz
-          cp downloaded/SHA256SUMS.txt release/MT-OS-Rootfs-arm64-SHA256SUMS.txt
+          (cd release && sha256sum MT-OS-Rootfs-arm64.tar.gz > MT-OS-Rootfs-arm64-SHA256SUMS.txt)
           ls -lh release
+          cat release/MT-OS-Rootfs-arm64-SHA256SUMS.txt
 
       - name: Attach rootfs to the existing MT OS V10.10.0 release
         uses: softprops/action-gh-release@v2
