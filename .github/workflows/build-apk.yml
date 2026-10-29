@@ -6,7 +6,18 @@ name: Build METMC OS v10 APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, fix/restore-known-working-phosh]
+    branches: [main, fix/restore-known-working-phosh, fix/ubuntu-rootfs-extraction]
+    paths:
+      - "android/**"
+      - "linux/config/**"
+      - "linux/bridge-client/**"
+      - "linux/setup/**"
+      - "linux/README-bridge.md"
+      - "integrations/**"
+      - "android/app/src/main/java/com/nativOS/bridge/**"
+      - ".github/workflows/build-apk.yml"
+  pull_request:
+    branches: [main]
     paths:
       - "android/**"
       - "linux/config/**"
@@ -101,7 +112,7 @@ jobs:
           set -x
           trap 'rc=$?; echo "::error::Rootfs installation failed at line ${LINENO} (exit ${rc})"; exit "$rc"' ERR
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends qemu-user-static binfmt-support
+          sudo apt-get install -y --no-install-recommends qemu-user-static binfmt-support toybox
           sudo update-binfmts --enable qemu-aarch64 || true
           ROOTFS="$RUNNER_TEMP/metmc-rootfs"
           mkdir -p "$ROOTFS"
@@ -154,6 +165,7 @@ jobs:
             id metmc >/dev/null 2>&1 || useradd --create-home --shell /bin/bash metmc
             mkdir -p /etc/sudoers.d /home/metmc/.config
             printf "%s\\n" "Defaults !requiretty" "metmc ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/metmc
+            chmod 0755 /etc/sudoers.d
             chmod 0440 /etc/sudoers.d/metmc
             chown -R metmc:metmc /home/metmc
           '
@@ -163,11 +175,22 @@ jobs:
           sudo rm -rf "$ROOTFS/var/lib/apt/lists/"* "$ROOTFS/var/cache/apt/archives/"*.deb
           sudo rm -f "$ROOTFS/usr/bin/qemu-aarch64-static"
           cleanup
-          sudo tar --numeric-owner -cf android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tar -C "$ROOTFS" .
+          sudo tar --hard-dereference --numeric-owner -cf android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tar -C "$ROOTFS" .
           test "$(stat -c %s android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tar)" -gt 104857600
           cd android/app/src/main/assets/rootfs
           sha256sum nativos-rootfs-arm64.tar > nativos-rootfs-arm64.tar.sha256
           sha256sum --check nativos-rootfs-arm64.tar.sha256
+          # Test the archive with Toybox tar as a non-root user, like the Android app process.
+          toybox tar -tf nativos-rootfs-arm64.tar > /tmp/mt-rootfs-tar-list.txt
+          test -s /tmp/mt-rootfs-tar-list.txt
+          mkdir -p /tmp/mt-rootfs-toybox-test
+          toybox tar -xf nativos-rootfs-arm64.tar -C /tmp/mt-rootfs-toybox-test
+          grep -Eq '^ID=ubuntu$' /tmp/mt-rootfs-toybox-test/etc/os-release
+          grep -Eq '^VERSION_CODENAME=noble$' /tmp/mt-rootfs-toybox-test/etc/os-release
+          test -x /tmp/mt-rootfs-toybox-test/usr/bin/phosh-session
+          test -x /tmp/mt-rootfs-toybox-test/usr/libexec/phosh
+          test -x /tmp/mt-rootfs-toybox-test/usr/local/bin/phoc
+          echo 'Toybox TAR integrity and extraction test passed.'
 
       - name: Build and verify APK
         working-directory: android
@@ -175,6 +198,20 @@ jobs:
           set -euo pipefail
           chmod +x ./gradlew
           ./gradlew --no-daemon :app:assembleDebug
+          # Verify the exact rootfs bytes packaged inside the APK.
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          TEST_DIR='/tmp/mt-apk-rootfs-test'
+          mkdir -p "$TEST_DIR/assets" "$TEST_DIR/extracted"
+          unzip -p "$APK" assets/rootfs/nativos-rootfs-arm64.tar > "$TEST_DIR/assets/nativos-rootfs-arm64.tar"
+          unzip -p "$APK" assets/rootfs/nativos-rootfs-arm64.tar.sha256 > "$TEST_DIR/assets/nativos-rootfs-arm64.tar.sha256"
+          (cd "$TEST_DIR/assets" && sha256sum --check nativos-rootfs-arm64.tar.sha256)
+          toybox tar -tf "$TEST_DIR/assets/nativos-rootfs-arm64.tar" > "$TEST_DIR/archive-list.txt"
+          toybox tar -xf "$TEST_DIR/assets/nativos-rootfs-arm64.tar" -C "$TEST_DIR/extracted"
+          grep -Eq '^ID=ubuntu$' "$TEST_DIR/extracted/etc/os-release"
+          grep -Eq '^VERSION_CODENAME=noble$' "$TEST_DIR/extracted/etc/os-release"
+          test -x "$TEST_DIR/extracted/usr/bin/phosh-session"
+          test -x "$TEST_DIR/extracted/usr/local/bin/phoc"
+          echo 'Exact APK rootfs payload passed checksum and Toybox extraction checks.'
 
       - name: Sign APK with METMC OS release key
         shell: bash
