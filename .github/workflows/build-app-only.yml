@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches: [build/app-only-external-rootfs]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
