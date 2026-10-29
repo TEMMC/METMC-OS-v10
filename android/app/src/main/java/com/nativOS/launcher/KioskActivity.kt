@@ -724,9 +724,8 @@ class KioskActivity : Activity() {
             chrootManager.bindX11Socket()
             AndroidAppIntegration.sync(this)
 
-            // Step 4: Validate the offline Labwc Wayland desktop. Never run apk or
-            // install packages during startup; the bundled rootfs must contain
-            // the complete desktop and essential tools.
+            // Step 4: Validate the selected offline desktop (MT-Phosh/MT-Phoc or Labwc).
+            // Never install packages or download anything during startup.
             updateOverlay(0.74, "Checking offline desktop...", "")
             if (!chrootManager.isPhoshInstalled() && !chrootManager.isLabwcInstalled()) {
                 updateOverlay(
@@ -738,11 +737,11 @@ class KioskActivity : Activity() {
             }
 
             updateOverlay(0.95, "Validating local desktop components...", "No downloads or updates")
-            if (!rootfsManager.ensureLabwcRuntime(chrootManager)) {
+            if (!rootfsManager.ensureDesktopRuntime(chrootManager)) {
                 updateOverlay(
                     -1.0,
                     "Offline desktop components missing",
-                    "Labwc runtime is incomplete in the bundled rootfs. Rebuild the APK with Labwc, Waybar, Xwayland and the basic tools included."
+                    "Selected desktop runtime is incomplete. MT-Phosh requires Phoc and the MT bridge; the Labwc fallback requires its own desktop components. Rebuild the APK with a complete runtime."
                 )
                 return
             }
