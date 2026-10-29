@@ -1,0 +1,52 @@
+name: Release MT OS app (external rootfs)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [build/app-only-external-rootfs]
+    paths:
+      - ".github/workflows/release-mt-app.yml"
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  release-app:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the successful app-only build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: MT-OS-App-Only-External-Rootfs
+          path: downloaded
+          run-id: 40866433337
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare APK and checksum for release
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -s downloaded/app-debug.apk
+          mkdir -p release
+          cp downloaded/app-debug.apk release/MT-OS-V10.10.0-arm64.apk
+          (cd release && sha256sum MT-OS-V10.10.0-arm64.apk > MT-OS-V10.10.0-arm64.apk.sha256)
+          ls -lh release
+          cat release/MT-OS-V10.10.0-arm64.apk.sha256
+
+      - name: Publish app release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v10.10.0
+          name: MT OS V10.10.0 — App (external rootfs)
+          body: |
+            MT OS Android app built separately from the Linux root filesystem.
+
+            - APK: MT-OS-V10.10.0-arm64.apk
+            - SHA-256 checksum: MT-OS-V10.10.0-arm64.apk.sha256
+            - The Ubuntu ARM64 rootfs is distributed separately and is not bundled inside this APK.
+          prerelease: true
+          files: |
+            release/MT-OS-V10.10.0-arm64.apk
+            release/MT-OS-V10.10.0-arm64.apk.sha256
+          fail_on_unmatched_files: true
