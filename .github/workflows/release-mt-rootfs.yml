@@ -1,0 +1,56 @@
+name: Add MT OS ARM64 rootfs to release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [build/app-only-external-rootfs]
+    paths:
+      - ".github/workflows/release-mt-rootfs.yml"
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  release-rootfs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the successful standalone rootfs artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: MT-OS-Rootfs-arm64-Prebuilt-Phosh-Phoc-Bridge
+          path: downloaded
+          run-id: 40867116517
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify and prepare rootfs release assets
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -s downloaded/MT-OS-Rootfs-arm64.tar.gz
+          test -s downloaded/SHA256SUMS.txt
+          (cd downloaded && sha256sum -c SHA256SUMS.txt)
+          mkdir -p release
+          cp downloaded/MT-OS-Rootfs-arm64.tar.gz release/MT-OS-Rootfs-arm64.tar.gz
+          cp downloaded/SHA256SUMS.txt release/MT-OS-Rootfs-arm64-SHA256SUMS.txt
+          ls -lh release
+
+      - name: Attach rootfs to the existing MT OS V10.10.0 release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v10.10.0
+          name: MT OS V10.10.0 — App and external ARM64 rootfs
+          body: |
+            MT OS app and standalone Ubuntu 24.04 Noble ARM64 root filesystem.
+
+            - Android app APK: MT-OS-V10.10.0-arm64.apk
+            - Root filesystem: MT-OS-Rootfs-arm64.tar.gz
+            - Rootfs checksum file: MT-OS-Rootfs-arm64-SHA256SUMS.txt
+
+            The root filesystem is a separate archive; extract it yourself in Termux. It includes the successful prebuilt MT-Phosh, MT-Phoc, and available MT-Bridge components, and preserves the original NativOS Phoc configuration. This is not a flashable ROM.
+          prerelease: true
+          files: |
+            release/MT-OS-Rootfs-arm64.tar.gz
+            release/MT-OS-Rootfs-arm64-SHA256SUMS.txt
+          fail_on_unmatched_files: true
+          overwrite_files: true
