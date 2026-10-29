@@ -1,0 +1,69 @@
+name: Release MT-Phoc, MT-Phosh and MT-Bridge builds
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [build/app-only-external-rootfs]
+    paths:
+      - ".github/workflows/release-mt-desktop-builds.yml"
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  release-mt-builds:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download successful prebuilt MT artifacts
+        env:
+          MT_ARTIFACTS_TOKEN: ${{ secrets.MT_ARTIFACTS_TOKEN }}
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -n "$MT_ARTIFACTS_TOKEN"
+          mkdir -p release
+          curl --fail --location --retry 5 --retry-all-errors \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $MT_ARTIFACTS_TOKEN" \
+            "https://api.github.com/repos/TEMMC/MT-phoc/actions/artifacts/12661260748/zip" \
+            -o release/MT-Phoc-0.47.0-arm64-artifact.zip
+          curl --fail --location --retry 5 --retry-all-errors \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $MT_ARTIFACTS_TOKEN" \
+            "https://api.github.com/repos/TEMMC/MT-phosh-/actions/artifacts/12583781785/zip" \
+            -o release/MT-Phosh-arm64-artifact.zip
+          curl --fail --location --retry 5 --retry-all-errors \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $MT_ARTIFACTS_TOKEN" \
+            "https://api.github.com/repos/TEMMC/METMC-OS-v10/actions/artifacts/12662013410/zip" \
+            -o release/MT-Bridge-arm64-artifact.zip
+          for archive in release/*.zip; do
+            test -s "$archive"
+            unzip -t "$archive"
+          done
+          (cd release && sha256sum *.zip > MT-Desktop-Builds-SHA256SUMS.txt)
+          ls -lh release
+          cat release/MT-Desktop-Builds-SHA256SUMS.txt
+
+      - name: Publish MT desktop component artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v10.10.0
+          name: MT OS V10.10.0 — MT desktop components
+          body: |
+            Prebuilt MT desktop component artifacts from the successful upstream GitHub Actions builds.
+
+            - MT-Phoc artifact ZIP contains the MT-Phoc ARM64 install artifact.
+            - MT-Phosh artifact ZIP contains the MT-Phosh install artifact.
+            - MT-Bridge artifact ZIP contains the available Android/Linux bridge components.
+
+            These are GitHub Actions artifact ZIPs, so extract each ZIP to access its included build/install archive or files. They are separate from the Android APK and the complete Ubuntu ARM64 rootfs.
+          prerelease: true
+          files: |
+            release/MT-Phoc-0.47.0-arm64-artifact.zip
+            release/MT-Phosh-arm64-artifact.zip
+            release/MT-Bridge-arm64-artifact.zip
+            release/MT-Desktop-Builds-SHA256SUMS.txt
+          fail_on_unmatched_files: true
+          overwrite_files: true
