@@ -72,7 +72,7 @@ jobs:
           fi
           test -n "$PHOC_TAR"
           sudo tar -xzf "$PHOC_TAR" -C "$ROOTFS"
-          test -x "$ROOTFS/usr/bin/phoc"
+          test -x "$ROOTFS/usr/local/bin/phoc" || test -x "$ROOTFS/usr/bin/phoc"
 
       - name: Download and install the successful MT-Phosh artifact (no compilation)
         shell: bash
@@ -88,7 +88,7 @@ jobs:
           PHOSH_TAR="$(find "$RUNNER_TEMP/prebuilt/phosh/unpacked" -maxdepth 2 -type f -name 'mt-phosh-linux-install.tar.gz' -print -quit)"
           test -n "$PHOSH_TAR"
           sudo tar -xzf "$PHOSH_TAR" -C "$ROOTFS"
-          test -x "$ROOTFS/usr/bin/phosh"
+          test -x "$ROOTFS/usr/local/bin/phosh" || test -x "$ROOTFS/usr/bin/phosh"
 
       - name: Download and install the successful MT-Bridge artifact (no compilation)
         shell: bash
@@ -147,8 +147,8 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          test -x "$ROOTFS/usr/bin/phosh"
-          test -x "$ROOTFS/usr/bin/phoc"
+          test -x "$ROOTFS/usr/local/bin/phosh" || test -x "$ROOTFS/usr/bin/phosh"
+          test -x "$ROOTFS/usr/local/bin/phoc" || test -x "$ROOTFS/usr/bin/phoc"
           test -x "$ROOTFS/usr/local/bin/nativOS-bridge"
           test -x "$ROOTFS/usr/local/bin/mt-bridge"
           test -s "$ROOTFS/etc/nativOS/phoc.ini"
