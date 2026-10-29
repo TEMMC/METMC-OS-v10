@@ -332,98 +332,76 @@ class RootfsManager(private val context: Context) {
 
     fun extractRootfs(onProgress: (progress: Double, status: String) -> Unit) {
         var previousRootfs: File? = null
-        var candidateCreated = false
+        var stagingRootfs: File? = null
         val previousSetupComplete = if (setupCompleteFile.isFile) setupCompleteFile.readText() else null
         try {
             val distro = getInstalledDistro().ifEmpty { DEFAULT_DISTRO }
             val bundledUbuntu = distro == DEFAULT_DISTRO
             val tarball = File(downloadDir, if (bundledUbuntu) "ubuntu-rootfs.tar" else "${distro}-rootfs.tar.gz")
             val checksumFile = File(downloadDir, if (bundledUbuntu) "ubuntu-rootfs.tar.sha256" else "${distro}-rootfs.tar.gz.sha256")
-            if (!tarball.isFile) {
-                onProgress(-1.0, "Rootfs tarball not found.")
-                return
-            }
-
-            // Verify archive bytes and structure before moving the installed rootfs.
+            if (!tarball.isFile || tarball.length() == 0L) throw IllegalStateException("Rootfs archive is missing or empty: ${tarball.name}")
             verifyChecksum(tarball, checksumFile)
-            val listingArgs = if (tarball.name.endsWith(".tar.gz")) listOf("-tzf", tarball.absolutePath) else listOf("-tf", tarball.absolutePath)
-            if (runTar(listingArgs, "verify") != 0) {
-                throw IllegalStateException("Rootfs archive integrity check failed; see tar[verify] diagnostics")
-            }
-
-            // Keep the previous installation until the new rootfs validates.
-            // This allows a Linux distribution migration without immediately
-            // destroying the old system if extraction or validation fails.
-            if (rootfsDir.exists()) {
-                val backup = File(baseDir, "rootfs-previous-${System.currentTimeMillis()}")
-                if (!rootfsDir.renameTo(backup)) {
-                    throw IllegalStateException("Could not safely move the previous Linux rootfs")
-                }
-                previousRootfs = backup
-            }
-            if (!rootfsDir.mkdirs() && !rootfsDir.isDirectory) {
-                throw IllegalStateException("Could not create the new Linux rootfs directory")
-            }
-            candidateCreated = true
-
+            val isGzip = tarball.inputStream().use { input -> input.read() == 0x1f && input.read() == 0x8b }
+            if (tarball.name.endsWith(".gz") != isGzip) throw IllegalStateException("Archive compression does not match filename: ${tarball.name}")
+            val listingArgs = if (isGzip) listOf("-tzf", tarball.absolutePath) else listOf("-tf", tarball.absolutePath)
+            if (runTar(listingArgs, "verify") != 0) throw IllegalStateException("Rootfs archive integrity check failed; see tar[verify] diagnostics")
+            stagingRootfs = File(baseDir, "rootfs-staging-${System.currentTimeMillis()}")
+            if (!stagingRootfs.mkdirs()) throw IllegalStateException("Could not create rootfs staging directory")
             onProgress(0.1, "Extracting Linux filesystem...")
-            Log.i(TAG, "Extracting rootfs from ${tarball.absolutePath}")
-            val extractArgs = if (tarball.name.endsWith(".tar.gz")) {
-                listOf("-xzf", tarball.absolutePath, "-C", rootfsDir.absolutePath)
-            } else {
-                // The bundled Ubuntu rootfs is a plain TAR, not a gzip stream.
-                listOf("-xf", tarball.absolutePath, "-C", rootfsDir.absolutePath)
-            }
+            val extractArgs = if (isGzip) listOf("-xzf", tarball.absolutePath, "-C", stagingRootfs.absolutePath) else listOf("-xf", tarball.absolutePath, "-C", stagingRootfs.absolutePath)
             val exitCode = runTar(extractArgs, "extract", onProgress)
-            if (exitCode != 0) throw RuntimeException("tar extraction failed (exit $exitCode); see preceding tar[extract] log lines")
-
-            onProgress(0.7, "Configuring Linux environment...")
-            configureRootfs()
-            if (bundledUbuntu && !isUbuntuRootfs()) {
-                throw IllegalStateException("Bundled rootfs is not Ubuntu 24.04 Noble")
+            if (exitCode != 0) throw IllegalStateException("tar extraction failed (exit=$exitCode); see tar[extract] diagnostics")
+            val osRelease = File(stagingRootfs, "etc/os-release")
+            if (!File(stagingRootfs, "bin").exists() || !File(stagingRootfs, "usr").isDirectory || !File(stagingRootfs, "etc").isDirectory || !osRelease.isFile) throw IllegalStateException("Extracted rootfs is incomplete (missing bin, usr, etc, or etc/os-release)")
+            if (bundledUbuntu) {
+                val release = osRelease.readText()
+                if (!Regex("(?m)^ID=ubuntu$").containsMatchIn(release) || !Regex("(?m)^VERSION_CODENAME=noble$").containsMatchIn(release)) {
+                    val detected = release.lineSequence().firstOrNull { it.startsWith("PRETTY_NAME=") } ?: "unknown distribution"
+                    throw IllegalStateException("Expected Ubuntu 24.04 Noble; extracted $detected")
+                }
             }
-            if (!isRootfsReady()) throw IllegalStateException("Extracted rootfs is missing bin/, usr/, or etc/")
-            setupCompleteFile.writeText("done")
-
-            // Preserve the user's Linux home directory when replacing an older distro.
+            if (rootfsDir.exists()) {
+                previousRootfs = File(baseDir, "rootfs-previous-${System.currentTimeMillis()}")
+                if (!rootfsDir.renameTo(previousRootfs!!)) throw IllegalStateException("Could not safely move the previous Linux rootfs")
+            }
+            if (!stagingRootfs.renameTo(rootfsDir)) {
+                previousRootfs?.let { if (it.exists()) it.renameTo(rootfsDir) }
+                throw IllegalStateException("Could not promote validated rootfs staging directory")
+            }
+            stagingRootfs = null
+            try {
+                onProgress(0.7, "Configuring Linux environment...")
+                configureRootfs()
+                if (bundledUbuntu && !isUbuntuRootfs()) throw IllegalStateException("Configured rootfs failed Ubuntu Noble validation")
+                setupCompleteFile.writeText("done")
+            } catch (error: Throwable) {
+                rootfsDir.deleteRecursively()
+                previousRootfs?.let { backup -> if (backup.exists() && !backup.renameTo(rootfsDir)) Log.e(TAG, "Failed to restore previous rootfs after configuration error") }
+                if (previousSetupComplete == null) setupCompleteFile.delete() else setupCompleteFile.writeText(previousSetupComplete)
+                throw error
+            }
             previousRootfs?.let { backup ->
                 val oldHome = File(backup, "home/metmc")
                 if (oldHome.exists()) {
                     val newHome = File(rootfsDir, "home/metmc")
-                    if (newHome.exists() && !newHome.deleteRecursively()) {
-                        throw IllegalStateException("Could not prepare the new metmc home directory")
-                    }
+                    if (newHome.exists() && !newHome.deleteRecursively()) throw IllegalStateException("Could not prepare the new metmc home directory")
                     newHome.parentFile?.mkdirs()
                     if (!oldHome.renameTo(newHome)) {
                         oldHome.copyRecursively(newHome, overwrite = true)
-                        if (!oldHome.deleteRecursively()) {
-                            Log.w(TAG, "Old metmc home remains in the previous-rootfs backup")
-                        }
+                        if (!oldHome.deleteRecursively()) Log.w(TAG, "Old metmc home remains in previous-rootfs backup")
                     }
                 }
             }
-
-            previousRootfs?.let { backup ->
-                if (backup.exists() && !backup.deleteRecursively()) {
-                    Log.w(TAG, "Could not remove previous rootfs backup: ${backup.absolutePath}")
-                }
-            }
+            previousRootfs?.let { if (it.exists() && !it.deleteRecursively()) Log.w(TAG, "Could not remove previous rootfs backup: ${it.absolutePath}") }
             tarball.delete()
             checksumFile.delete()
-            onProgress(1.0, "Ubuntu Linux filesystem ready")
-        } catch (e: Exception) {
-            if (previousSetupComplete == null) setupCompleteFile.delete()
-            else setupCompleteFile.writeText(previousSetupComplete)
-            if (candidateCreated && rootfsDir.exists() && !rootfsDir.deleteRecursively()) {
-                Log.e(TAG, "Failed to remove incomplete rootfs candidate: ${rootfsDir.absolutePath}")
-            }
-            previousRootfs?.let { backup ->
-                if (backup.exists() && !rootfsDir.exists() && !backup.renameTo(rootfsDir)) {
-                    Log.e(TAG, "Failed to restore previous rootfs from ${backup.absolutePath}")
-                }
-            }
-            Log.e(TAG, "Extraction failed: ${e.message}", e)
-            onProgress(-1.0, "Ubuntu rootfs extraction failed: ${e.message}")
+            onProgress(1.0, "Linux filesystem ready")
+        } catch (error: Exception) {
+            stagingRootfs?.let { if (it.exists() && !it.deleteRecursively()) Log.w(TAG, "Could not clean failed staging rootfs: ${it.absolutePath}") }
+            if (previousSetupComplete == null) setupCompleteFile.delete() else setupCompleteFile.writeText(previousSetupComplete)
+            previousRootfs?.let { if (it.exists() && !rootfsDir.exists() && !it.renameTo(rootfsDir)) Log.e(TAG, "Failed to restore previous rootfs from ${it.absolutePath}") }
+            Log.e(TAG, "Extraction failed: ${error.message}", error)
+            onProgress(-1.0, "Rootfs extraction failed: ${error.message}")
         }
     }
 
