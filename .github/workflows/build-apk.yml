@@ -165,6 +165,7 @@ jobs:
             id metmc >/dev/null 2>&1 || useradd --create-home --shell /bin/bash metmc
             mkdir -p /etc/sudoers.d /home/metmc/.config
             printf "%s\\n" "Defaults !requiretty" "metmc ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/metmc
+            chmod 0755 /etc/sudoers.d
             chmod 0440 /etc/sudoers.d/metmc
             chown -R metmc:metmc /home/metmc
           '
