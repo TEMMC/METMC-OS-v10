@@ -174,7 +174,7 @@ jobs:
           sudo rm -rf "$ROOTFS/var/lib/apt/lists/"* "$ROOTFS/var/cache/apt/archives/"*.deb
           sudo rm -f "$ROOTFS/usr/bin/qemu-aarch64-static"
           cleanup
-          sudo tar --numeric-owner -cf android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tar -C "$ROOTFS" .
+          sudo tar --hard-dereference --numeric-owner -cf android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tar -C "$ROOTFS" .
           test "$(stat -c %s android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tar)" -gt 104857600
           cd android/app/src/main/assets/rootfs
           sha256sum nativos-rootfs-arm64.tar > nativos-rootfs-arm64.tar.sha256
