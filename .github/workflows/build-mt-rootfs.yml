@@ -45,6 +45,11 @@ jobs:
           ROOTFS="$RUNNER_TEMP/mt-rootfs"
           sudo mkdir -p "$ROOTFS"
           sudo debootstrap --arch=arm64 --variant=minbase noble "$ROOTFS" http://ports.ubuntu.com/ubuntu-ports
+          sudo tee "$ROOTFS/etc/apt/sources.list" >/dev/null <<'APT'
+          deb http://ports.ubuntu.com/ubuntu-ports noble main restricted universe multiverse
+          deb http://ports.ubuntu.com/ubuntu-ports noble-updates main restricted universe multiverse
+          deb http://ports.ubuntu.com/ubuntu-ports noble-security main restricted universe multiverse
+          APT
           sudo cp /etc/resolv.conf "$ROOTFS/etc/resolv.conf"
           sudo mount --bind /dev "$ROOTFS/dev"
           sudo mount -t proc proc "$ROOTFS/proc"
@@ -80,7 +85,8 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          git clone --depth 1 https://github.com/TEMMC/MT-phoc.git "$RUNNER_TEMP/MT-phoc"
+          git clone https://github.com/TEMMC/MT-phoc.git "$RUNNER_TEMP/MT-phoc"
+          git -C "$RUNNER_TEMP/MT-phoc" checkout 7207050415b30a99a985277dcca8a3393086d918
           meson setup "$RUNNER_TEMP/MT-phoc/build" "$RUNNER_TEMP/MT-phoc" \
             --prefix=/usr --libdir=lib/aarch64-linux-gnu --buildtype=release \
             -Dtests=false
@@ -91,7 +97,8 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          git clone --depth 1 https://github.com/TEMMC/MT-phosh-.git "$RUNNER_TEMP/MT-phosh"
+          git clone https://github.com/TEMMC/MT-phosh-.git "$RUNNER_TEMP/MT-phosh"
+          git -C "$RUNNER_TEMP/MT-phosh" checkout a666684c70338867034f889545d1b1da49e8cb64
           meson setup "$RUNNER_TEMP/MT-phosh/build" "$RUNNER_TEMP/MT-phosh" \
             --prefix=/usr --libdir=lib/aarch64-linux-gnu --buildtype=release \
             -Dtests=false
@@ -104,24 +111,28 @@ jobs:
           set -euxo pipefail
           sudo install -d "$ROOTFS/usr/local/bin" "$ROOTFS/etc/nativOS" \
             "$ROOTFS/etc/systemd/system" "$ROOTFS/run/nativOS" "$ROOTFS/usr/share/mt-os"
-          sudo install -m 0755 linux/bridge-client/nativOS-bridge.py "$ROOTFS/usr/local/bin/nativOS-bridge"
-          sudo install -m 0755 linux/bridge-client/mt-bridge.py "$ROOTFS/usr/local/bin/mt-bridge"
-          sudo install -m 0755 linux/bridge-client/metmc-settings.py "$ROOTFS/usr/local/bin/mt-settings"
-          sudo install -m 0755 linux/bridge-client/metmc-wifi.py "$ROOTFS/usr/local/bin/mt-wifi"
-          sudo install -m 0644 linux/config/nativOS-bridge.service "$ROOTFS/etc/systemd/system/nativOS-bridge.service"
+          git clone https://github.com/TEMMC/METMC-OS-v10.git "$RUNNER_TEMP/mt-bridge-source"
+          git -C "$RUNNER_TEMP/mt-bridge-source" checkout 231f82fcc6a49d03603870457b808381d75936ae
+          BRIDGE="$RUNNER_TEMP/mt-bridge-source"
+          python3 -m py_compile "$BRIDGE/linux/bridge-client/bridge_transport.py" "$BRIDGE/linux/bridge-client/nativOS-bridge.py" "$BRIDGE/linux/bridge-client/mt-bridge.py" "$BRIDGE/linux/bridge-client/metmc-settings.py" "$BRIDGE/linux/bridge-client/metmc-wifi.py"
+          sudo install -m 0755 "$BRIDGE/linux/bridge-client/nativOS-bridge.py" "$ROOTFS/usr/local/bin/nativOS-bridge"
+          sudo install -m 0755 "$BRIDGE/linux/bridge-client/mt-bridge.py" "$ROOTFS/usr/local/bin/mt-bridge"
+          sudo install -m 0755 "$BRIDGE/linux/bridge-client/metmc-settings.py" "$ROOTFS/usr/local/bin/mt-settings"
+          sudo install -m 0755 "$BRIDGE/linux/bridge-client/metmc-wifi.py" "$ROOTFS/usr/local/bin/mt-wifi"
+          sudo install -m 0644 "$BRIDGE/linux/config/nativOS-bridge.service" "$ROOTFS/etc/systemd/system/nativOS-bridge.service"
+          sudo install -m 0644 "$BRIDGE/linux/README-bridge.md" "$ROOTFS/usr/share/mt-os/README-bridge.md"
           curl -fL --retry 5 --retry-all-errors \
             https://raw.githubusercontent.com/orailnoor/NativOS/main/linux/config/phoc.ini \
             -o "$RUNNER_TEMP/phoc-nativos.ini"
           sudo install -m 0644 "$RUNNER_TEMP/phoc-nativos.ini" "$ROOTFS/etc/nativOS/phoc.ini"
           sudo cp "$ROOTFS/etc/nativOS/phoc.ini" "$ROOTFS/usr/share/mt-os/phoc-nativos-reference.ini"
-          sudo cp linux/README-bridge.md "$ROOTFS/usr/share/mt-os/README-bridge.md"
           sudo tee "$ROOTFS/usr/share/mt-os/MT-ROOTFS-MANIFEST.txt" >/dev/null <<'EOF'
           MT OS external rootfs
           Base: Ubuntu 24.04 ARM64
           Display configuration: original NativOS linux/config/phoc.ini, preserved byte-for-byte
-          Desktop source: TEMMC/MT-phosh-
-          Compositor source: TEMMC/MT-phoc
-          Android bridge: MT OS Linux bridge client
+          Desktop source: TEMMC/MT-phosh- at a666684c70338867034f889545d1b1da49e8cb64
+          Compositor source: TEMMC/MT-phoc at 7207050415b30a99a985277dcca8a3393086d918
+          Android bridge: standalone bridge snapshot at 231f82fcc6a49d03603870457b808381d75936ae
           Target: ARM64 Android chroot; not a flashable ROM
           EOF
 
