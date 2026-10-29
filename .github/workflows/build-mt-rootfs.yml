@@ -43,24 +43,13 @@ jobs:
             sudo umount -lf "$ROOTFS/dev" 2>/dev/null || true
           }
           trap cleanup EXIT
-          sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive bash -euxc '
-            printf 'deb http://ports.ubuntu.com/ubuntu-ports noble main restricted universe multiverse\ndeb http://ports.ubuntu.com/ubuntu-ports noble-updates main restricted universe multiverse\ndeb http://ports.ubuntu.com/ubuntu-ports noble-security main restricted universe multiverse\n' > /etc/apt/sources.list
-            apt-get update
-            apt-get install -y --no-install-recommends \
-              systemd dbus dbus-user-session sudo ca-certificates \
-              gnome-console nautilus gnome-control-center \
-              gsettings-desktop-schemas gnome-settings-daemon \
-              adwaita-icon-theme hicolor-icon-theme fonts-cantarell \
-              xwayland weston foot python3 python3-dbus python3-gi \
-              python3-gi-cairo python3-requests network-manager \
-              pipewire-audio wireplumber libinput-tools mesa-utils \
-              desktop-file-utils polkitd pkexec udev iproute2 iputils-ping \
-              xdg-desktop-portal xdg-desktop-portal-gtk
-            apt-get clean
-            rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
-            mkdir -p /tmp /run /var/tmp
-            chmod 1777 /tmp /var/tmp
-          '
+          cat > "$RUNNER_TEMP/sources.list" <<'APT_SOURCES'
+          deb http://ports.ubuntu.com/ubuntu-ports noble main restricted universe multiverse
+          deb http://ports.ubuntu.com/ubuntu-ports noble-updates main restricted universe multiverse
+          deb http://ports.ubuntu.com/ubuntu-ports noble-security main restricted universe multiverse
+          APT_SOURCES
+          sudo install -m 0644 "$RUNNER_TEMP/sources.list" "$ROOTFS/etc/apt/sources.list"
+          sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive bash -euxc "apt-get update && apt-get install -y --no-install-recommends systemd dbus dbus-user-session sudo ca-certificates gnome-console nautilus gnome-control-center gsettings-desktop-schemas gnome-settings-daemon adwaita-icon-theme hicolor-icon-theme fonts-cantarell xwayland weston foot python3 python3-dbus python3-gi python3-gi-cairo python3-requests network-manager pipewire-audio wireplumber libinput-tools mesa-utils desktop-file-utils polkitd pkexec udev iproute2 iputils-ping xdg-desktop-portal xdg-desktop-portal-gtk && apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* && mkdir -p /tmp /run /var/tmp && chmod 1777 /tmp /var/tmp"
           cleanup
           trap - EXIT
           echo "ROOTFS=$ROOTFS" >> "$GITHUB_ENV"
@@ -69,9 +58,11 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          test -n "${{ secrets.MT_ARTIFACTS_TOKEN }}" || { echo "MT_ARTIFACTS_TOKEN is missing"; exit 1; }
           mkdir -p "$RUNNER_TEMP/prebuilt/phoc"
           curl -fL --retry 5 --retry-all-errors \
             -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.MT_ARTIFACTS_TOKEN }}" \
             "https://api.github.com/repos/TEMMC/MT-phoc/actions/artifacts/12661260748/zip" \
             -o "$RUNNER_TEMP/prebuilt/phoc/artifact.zip"
           unzip -q "$RUNNER_TEMP/prebuilt/phoc/artifact.zip" -d "$RUNNER_TEMP/prebuilt/phoc/unpacked"
@@ -90,6 +81,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/prebuilt/phosh"
           curl -fL --retry 5 --retry-all-errors \
             -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.MT_ARTIFACTS_TOKEN }}" \
             "https://api.github.com/repos/TEMMC/MT-phosh-/actions/artifacts/12583781785/zip" \
             -o "$RUNNER_TEMP/prebuilt/phosh/artifact.zip"
           unzip -q "$RUNNER_TEMP/prebuilt/phosh/artifact.zip" -d "$RUNNER_TEMP/prebuilt/phosh/unpacked"
@@ -105,6 +97,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/prebuilt/bridge"
           curl -fL --retry 5 --retry-all-errors \
             -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.MT_ARTIFACTS_TOKEN }}" \
             "https://api.github.com/repos/TEMMC/METMC-OS-v10/actions/artifacts/12662013410/zip" \
             -o "$RUNNER_TEMP/prebuilt/bridge/artifact.zip"
           unzip -q "$RUNNER_TEMP/prebuilt/bridge/artifact.zip" -d "$RUNNER_TEMP/prebuilt/bridge/unpacked"
