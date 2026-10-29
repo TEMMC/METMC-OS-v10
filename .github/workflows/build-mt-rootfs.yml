@@ -26,13 +26,13 @@ jobs:
           sudo apt-get install -y --no-install-recommends ca-certificates curl debootstrap tar gzip unzip xz-utils
           # Do not compile MT-Phosh, MT-Phoc, or MT-Bridge in this workflow.
 
-      - name: Create Debian ARM64 rootfs for the prebuilt desktop artifacts
+      - name: Create Ubuntu 24.04 Noble ARM64 rootfs for the prebuilt desktop artifacts
         shell: bash
         run: |
           set -euxo pipefail
           ROOTFS="$RUNNER_TEMP/mt-rootfs"
           sudo mkdir -p "$ROOTFS"
-          sudo debootstrap --arch=arm64 --variant=minbase testing "$ROOTFS" http://deb.debian.org/debian
+          sudo debootstrap --arch=arm64 --variant=minbase noble "$ROOTFS" http://ports.ubuntu.com/ubuntu-ports
           sudo cp /etc/resolv.conf "$ROOTFS/etc/resolv.conf"
           sudo mount --bind /dev "$ROOTFS/dev"
           sudo mount -t proc proc "$ROOTFS/proc"
@@ -53,7 +53,7 @@ jobs:
               xwayland weston foot python3 python3-dbus python3-gi \
               python3-gi-cairo python3-requests network-manager \
               pipewire-audio wireplumber libinput-tools mesa-utils \
-              desktop-file-utils policykit-1 udev iproute2 iputils-ping \
+              desktop-file-utils polkitd pkexec udev iproute2 iputils-ping \
               xdg-desktop-portal xdg-desktop-portal-gtk
             apt-get clean
             rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
@@ -140,7 +140,7 @@ jobs:
           sudo cp "$ROOTFS/etc/nativOS/phoc.ini" "$ROOTFS/usr/share/mt-os/phoc-nativos-reference.ini"
           sudo tee "$ROOTFS/usr/share/mt-os/MT-ROOTFS-MANIFEST.txt" >/dev/null <<'EOF'
           MT OS external rootfs
-          Base: Debian testing ARM64 (matches the successful prebuilt desktop artifact environment)
+          Base: Ubuntu 24.04 Noble ARM64
           MT-Phoc: successful artifact 12661260748, run 40344456949
           MT-Phosh: successful artifact 12583781785, run 40153637822
           MT-Bridge: successful artifact 12662013410, run 40349174071
