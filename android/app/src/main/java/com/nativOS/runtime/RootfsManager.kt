@@ -86,7 +86,23 @@ class RootfsManager(private val context: Context) {
 
     /** Run the device's own tar implementation; retain complete extraction diagnostics. */
     private fun runTar(args: List<String>, phase: String, onProgress: ((Double, String) -> Unit)? = null): Int {
-        val process = ProcessBuilder(listOf("tar") + args).redirectErrorStream(true).start()
+        // Rootfs archives contain Linux ownership/modes that can prevent the app UID
+        // from repairing extracted files. For extraction, prefer Termux's GNU tar
+        // through su, then return ownership of the staging tree to this app.
+        fun quote(value: String) = "'" + value.replace("'", "'\\''") + "'"
+        val termuxTar = "/data/data/com.termux/files/usr/bin/tar"
+        val command = if (phase == "extract") {
+            val tarArgs = (listOf(termuxTar) + args).joinToString(" ") { quote(it) }
+            val fallbackArgs = (listOf("tar") + args).joinToString(" ") { quote(it) }
+            "if [ -x ${quote(termuxTar)} ]; then $tarArgs; else $fallbackArgs; fi"
+        } else {
+            (listOf("tar") + args).joinToString(" ") { quote(it) }
+        }
+        val process = if (phase == "extract") {
+            ProcessBuilder("su", "-c", command).redirectErrorStream(true).start()
+        } else {
+            ProcessBuilder(listOf("tar") + args).redirectErrorStream(true).start()
+        }
         var lineCount = 0
         val tail = ArrayDeque<String>()
         process.inputStream.bufferedReader().useLines { lines ->
@@ -104,6 +120,23 @@ class RootfsManager(private val context: Context) {
             }
         }
         val exitCode = process.waitFor()
+        if (phase == "extract" && exitCode == 0) {
+            val destination = args.indexOf("-C").let { index ->
+                if (index >= 0 && index + 1 < args.size) args[index + 1] else null
+            }
+            if (destination != null) {
+                val uid = android.os.Process.myUid()
+                val ownership = ProcessBuilder(
+                    "su", "-c", "chown -R $uid:$uid ${quote(destination)}"
+                ).redirectErrorStream(true).start()
+                val ownershipOutput = ownership.inputStream.bufferedReader().readText().trim()
+                val ownershipExit = ownership.waitFor()
+                if (ownershipExit != 0) {
+                    Log.e(TAG, "Could not return staging ownership to app UID $uid: $ownershipOutput")
+                    return ownershipExit
+                }
+            }
+        }
         Log.i(TAG, "tar[$phase] exit=$exitCode outputLines=$lineCount tail=${tail.joinToString(" | ")}")
         return exitCode
     }
