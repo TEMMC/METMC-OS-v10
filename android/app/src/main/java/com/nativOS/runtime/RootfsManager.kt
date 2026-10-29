@@ -345,14 +345,15 @@ class RootfsManager(private val context: Context) {
             if (tarball.name.endsWith(".gz") != isGzip) throw IllegalStateException("Archive compression does not match filename: ${tarball.name}")
             val listingArgs = if (isGzip) listOf("-tzf", tarball.absolutePath) else listOf("-tf", tarball.absolutePath)
             if (runTar(listingArgs, "verify") != 0) throw IllegalStateException("Rootfs archive integrity check failed; see tar[verify] diagnostics")
-            stagingRootfs = File(baseDir, "rootfs-staging-${System.currentTimeMillis()}")
-            if (!stagingRootfs.mkdirs()) throw IllegalStateException("Could not create rootfs staging directory")
+            val stagingDir = File(baseDir, "rootfs-staging-${System.currentTimeMillis()}")
+            stagingRootfs = stagingDir
+            if (!stagingDir.mkdirs()) throw IllegalStateException("Could not create rootfs staging directory")
             onProgress(0.1, "Extracting Linux filesystem...")
-            val extractArgs = if (isGzip) listOf("-xzf", tarball.absolutePath, "-C", stagingRootfs.absolutePath) else listOf("-xf", tarball.absolutePath, "-C", stagingRootfs.absolutePath)
+            val extractArgs = if (isGzip) listOf("-xzf", tarball.absolutePath, "-C", stagingDir.absolutePath) else listOf("-xf", tarball.absolutePath, "-C", stagingRootfs.absolutePath)
             val exitCode = runTar(extractArgs, "extract", onProgress)
             if (exitCode != 0) throw IllegalStateException("tar extraction failed (exit=$exitCode); see tar[extract] diagnostics")
-            val osRelease = File(stagingRootfs, "etc/os-release")
-            if (!File(stagingRootfs, "bin").exists() || !File(stagingRootfs, "usr").isDirectory || !File(stagingRootfs, "etc").isDirectory || !osRelease.isFile) throw IllegalStateException("Extracted rootfs is incomplete (missing bin, usr, etc, or etc/os-release)")
+            val osRelease = File(stagingDir, "etc/os-release")
+            if (!File(stagingDir, "bin").exists() || !File(stagingDir, "usr").isDirectory || !File(stagingDir, "etc").isDirectory || !osRelease.isFile) throw IllegalStateException("Extracted rootfs is incomplete (missing bin, usr, etc, or etc/os-release)")
             if (bundledUbuntu) {
                 val release = osRelease.readText()
                 if (!Regex("(?m)^ID=ubuntu$").containsMatchIn(release) || !Regex("(?m)^VERSION_CODENAME=noble$").containsMatchIn(release)) {
@@ -364,7 +365,7 @@ class RootfsManager(private val context: Context) {
                 previousRootfs = File(baseDir, "rootfs-previous-${System.currentTimeMillis()}")
                 if (!rootfsDir.renameTo(previousRootfs!!)) throw IllegalStateException("Could not safely move the previous Linux rootfs")
             }
-            if (!stagingRootfs.renameTo(rootfsDir)) {
+            if (!stagingDir.renameTo(rootfsDir)) {
                 previousRootfs?.let { if (it.exists()) it.renameTo(rootfsDir) }
                 throw IllegalStateException("Could not promote validated rootfs staging directory")
             }
