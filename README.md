@@ -40,11 +40,11 @@ Wi-Fi connectivity is normally shared from Android into Debian. Android 10+ rest
 
 ## Offline startup guarantee
 
-GitHub Actions prepares a compact Alpine Linux 3.22 ARM64 root filesystem with Labwc, Wayland/Xwayland support, Waybar, Fuzzel, Foot, Thunar, a non-root `metmc` user, `sudo`, and compact shell/network diagnostics tools. The root filesystem is compressed as a reproducible `.tgz` asset and bundled inside the APK. First launch copies and extracts that asset locally; boot must never run `apk update`, install packages, download a rootfs, or contact update servers. Package updates and new installs remain explicitly user-initiated.
+GitHub Actions prepares an Ubuntu 24.04 (Noble) ARM64 root filesystem, installs shared runtime dependencies, overlays the pinned MT-Phosh and MT-Phoc ARM64 install artifacts, and bundles the resulting uncompressed tar archive inside the APK. First launch copies and extracts that archive locally; boot must never download a rootfs or install/update packages. Package updates and new installs remain explicitly user-initiated.
 
 ## Windowed desktop and multitasking
 
-METMC's intended desktop is **Labwc + Wayland + Xwayland**, nested into the Android-hosted X11 display. Labwc provides stacking windows; Waybar provides the running-window taskbar; Fuzzel launches apps; Foot is the terminal; and Thunar is the file manager. The neon green-on-black METMC Hacker theme applies to window decorations, taskbar, launcher, GTK defaults and terminal. Large taskbar targets and four workspaces are intended to make multitasking usable on a phone. The nested compositor and touch/window behavior still require CI and on-device validation.
+MT OS's intended desktop is **MT-Phosh + MT-Phoc**, nested into the Android-hosted display. Labwc remains a fallback only when its complete runtime is available. Foot is the terminal; Thunar is the file manager. The neon green-on-black METMC Hacker theme applies to window decorations, taskbar, launcher, GTK defaults and terminal. Large taskbar targets and four workspaces are intended to make multitasking usable on a phone. The nested compositor and touch/window behavior still require CI and on-device validation.
 
 Android apps remain Android activities. METMC can publish their launchers to the Linux app menu and request bounded/freeform launches, but movable Android app windows depend on Samsung's Android WindowManager and firmware support; Labwc cannot directly turn an Android activity into a Linux window. Linux multi-window support and Android freeform windows are separate features.
 
