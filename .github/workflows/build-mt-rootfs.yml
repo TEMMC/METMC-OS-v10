@@ -64,10 +64,10 @@ jobs:
             apt-get update
             apt-get install -y --no-install-recommends \
               systemd dbus dbus-user-session sudo ca-certificates \
-              phosh phoc gnome-console nautilus gnome-control-center \
+              gnome-console nautilus gnome-control-center \
               gsettings-desktop-schemas gnome-settings-daemon-common \
               adwaita-icon-theme hicolor-icon-theme fonts-cantarell \
-              xwayland xwayland-run weston foot python3 python3-dbus \
+              xwayland weston foot python3 python3-dbus \
               python3-gi python3-gi-cairo python3-pip python3-requests \
               network-manager pipewire-audio wireplumber \
               libinput-tools mesa-utils desktop-file-utils \
