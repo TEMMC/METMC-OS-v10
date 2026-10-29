@@ -1,0 +1,136 @@
+name: Build MT OS Rootfs (Phosh + Phoc + Android Bridge)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [build/app-only-external-rootfs]
+    paths:
+      - ".github/workflows/build-mt-rootfs.yml"
+      - "linux/bridge-client/**"
+      - "linux/config/phoc.ini"
+      - "linux/config/nativOS-bridge.service"
+      - "linux/setup/install-bridge.sh"
+
+permissions:
+  contents: read
+
+jobs:
+  build-rootfs:
+    # Native ARM64 avoids cross-architecture chroot and package-manager failures.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - name: Checkout MT OS integration
+        uses: actions/checkout@v4
+
+      - name: Install build and archive tools
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          # Enable source packages so the runner can resolve the same build-dependencies
+          # as Ubuntu's packaged Phosh/Phoc stack.
+          if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+            sudo sed -i '/^Types: deb$/s/Types: deb/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
+          fi
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends             ca-certificates curl git unzip xz-utils gzip tar rsync             build-essential pkg-config meson ninja-build cmake             python3 python3-pip python3-dbus python3-gi             libglib2.0-dev libgtk-4-dev libadwaita-1-dev             libwayland-dev wayland-protocols libwlroots-dev             libinput-dev libseat-dev libxkbcommon-dev libpixman-1-dev             libdrm-dev libgbm-dev libegl-dev libgles-dev             libsystemd-dev libpolkit-gobject-1-dev libgnome-desktop-3-dev             libgmobile-dev libfeedback-dev libgnome-settings-daemon-dev             libhandy-1-dev libjson-glib-dev libnm-dev libpulse-dev             libpipewire-0.3-dev libpam0g-dev libgtk-3-dev libnotify-dev             libupower-glib-dev libgnutls28-dev libgcr-4-dev libgnome-bluetooth-3.0-dev             libqrtr-glib-dev libgtk-layer-shell-dev
+
+      - name: Download and extract the known-good NativOS Ubuntu ARM64 rootfs
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p "$RUNNER_TEMP/base" "$RUNNER_TEMP/apk"
+          curl -fL --retry 8 --retry-all-errors             "https://github.com/orailnoor/NativOS/releases/download/v0.1.0-alpha/NativOS-v0.1.0-alpha-arm64.apk"             -o "$RUNNER_TEMP/nativos-base.apk"
+          unzip -l "$RUNNER_TEMP/nativos-base.apk" | grep -E 'assets/rootfs/.*(tgz|tar.gz)$' || true
+          unzip -Z1 "$RUNNER_TEMP/nativos-base.apk" > "$RUNNER_TEMP/apk-files.txt"
+          ROOTFS_ENTRY="$(grep -E '^assets/rootfs/.*(tgz|tar.gz)$' "$RUNNER_TEMP/apk-files.txt" | head -n1)"
+          if [ -z "$ROOTFS_ENTRY" ]; then
+            echo "The NativOS release APK does not expose a rootfs archive asset; refusing to build an empty or guessed rootfs." >&2
+            exit 1
+          fi
+          unzip -p "$RUNNER_TEMP/nativos-base.apk" "$ROOTFS_ENTRY" > "$RUNNER_TEMP/base/rootfs.tgz"
+          tar -xzf "$RUNNER_TEMP/base/rootfs.tgz" -C "$RUNNER_TEMP/base"
+          if [ -d "$RUNNER_TEMP/base/rootfs" ]; then ROOTFS="$RUNNER_TEMP/base/rootfs"; else ROOTFS="$RUNNER_TEMP/base"; fi
+          test -x "$ROOTFS/usr/bin/phosh"
+          test -x "$ROOTFS/usr/bin/phoc"
+          echo "ROOTFS=$ROOTFS" >> "$GITHUB_ENV"
+
+      - name: Resolve source build dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get build-dep -y phoc phosh || {
+            echo "Ubuntu build-dependency resolution failed; stop rather than silently substituting unrelated desktop packages." >&2
+            exit 1
+          }
+
+      - name: Build MT-Phoc from TEMMC fork
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --depth 1 https://github.com/TEMMC/MT-phoc.git "$RUNNER_TEMP/MT-phoc"
+          meson setup "$RUNNER_TEMP/MT-phoc/build" "$RUNNER_TEMP/MT-phoc"             --prefix=/usr --libdir=lib/aarch64-linux-gnu --buildtype=release             -Dtests=false
+          ninja -C "$RUNNER_TEMP/MT-phoc/build"
+          DESTDIR="$ROOTFS" ninja -C "$RUNNER_TEMP/MT-phoc/build" install
+
+      - name: Build MT-Phosh from TEMMC fork
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --depth 1 https://github.com/TEMMC/MT-phosh-.git "$RUNNER_TEMP/MT-phosh"
+          meson setup "$RUNNER_TEMP/MT-phosh/build" "$RUNNER_TEMP/MT-phosh"             --prefix=/usr --libdir=lib/aarch64-linux-gnu --buildtype=release             -Dtests=false
+          ninja -C "$RUNNER_TEMP/MT-phosh/build"
+          DESTDIR="$ROOTFS" ninja -C "$RUNNER_TEMP/MT-phosh/build" install
+
+      - name: Install MT-Bridge and preserve the exact NativOS Phoc display config
+        shell: bash
+        run: |
+          set -euxo pipefail
+          install -d "$ROOTFS/usr/local/bin" "$ROOTFS/etc/nativOS"             "$ROOTFS/etc/systemd/system" "$ROOTFS/run/nativOS"             "$ROOTFS/usr/share/mt-os"
+          install -m 0755 linux/bridge-client/nativOS-bridge.py "$ROOTFS/usr/local/bin/nativOS-bridge"
+          install -m 0755 linux/bridge-client/mt-bridge.py "$ROOTFS/usr/local/bin/mt-bridge"
+          install -m 0755 linux/bridge-client/metmc-settings.py "$ROOTFS/usr/local/bin/mt-settings"
+          install -m 0755 linux/bridge-client/metmc-wifi.py "$ROOTFS/usr/local/bin/mt-wifi"
+          install -m 0644 linux/config/nativOS-bridge.service "$ROOTFS/etc/systemd/system/nativOS-bridge.service"
+          # Preserve NativOS's original nested-X11/Android display settings byte-for-byte.
+          curl -fL --retry 5 --retry-all-errors             https://raw.githubusercontent.com/orailnoor/NativOS/main/linux/config/phoc.ini             -o "$ROOTFS/etc/nativOS/phoc.ini"
+          cp "$ROOTFS/etc/nativOS/phoc.ini" "$ROOTFS/usr/share/mt-os/phoc-nativos-reference.ini"
+          cp linux/README-bridge.md "$ROOTFS/usr/share/mt-os/README-bridge.md"
+          cat > "$ROOTFS/usr/share/mt-os/MT-ROOTFS-MANIFEST.txt" <<EOF
+          MT OS external rootfs
+          Base: NativOS Ubuntu ARM64 rootfs
+          Display configuration: exact NativOS linux/config/phoc.ini copied to /etc/nativOS/phoc.ini
+          Desktop source: TEMMC/MT-phosh-
+          Compositor source: TEMMC/MT-phoc
+          Android bridge: TEMMC/METMC-OS-v10 linux/bridge-client
+          Target: ARM64 Android chroot; not a flashable ROM
+          EOF
+          mkdir -p "$ROOTFS/usr/local/bin"
+          ln -sf /usr/local/bin/mt-bridge "$ROOTFS/usr/local/bin/mt-bridge-status" || true
+
+      - name: Validate rootfs content and create archive
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -x "$ROOTFS/usr/bin/phosh"
+          test -x "$ROOTFS/usr/bin/phoc"
+          test -x "$ROOTFS/usr/local/bin/nativOS-bridge"
+          test -x "$ROOTFS/usr/local/bin/mt-bridge"
+          test -s "$ROOTFS/etc/nativOS/phoc.ini"
+          cmp "$ROOTFS/etc/nativOS/phoc.ini" "$ROOTFS/usr/share/mt-os/phoc-nativos-reference.ini"
+          grep -q 'scale = 2' "$ROOTFS/etc/nativOS/phoc.ini"
+          mkdir -p "$RUNNER_TEMP/mt-rootfs"
+          tar --numeric-owner --owner=0 --group=0 --xattrs --acls             --exclude='./dev/*' --exclude='./proc/*' --exclude='./sys/*'             -C "$ROOTFS" -czf "$RUNNER_TEMP/mt-rootfs/MT-OS-Rootfs-arm64.tar.gz" .
+          sha256sum "$RUNNER_TEMP/mt-rootfs/MT-OS-Rootfs-arm64.tar.gz"             | tee "$RUNNER_TEMP/mt-rootfs/SHA256SUMS.txt"
+          du -h "$RUNNER_TEMP/mt-rootfs/MT-OS-Rootfs-arm64.tar.gz"
+          tar -tzf "$RUNNER_TEMP/mt-rootfs/MT-OS-Rootfs-arm64.tar.gz"             | grep -E '(^|/)(phosh|phoc|mt-bridge|nativOS-bridge)$|etc/nativOS/phoc.ini|MT-ROOTFS-MANIFEST'
+
+      - name: Upload separate MT OS rootfs
+        uses: actions/upload-artifact@v4
+        with:
+          name: MT-OS-Rootfs-arm64-Phosh-Phoc-Bridge
+          path: |
+            ${{ runner.temp }}/mt-rootfs/MT-OS-Rootfs-arm64.tar.gz
+            ${{ runner.temp }}/mt-rootfs/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
