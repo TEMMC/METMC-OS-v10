@@ -321,7 +321,7 @@ class RootfsManager(private val context: Context) {
                 lineCount++
                 // Keep diagnostics useful without allowing a very noisy archive to
                 // consume unbounded memory or flood logcat.
-                if (output.length < 16_000) output.append(line).append('\\n')
+                if (output.length < 16_000) output.append(line).append('\n')
                 if (lineCount % 1000 == 0) {
                     onProgress(0.1 + (lineCount % 10000) / 100000.0, "Extracting files...")
                 }
