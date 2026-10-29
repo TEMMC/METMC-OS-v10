@@ -84,25 +84,19 @@ class RootfsManager(private val context: Context) {
         Log.i(TAG, "Rootfs archive SHA-256 verified: $actual")
     }
 
-    /** Run the device's own tar implementation; retain complete extraction diagnostics. */
+    /**
+     * Run Termux GNU tar as root when available. The app-private rootfs contains Linux
+     * ownership and restrictive modes, so extraction must not run under the app UID.
+     * Fall back to Android's tar only when Termux tar is unavailable.
+     */
     private fun runTar(args: List<String>, phase: String, onProgress: ((Double, String) -> Unit)? = null): Int {
-        // Rootfs archives contain Linux ownership/modes that can prevent the app UID
-        // from repairing extracted files. For extraction, prefer Termux's GNU tar
-        // through su, then return ownership of the staging tree to this app.
         fun quote(value: String) = "'" + value.replace("'", "'\\''") + "'"
         val termuxTar = "/data/data/com.termux/files/usr/bin/tar"
-        val command = if (phase == "extract") {
-            val tarArgs = (listOf(termuxTar) + args).joinToString(" ") { quote(it) }
-            val fallbackArgs = (listOf("tar") + args).joinToString(" ") { quote(it) }
-            "if [ -x ${quote(termuxTar)} ]; then $tarArgs; else $fallbackArgs; fi"
-        } else {
-            (listOf("tar") + args).joinToString(" ") { quote(it) }
-        }
-        val process = if (phase == "extract") {
-            ProcessBuilder("su", "-c", command).redirectErrorStream(true).start()
-        } else {
-            ProcessBuilder(listOf("tar") + args).redirectErrorStream(true).start()
-        }
+        val tarArgs = (listOf(termuxTar) + args).joinToString(" ") { quote(it) }
+        val fallbackArgs = (listOf("tar") + args).joinToString(" ") { quote(it) }
+        val command = "if [ -x ${quote(termuxTar)} ]; then $tarArgs; else $fallbackArgs; fi"
+        val process = ProcessBuilder("su", "-c", command).redirectErrorStream(true).start()
+
         var lineCount = 0
         val tail = ArrayDeque<String>()
         process.inputStream.bufferedReader().useLines { lines ->
