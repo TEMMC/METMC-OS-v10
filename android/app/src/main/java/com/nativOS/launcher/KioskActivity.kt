@@ -715,17 +715,11 @@ class KioskActivity : Activity() {
             // The separately installed MT rootfs ships the bridge daemon under
             // its NativOS-compatible service name. Do not require legacy Labwc
             // helper wrappers that are not part of the Phosh/Phoc image.
-            val requiredBridgeFiles = listOf(
-                "usr/local/bin/nativOS-bridge"
-            )
-            val missingBridgeFiles = requiredBridgeFiles.filterNot {
-                java.io.File(rootfsManager.getRootfsPath(), it).canExecute()
-            }
-            if (missingBridgeFiles.isNotEmpty()) {
+            if (!chrootManager.isBridgeExecutable()) {
                 updateOverlay(
                     -1.0,
                     "Offline MT runtime incomplete",
-                    "Missing executable(s): ${missingBridgeFiles.joinToString()}. Rebuild the APK with the complete Ubuntu rootfs."
+                    "The rootfs bridge is missing or not executable: usr/local/bin/nativOS-bridge"
                 )
                 return
             }
