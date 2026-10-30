@@ -198,7 +198,7 @@ jobs:
             | tee "$RUNNER_TEMP/output/SHA256SUMS.txt"
           du -h "$RUNNER_TEMP/output/MT-OS-Rootfs-arm64.tar.gz"
           tar -tzf "$RUNNER_TEMP/output/MT-OS-Rootfs-arm64.tar.gz" \
-            | grep -E '(^|/)(phosh|phoc|nativOS-bridge|mt-settings|mt-wifi)$|etc/nativOS/phoc.ini|MT-ROOTFS-MANIFEST'
+            | grep -E '(^|/)(phosh|phoc|nativOS-bridge|metmc-settings|metmc-wifi)$|etc/nativOS/phoc.ini|MT-ROOTFS-MANIFEST'
 
       - name: Upload separate MT OS rootfs
         uses: actions/upload-artifact@v4

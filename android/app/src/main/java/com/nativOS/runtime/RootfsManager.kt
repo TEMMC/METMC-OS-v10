@@ -60,8 +60,6 @@ class RootfsManager(private val context: Context) {
         val script = """
             set -eu
             R=${quote(path)}
-            MARKER=${quote(marker)}
-            APP_UID=$uid
             [ -d "${'$'}R" ] || { echo "Rootfs directory missing or inaccessible"; exit 11; }
             [ -d "${'$'}R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
             [ -d "${'$'}R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
