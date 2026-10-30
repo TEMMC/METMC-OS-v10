@@ -86,14 +86,18 @@ class ChrootManager(private val context: Context) {
         File(rootfsDir, "usr/bin/foot").exists() &&
         (File(rootfsDir, "usr/bin/Xwayland").exists() || File(rootfsDir, "usr/bin/xwayland").exists())
     /** MT-Phosh/MT-Phoc is preferred when the integrated mobile shell is bundled. */
+    /** Probe root-owned Linux binaries through su, not the unprivileged app UID. */
     fun isPhoshInstalled(): Boolean {
-        val phosh = listOf("usr/bin/phosh-session", "usr/libexec/phosh")
-            .any { File(rootfsDir, it).canExecute() }
-        val phoc = listOf("usr/bin/phoc", "usr/local/bin/phoc")
-            .any { File(rootfsDir, it).canExecute() }
-        val bridge = File(rootfsDir, "usr/local/bin/nativOS-bridge").canExecute()
-        Log.i(TAG, "MT desktop probe: phosh=$phosh phoc=$phoc bridge=$bridge rootfs=$rootfsDir")
-        return phosh && phoc
+        val r = rootfsDir.absolutePath.replace("'", "'\\''")
+        val command = "R='" + r + "'; ( [ -x \"$R/usr/bin/phosh-session\" ] || [ -x \"$R/usr/libexec/phosh\" ] ) && ( [ -x \"$R/usr/bin/phoc\" ] || [ -x \"$R/usr/local/bin/phoc\" ] )"
+        val ready = rootShell.exec(command) == 0
+        Log.i(TAG, "MT desktop root probe: ready=$ready rootfs=$rootfsDir")
+        return ready
+    }
+
+    fun isBridgeExecutable(): Boolean {
+        val r = rootfsDir.absolutePath.replace("'", "'\\''")
+        return rootShell.exec("[ -x '$r/usr/local/bin/nativOS-bridge' ]") == 0
     }
 
     fun isRunning(): Boolean = sessionProcess?.isAlive == true
