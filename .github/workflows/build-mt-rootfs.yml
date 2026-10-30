@@ -164,7 +164,8 @@ jobs:
             https://raw.githubusercontent.com/orailnoor/NativOS/main/linux/config/phoc.ini \
             -o "$RUNNER_TEMP/phoc-nativos.ini"
           sudo install -m 0644 "$RUNNER_TEMP/phoc-nativos.ini" "$ROOTFS/etc/nativOS/phoc.ini"
-          sudo install -o metmc -g metmc -m 0644 "$RUNNER_TEMP/phoc-nativos.ini" "$ROOTFS/home/metmc/.config/phoc.ini"
+          sudo install -m 0644 "$RUNNER_TEMP/phoc-nativos.ini" "$ROOTFS/home/metmc/.config/phoc.ini"
+          sudo chroot "$ROOTFS" chown metmc:metmc /home/metmc/.config/phoc.ini
           sudo cp "$ROOTFS/etc/nativOS/phoc.ini" "$ROOTFS/usr/share/mt-os/phoc-nativos-reference.ini"
           sudo tee "$ROOTFS/usr/share/mt-os/MT-ROOTFS-MANIFEST.txt" >/dev/null <<'EOF'
           MT OS external rootfs
@@ -194,8 +195,7 @@ jobs:
           sudo tar --numeric-owner --owner=0 --group=0 --xattrs --acls \
             --exclude='./dev/*' --exclude='./proc/*' --exclude='./sys/*' \
             -C "$ROOTFS" -czf "$RUNNER_TEMP/output/MT-OS-Rootfs-arm64.tar.gz" .
-          sha256sum "$RUNNER_TEMP/output/MT-OS-Rootfs-arm64.tar.gz" \
-            | tee "$RUNNER_TEMP/output/SHA256SUMS.txt"
+          (cd "$RUNNER_TEMP/output" && sha256sum MT-OS-Rootfs-arm64.tar.gz > SHA256SUMS.txt)
           du -h "$RUNNER_TEMP/output/MT-OS-Rootfs-arm64.tar.gz"
           tar -tzf "$RUNNER_TEMP/output/MT-OS-Rootfs-arm64.tar.gz" \
             | grep -E '(^|/)(phosh|phoc|nativOS-bridge|metmc-settings|metmc-wifi)$|etc/nativOS/phoc.ini|MT-ROOTFS-MANIFEST'
