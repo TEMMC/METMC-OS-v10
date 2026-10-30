@@ -45,8 +45,18 @@ class RootfsManager(private val context: Context) {
         rootfsDir.exists() && File(rootfsDir, "bin").exists() &&
         File(rootfsDir, "usr").exists() && File(rootfsDir, "etc").exists()
 
-    /** The APK bundles Ubuntu Noble ARM64; startup never bootstraps Linux over the network. */
-    fun isBundledDistroReady(): Boolean = isRootfsReady() && isUbuntuRootfs()
+    /**
+     * Validate the separately extracted Ubuntu Noble rootfs used by the app-only APK.
+     * Readiness is based on the actual filesystem, not an APK asset or archive.
+     */
+    fun isExternalRootfsReady(): Boolean {
+        if (!rootfsDir.isDirectory) return false
+        if (listOf("bin", "usr", "etc").any { !File(rootfsDir, it).exists() }) return false
+        return isUbuntuRootfs()
+    }
+
+    /** Backward-compatible alias for older callers. */
+    fun isBundledDistroReady(): Boolean = isExternalRootfsReady()
 
     private fun isUbuntuRootfs(): Boolean {
         val release = File(rootfsDir, "etc/os-release")
