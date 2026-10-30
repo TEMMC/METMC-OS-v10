@@ -89,20 +89,18 @@ class ChrootManager(private val context: Context) {
     /** Probe root-owned Linux binaries through su, not the unprivileged app UID. */
     fun isPhoshInstalled(): Boolean {
         val root = rootfsDir.absolutePath
-        fun shellQuote(value: String): String =
-            "'" + value.replace("'", "'\\''") + "'"
-
-        val quotedRoot = shellQuote(root)
-        val command = """
-            R=$quotedRoot
-            test -x "${'R/usr/libexec/phosh" &&
-            test -x "${'
-        """.trimIndent()
+        val required = listOf(
+            "$root/usr/libexec/phosh",
+            "$root/usr/local/bin/phoc",
+            "$root/usr/local/bin/nativOS-bridge"
+        )
+        val command = required.joinToString(" && ") { path ->
+            "test -x ${shellQuote(path)}"
+        }
         val ready = rootShell.exec(command) { } == 0
         Log.i(TAG, "MT-Phosh runtime probe: ready=$ready rootfs=$root")
         return ready
     }
-
     fun isBridgeExecutable(): Boolean {
         val r = rootfsDir.absolutePath.replace("'", "'\\''")
         return rootShell.exec("[ -x '" + r + "/usr/local/bin/nativOS-bridge' ]") { } == 0
