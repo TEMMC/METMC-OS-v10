@@ -58,6 +58,18 @@ The initial desktop configuration lives under `linux/config/skel/` and `linux/co
 
 The Alpine/Labwc migration has been committed to the draft pull request, but the new rootfs and Android session have not yet been confirmed by a successful CI build or tested on the Galaxy A04e. Do not treat it as a verified release until the build succeeds and the desktop is tested on-device. Touch input, keyboard behavior, window decorations, panel usability, Android freeform windows, hardware bridging, GPU behavior, RAM use, and boot time remain device-test items. No claim of full compatibility is made until those checks pass.
 
+## Rootfs protection
+
+The Android APK and Linux rootfs have separate update lifecycles. An in-place
+APK upgrade must preserve the existing Linux installation. Startup validates
+an existing supported Ubuntu or Alpine rootfs without re-extracting or migrating
+it. First-install extraction uses an isolated staging directory and promotes
+the filesystem only after validation. MT-Phosh/MT-Phoc validation is independent
+of optional Labwc fallback packages.
+
+See [ROOTFS_PROTECTION.md](ROOTFS_PROTECTION.md) for the safety policy, Android
+data-retention limits, and required regression checks.
+
 ## Build requirements
 
 Use the Android project under `android/` and follow the upstream build instructions and [production readiness checklist](PRODUCTION_READINESS.md). The build uses JDK 17 and Android SDK 35. The required prepared ARM64 root filesystem archive and matching SHA-256 file must be present under `android/app/src/main/assets/rootfs/`; the Gradle build intentionally fails if they are missing or do not match.
