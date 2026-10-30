@@ -61,8 +61,8 @@ android {
         applicationId = "com.temmc.metmcosv10"
         minSdk = 28  // Android 9+ (modern root tools, Camera2 stable)
         targetSdk = 35
-        versionCode = 17
-        versionName = "10.10.1" // MT-Phosh/MT-Phoc external-rootfs compatibility fix
+        versionCode = 18
+        versionName = "10.10.2" // External rootfs ownership and SELinux access repair
 
         ndk {
             abiFilters += listOf("arm64-v8a")
