@@ -64,366 +64,366 @@ class RootfsManager(private val context: Context) {
             R=${quote(path)}
             MARKER=${quote(marker)}
             APP_UID=$uid
-            [ -d "${'R" ] || { echo "Rootfs directory missing or inaccessible"; exit 11; }
-            ROOT_UID=$(stat -c %u "$R" 2>/dev/null || echo unknown)
-            if [ "$ROOT_UID" != "$APP_UID" ] || [ ! -f "$MARKER" ]; then
-                chown -hR "$APP_UID:$APP_UID" "$R" || { echo "Could not assign rootfs ownership to MT app UID"; exit 21; }
-                command -v restorecon >/dev/null 2>&1 && restorecon -RF "$R" >/dev/null 2>&1 || true
-                echo "$APP_UID" > "$MARKER"
-                chmod 600 "$MARKER"
+            [ -d "${'$'}{'R" ] || { echo "Rootfs directory missing or inaccessible"; exit 11; }
+            ROOT_UID=${'$'}(stat -c %u "${'$'}R" 2>/dev/null || echo unknown)
+            if [ "${'$'}ROOT_UID" != "${'$'}APP_UID" ] || [ ! -f "${'$'}MARKER" ]; then
+                chown -hR "${'$'}APP_UID:${'$'}APP_UID" "${'$'}R" || { echo "Could not assign rootfs ownership to MT app UID"; exit 21; }
+                command -v restorecon >/dev/null 2>&1 && restorecon -RF "${'$'}R" >/dev/null 2>&1 || true
+                echo "${'$'}APP_UID" > "${'$'}MARKER"
+                chmod 600 "${'$'}MARKER"
             fi
-            [ -d "$R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
-            [ -d "$R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
-            [ -d "$R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
-            [ -r "$R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
-            . "$R/etc/os-release"
-            [ "${ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${ID:-unset}"; exit 16; }
-            { [ "${VERSION_CODENAME:-}" = noble ] || [ "${VERSION_ID:-}" = 24.04 ]; } || {
-                echo "Expected Ubuntu 24.04 Noble; found ${VERSION_ID:-unset}/${VERSION_CODENAME:-unset}"; exit 17;
+            [ -d "${'$'}R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
+            [ -d "${'$'}R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
+            [ -d "${'$'}R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
+            [ -r "${'$'}R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
+            . "${'$'}R/etc/os-release"
+            [ "${'$'}{ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${'$'}{ID:-unset}"; exit 16; }
+            { [ "${'$'}{VERSION_CODENAME:-}" = noble ] || [ "${'$'}{VERSION_ID:-}" = 24.04 ]; } || {
+                echo "Expected Ubuntu 24.04 Noble; found ${'$'}{VERSION_ID:-unset}/${'$'}{VERSION_CODENAME:-unset}"; exit 17;
             }
-            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
 }R" ] || { echo "Rootfs directory missing or inaccessible"; exit 11; }
-            ROOT_UID=${'(stat -c %u "$R" 2>/dev/null || echo unknown)
-            if [ "$ROOT_UID" != "$APP_UID" ] || [ ! -f "$MARKER" ]; then
-                chown -hR "$APP_UID:$APP_UID" "$R" || { echo "Could not assign rootfs ownership to MT app UID"; exit 21; }
-                command -v restorecon >/dev/null 2>&1 && restorecon -RF "$R" >/dev/null 2>&1 || true
-                echo "$APP_UID" > "$MARKER"
-                chmod 600 "$MARKER"
+            ROOT_UID=${'$'}{'(stat -c %u "${'$'}R" 2>/dev/null || echo unknown)
+            if [ "${'$'}ROOT_UID" != "${'$'}APP_UID" ] || [ ! -f "${'$'}MARKER" ]; then
+                chown -hR "${'$'}APP_UID:${'$'}APP_UID" "${'$'}R" || { echo "Could not assign rootfs ownership to MT app UID"; exit 21; }
+                command -v restorecon >/dev/null 2>&1 && restorecon -RF "${'$'}R" >/dev/null 2>&1 || true
+                echo "${'$'}APP_UID" > "${'$'}MARKER"
+                chmod 600 "${'$'}MARKER"
             fi
-            [ -d "$R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
-            [ -d "$R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
-            [ -d "$R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
-            [ -r "$R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
-            . "$R/etc/os-release"
-            [ "${ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${ID:-unset}"; exit 16; }
-            { [ "${VERSION_CODENAME:-}" = noble ] || [ "${VERSION_ID:-}" = 24.04 ]; } || {
-                echo "Expected Ubuntu 24.04 Noble; found ${VERSION_ID:-unset}/${VERSION_CODENAME:-unset}"; exit 17;
+            [ -d "${'$'}R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
+            [ -d "${'$'}R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
+            [ -d "${'$'}R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
+            [ -r "${'$'}R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
+            . "${'$'}R/etc/os-release"
+            [ "${'$'}{ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${'$'}{ID:-unset}"; exit 16; }
+            { [ "${'$'}{VERSION_CODENAME:-}" = noble ] || [ "${'$'}{VERSION_ID:-}" = 24.04 ]; } || {
+                echo "Expected Ubuntu 24.04 Noble; found ${'$'}{VERSION_ID:-unset}/${'$'}{VERSION_CODENAME:-unset}"; exit 17;
             }
-            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
-}(stat -c %u "${'R" 2>/dev/null || echo unknown)
-            if [ "$ROOT_UID" != "$APP_UID" ] || [ ! -f "$MARKER" ]; then
-                chown -hR "$APP_UID:$APP_UID" "$R" || { echo "Could not assign rootfs ownership to MT app UID"; exit 21; }
-                command -v restorecon >/dev/null 2>&1 && restorecon -RF "$R" >/dev/null 2>&1 || true
-                echo "$APP_UID" > "$MARKER"
-                chmod 600 "$MARKER"
+}(stat -c %u "${'$'}{'R" 2>/dev/null || echo unknown)
+            if [ "${'$'}ROOT_UID" != "${'$'}APP_UID" ] || [ ! -f "${'$'}MARKER" ]; then
+                chown -hR "${'$'}APP_UID:${'$'}APP_UID" "${'$'}R" || { echo "Could not assign rootfs ownership to MT app UID"; exit 21; }
+                command -v restorecon >/dev/null 2>&1 && restorecon -RF "${'$'}R" >/dev/null 2>&1 || true
+                echo "${'$'}APP_UID" > "${'$'}MARKER"
+                chmod 600 "${'$'}MARKER"
             fi
-            [ -d "$R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
-            [ -d "$R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
-            [ -d "$R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
-            [ -r "$R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
-            . "$R/etc/os-release"
-            [ "${ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${ID:-unset}"; exit 16; }
-            { [ "${VERSION_CODENAME:-}" = noble ] || [ "${VERSION_ID:-}" = 24.04 ]; } || {
-                echo "Expected Ubuntu 24.04 Noble; found ${VERSION_ID:-unset}/${VERSION_CODENAME:-unset}"; exit 17;
+            [ -d "${'$'}R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
+            [ -d "${'$'}R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
+            [ -d "${'$'}R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
+            [ -r "${'$'}R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
+            . "${'$'}R/etc/os-release"
+            [ "${'$'}{ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${'$'}{ID:-unset}"; exit 16; }
+            { [ "${'$'}{VERSION_CODENAME:-}" = noble ] || [ "${'$'}{VERSION_ID:-}" = 24.04 ]; } || {
+                echo "Expected Ubuntu 24.04 Noble; found ${'$'}{VERSION_ID:-unset}/${'$'}{VERSION_CODENAME:-unset}"; exit 17;
             }
-            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
 }R" 2>/dev/null || echo unknown)
-            if [ "${'ROOT_UID" != "$APP_UID" ] || [ ! -f "$MARKER" ]; then
-                chown -hR "$APP_UID:$APP_UID" "$R" || { echo "Could not assign rootfs ownership to MT app UID"; exit 21; }
-                command -v restorecon >/dev/null 2>&1 && restorecon -RF "$R" >/dev/null 2>&1 || true
-                echo "$APP_UID" > "$MARKER"
-                chmod 600 "$MARKER"
+            if [ "${'$'}{'ROOT_UID" != "${'$'}APP_UID" ] || [ ! -f "${'$'}MARKER" ]; then
+                chown -hR "${'$'}APP_UID:${'$'}APP_UID" "${'$'}R" || { echo "Could not assign rootfs ownership to MT app UID"; exit 21; }
+                command -v restorecon >/dev/null 2>&1 && restorecon -RF "${'$'}R" >/dev/null 2>&1 || true
+                echo "${'$'}APP_UID" > "${'$'}MARKER"
+                chmod 600 "${'$'}MARKER"
             fi
-            [ -d "$R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
-            [ -d "$R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
-            [ -d "$R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
-            [ -r "$R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
-            . "$R/etc/os-release"
-            [ "${ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${ID:-unset}"; exit 16; }
-            { [ "${VERSION_CODENAME:-}" = noble ] || [ "${VERSION_ID:-}" = 24.04 ]; } || {
-                echo "Expected Ubuntu 24.04 Noble; found ${VERSION_ID:-unset}/${VERSION_CODENAME:-unset}"; exit 17;
+            [ -d "${'$'}R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
+            [ -d "${'$'}R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
+            [ -d "${'$'}R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
+            [ -r "${'$'}R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
+            . "${'$'}R/etc/os-release"
+            [ "${'$'}{ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${'$'}{ID:-unset}"; exit 16; }
+            { [ "${'$'}{VERSION_CODENAME:-}" = noble ] || [ "${'$'}{VERSION_ID:-}" = 24.04 ]; } || {
+                echo "Expected Ubuntu 24.04 Noble; found ${'$'}{VERSION_ID:-unset}/${'$'}{VERSION_CODENAME:-unset}"; exit 17;
             }
-            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
-}ROOT_UID" != "${'APP_UID" ] || [ ! -f "$MARKER" ]; then
-                chown -hR "$APP_UID:$APP_UID" "$R" || { echo "Could not assign rootfs ownership to MT app UID"; exit 21; }
-                command -v restorecon >/dev/null 2>&1 && restorecon -RF "$R" >/dev/null 2>&1 || true
-                echo "$APP_UID" > "$MARKER"
-                chmod 600 "$MARKER"
+}ROOT_UID" != "${'$'}{'APP_UID" ] || [ ! -f "${'$'}MARKER" ]; then
+                chown -hR "${'$'}APP_UID:${'$'}APP_UID" "${'$'}R" || { echo "Could not assign rootfs ownership to MT app UID"; exit 21; }
+                command -v restorecon >/dev/null 2>&1 && restorecon -RF "${'$'}R" >/dev/null 2>&1 || true
+                echo "${'$'}APP_UID" > "${'$'}MARKER"
+                chmod 600 "${'$'}MARKER"
             fi
-            [ -d "$R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
-            [ -d "$R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
-            [ -d "$R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
-            [ -r "$R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
-            . "$R/etc/os-release"
-            [ "${ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${ID:-unset}"; exit 16; }
-            { [ "${VERSION_CODENAME:-}" = noble ] || [ "${VERSION_ID:-}" = 24.04 ]; } || {
-                echo "Expected Ubuntu 24.04 Noble; found ${VERSION_ID:-unset}/${VERSION_CODENAME:-unset}"; exit 17;
+            [ -d "${'$'}R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
+            [ -d "${'$'}R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
+            [ -d "${'$'}R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
+            [ -r "${'$'}R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
+            . "${'$'}R/etc/os-release"
+            [ "${'$'}{ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${'$'}{ID:-unset}"; exit 16; }
+            { [ "${'$'}{VERSION_CODENAME:-}" = noble ] || [ "${'$'}{VERSION_ID:-}" = 24.04 ]; } || {
+                echo "Expected Ubuntu 24.04 Noble; found ${'$'}{VERSION_ID:-unset}/${'$'}{VERSION_CODENAME:-unset}"; exit 17;
             }
-            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
-}APP_UID" ] || [ ! -f "${'MARKER" ]; then
-                chown -hR "$APP_UID:$APP_UID" "$R" || { echo "Could not assign rootfs ownership to MT app UID"; exit 21; }
-                command -v restorecon >/dev/null 2>&1 && restorecon -RF "$R" >/dev/null 2>&1 || true
-                echo "$APP_UID" > "$MARKER"
-                chmod 600 "$MARKER"
+}APP_UID" ] || [ ! -f "${'$'}{'MARKER" ]; then
+                chown -hR "${'$'}APP_UID:${'$'}APP_UID" "${'$'}R" || { echo "Could not assign rootfs ownership to MT app UID"; exit 21; }
+                command -v restorecon >/dev/null 2>&1 && restorecon -RF "${'$'}R" >/dev/null 2>&1 || true
+                echo "${'$'}APP_UID" > "${'$'}MARKER"
+                chmod 600 "${'$'}MARKER"
             fi
-            [ -d "$R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
-            [ -d "$R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
-            [ -d "$R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
-            [ -r "$R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
-            . "$R/etc/os-release"
-            [ "${ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${ID:-unset}"; exit 16; }
-            { [ "${VERSION_CODENAME:-}" = noble ] || [ "${VERSION_ID:-}" = 24.04 ]; } || {
-                echo "Expected Ubuntu 24.04 Noble; found ${VERSION_ID:-unset}/${VERSION_CODENAME:-unset}"; exit 17;
+            [ -d "${'$'}R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
+            [ -d "${'$'}R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
+            [ -d "${'$'}R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
+            [ -r "${'$'}R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
+            . "${'$'}R/etc/os-release"
+            [ "${'$'}{ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${'$'}{ID:-unset}"; exit 16; }
+            { [ "${'$'}{VERSION_CODENAME:-}" = noble ] || [ "${'$'}{VERSION_ID:-}" = 24.04 ]; } || {
+                echo "Expected Ubuntu 24.04 Noble; found ${'$'}{VERSION_ID:-unset}/${'$'}{VERSION_CODENAME:-unset}"; exit 17;
             }
-            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
 }MARKER" ]; then
-                chown -hR "${'APP_UID:$APP_UID" "$R" || { echo "Could not assign rootfs ownership to MT app UID"; exit 21; }
-                command -v restorecon >/dev/null 2>&1 && restorecon -RF "$R" >/dev/null 2>&1 || true
-                echo "$APP_UID" > "$MARKER"
-                chmod 600 "$MARKER"
+                chown -hR "${'$'}{'APP_UID:${'$'}APP_UID" "${'$'}R" || { echo "Could not assign rootfs ownership to MT app UID"; exit 21; }
+                command -v restorecon >/dev/null 2>&1 && restorecon -RF "${'$'}R" >/dev/null 2>&1 || true
+                echo "${'$'}APP_UID" > "${'$'}MARKER"
+                chmod 600 "${'$'}MARKER"
             fi
-            [ -d "$R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
-            [ -d "$R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
-            [ -d "$R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
-            [ -r "$R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
-            . "$R/etc/os-release"
-            [ "${ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${ID:-unset}"; exit 16; }
-            { [ "${VERSION_CODENAME:-}" = noble ] || [ "${VERSION_ID:-}" = 24.04 ]; } || {
-                echo "Expected Ubuntu 24.04 Noble; found ${VERSION_ID:-unset}/${VERSION_CODENAME:-unset}"; exit 17;
+            [ -d "${'$'}R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
+            [ -d "${'$'}R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
+            [ -d "${'$'}R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
+            [ -r "${'$'}R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
+            . "${'$'}R/etc/os-release"
+            [ "${'$'}{ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${'$'}{ID:-unset}"; exit 16; }
+            { [ "${'$'}{VERSION_CODENAME:-}" = noble ] || [ "${'$'}{VERSION_ID:-}" = 24.04 ]; } || {
+                echo "Expected Ubuntu 24.04 Noble; found ${'$'}{VERSION_ID:-unset}/${'$'}{VERSION_CODENAME:-unset}"; exit 17;
             }
-            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
-}APP_UID:${'APP_UID" "$R" || { echo "Could not assign rootfs ownership to MT app UID"; exit 21; }
-                command -v restorecon >/dev/null 2>&1 && restorecon -RF "$R" >/dev/null 2>&1 || true
-                echo "$APP_UID" > "$MARKER"
-                chmod 600 "$MARKER"
+}APP_UID:${'$'}{'APP_UID" "${'$'}R" || { echo "Could not assign rootfs ownership to MT app UID"; exit 21; }
+                command -v restorecon >/dev/null 2>&1 && restorecon -RF "${'$'}R" >/dev/null 2>&1 || true
+                echo "${'$'}APP_UID" > "${'$'}MARKER"
+                chmod 600 "${'$'}MARKER"
             fi
-            [ -d "$R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
-            [ -d "$R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
-            [ -d "$R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
-            [ -r "$R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
-            . "$R/etc/os-release"
-            [ "${ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${ID:-unset}"; exit 16; }
-            { [ "${VERSION_CODENAME:-}" = noble ] || [ "${VERSION_ID:-}" = 24.04 ]; } || {
-                echo "Expected Ubuntu 24.04 Noble; found ${VERSION_ID:-unset}/${VERSION_CODENAME:-unset}"; exit 17;
+            [ -d "${'$'}R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
+            [ -d "${'$'}R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
+            [ -d "${'$'}R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
+            [ -r "${'$'}R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
+            . "${'$'}R/etc/os-release"
+            [ "${'$'}{ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${'$'}{ID:-unset}"; exit 16; }
+            { [ "${'$'}{VERSION_CODENAME:-}" = noble ] || [ "${'$'}{VERSION_ID:-}" = 24.04 ]; } || {
+                echo "Expected Ubuntu 24.04 Noble; found ${'$'}{VERSION_ID:-unset}/${'$'}{VERSION_CODENAME:-unset}"; exit 17;
             }
-            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
-}APP_UID" "${'R" || { echo "Could not assign rootfs ownership to MT app UID"; exit 21; }
-                command -v restorecon >/dev/null 2>&1 && restorecon -RF "$R" >/dev/null 2>&1 || true
-                echo "$APP_UID" > "$MARKER"
-                chmod 600 "$MARKER"
+}APP_UID" "${'$'}{'R" || { echo "Could not assign rootfs ownership to MT app UID"; exit 21; }
+                command -v restorecon >/dev/null 2>&1 && restorecon -RF "${'$'}R" >/dev/null 2>&1 || true
+                echo "${'$'}APP_UID" > "${'$'}MARKER"
+                chmod 600 "${'$'}MARKER"
             fi
-            [ -d "$R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
-            [ -d "$R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
-            [ -d "$R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
-            [ -r "$R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
-            . "$R/etc/os-release"
-            [ "${ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${ID:-unset}"; exit 16; }
-            { [ "${VERSION_CODENAME:-}" = noble ] || [ "${VERSION_ID:-}" = 24.04 ]; } || {
-                echo "Expected Ubuntu 24.04 Noble; found ${VERSION_ID:-unset}/${VERSION_CODENAME:-unset}"; exit 17;
+            [ -d "${'$'}R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
+            [ -d "${'$'}R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
+            [ -d "${'$'}R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
+            [ -r "${'$'}R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
+            . "${'$'}R/etc/os-release"
+            [ "${'$'}{ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${'$'}{ID:-unset}"; exit 16; }
+            { [ "${'$'}{VERSION_CODENAME:-}" = noble ] || [ "${'$'}{VERSION_ID:-}" = 24.04 ]; } || {
+                echo "Expected Ubuntu 24.04 Noble; found ${'$'}{VERSION_ID:-unset}/${'$'}{VERSION_CODENAME:-unset}"; exit 17;
             }
-            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
 }R" || { echo "Could not assign rootfs ownership to MT app UID"; exit 21; }
-                command -v restorecon >/dev/null 2>&1 && restorecon -RF "${'R" >/dev/null 2>&1 || true
-                echo "$APP_UID" > "$MARKER"
-                chmod 600 "$MARKER"
+                command -v restorecon >/dev/null 2>&1 && restorecon -RF "${'$'}{'R" >/dev/null 2>&1 || true
+                echo "${'$'}APP_UID" > "${'$'}MARKER"
+                chmod 600 "${'$'}MARKER"
             fi
-            [ -d "$R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
-            [ -d "$R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
-            [ -d "$R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
-            [ -r "$R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
-            . "$R/etc/os-release"
-            [ "${ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${ID:-unset}"; exit 16; }
-            { [ "${VERSION_CODENAME:-}" = noble ] || [ "${VERSION_ID:-}" = 24.04 ]; } || {
-                echo "Expected Ubuntu 24.04 Noble; found ${VERSION_ID:-unset}/${VERSION_CODENAME:-unset}"; exit 17;
+            [ -d "${'$'}R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
+            [ -d "${'$'}R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
+            [ -d "${'$'}R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
+            [ -r "${'$'}R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
+            . "${'$'}R/etc/os-release"
+            [ "${'$'}{ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${'$'}{ID:-unset}"; exit 16; }
+            { [ "${'$'}{VERSION_CODENAME:-}" = noble ] || [ "${'$'}{VERSION_ID:-}" = 24.04 ]; } || {
+                echo "Expected Ubuntu 24.04 Noble; found ${'$'}{VERSION_ID:-unset}/${'$'}{VERSION_CODENAME:-unset}"; exit 17;
             }
-            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
 }R" >/dev/null 2>&1 || true
-                echo "${'APP_UID" > "$MARKER"
-                chmod 600 "$MARKER"
+                echo "${'$'}{'APP_UID" > "${'$'}MARKER"
+                chmod 600 "${'$'}MARKER"
             fi
-            [ -d "$R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
-            [ -d "$R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
-            [ -d "$R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
-            [ -r "$R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
-            . "$R/etc/os-release"
-            [ "${ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${ID:-unset}"; exit 16; }
-            { [ "${VERSION_CODENAME:-}" = noble ] || [ "${VERSION_ID:-}" = 24.04 ]; } || {
-                echo "Expected Ubuntu 24.04 Noble; found ${VERSION_ID:-unset}/${VERSION_CODENAME:-unset}"; exit 17;
+            [ -d "${'$'}R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
+            [ -d "${'$'}R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
+            [ -d "${'$'}R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
+            [ -r "${'$'}R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
+            . "${'$'}R/etc/os-release"
+            [ "${'$'}{ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${'$'}{ID:-unset}"; exit 16; }
+            { [ "${'$'}{VERSION_CODENAME:-}" = noble ] || [ "${'$'}{VERSION_ID:-}" = 24.04 ]; } || {
+                echo "Expected Ubuntu 24.04 Noble; found ${'$'}{VERSION_ID:-unset}/${'$'}{VERSION_CODENAME:-unset}"; exit 17;
             }
-            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
-}APP_UID" > "${'MARKER"
-                chmod 600 "$MARKER"
+}APP_UID" > "${'$'}{'MARKER"
+                chmod 600 "${'$'}MARKER"
             fi
-            [ -d "$R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
-            [ -d "$R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
-            [ -d "$R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
-            [ -r "$R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
-            . "$R/etc/os-release"
-            [ "${ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${ID:-unset}"; exit 16; }
-            { [ "${VERSION_CODENAME:-}" = noble ] || [ "${VERSION_ID:-}" = 24.04 ]; } || {
-                echo "Expected Ubuntu 24.04 Noble; found ${VERSION_ID:-unset}/${VERSION_CODENAME:-unset}"; exit 17;
+            [ -d "${'$'}R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
+            [ -d "${'$'}R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
+            [ -d "${'$'}R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
+            [ -r "${'$'}R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
+            . "${'$'}R/etc/os-release"
+            [ "${'$'}{ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${'$'}{ID:-unset}"; exit 16; }
+            { [ "${'$'}{VERSION_CODENAME:-}" = noble ] || [ "${'$'}{VERSION_ID:-}" = 24.04 ]; } || {
+                echo "Expected Ubuntu 24.04 Noble; found ${'$'}{VERSION_ID:-unset}/${'$'}{VERSION_CODENAME:-unset}"; exit 17;
             }
-            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
-            echo OK
-}MARKER"
-                chmod 600 "${'MARKER"
-            fi
-            [ -d "$R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
-            [ -d "$R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
-            [ -d "$R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
-            [ -r "$R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
-            . "$R/etc/os-release"
-            [ "${ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${ID:-unset}"; exit 16; }
-            { [ "${VERSION_CODENAME:-}" = noble ] || [ "${VERSION_ID:-}" = 24.04 ]; } || {
-                echo "Expected Ubuntu 24.04 Noble; found ${VERSION_ID:-unset}/${VERSION_CODENAME:-unset}"; exit 17;
-            }
-            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
 }MARKER"
+                chmod 600 "${'$'}{'MARKER"
             fi
-            [ -d "${'R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
-            [ -d "$R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
-            [ -d "$R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
-            [ -r "$R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
-            . "$R/etc/os-release"
-            [ "${ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${ID:-unset}"; exit 16; }
-            { [ "${VERSION_CODENAME:-}" = noble ] || [ "${VERSION_ID:-}" = 24.04 ]; } || {
-                echo "Expected Ubuntu 24.04 Noble; found ${VERSION_ID:-unset}/${VERSION_CODENAME:-unset}"; exit 17;
+            [ -d "${'$'}R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
+            [ -d "${'$'}R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
+            [ -d "${'$'}R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
+            [ -r "${'$'}R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
+            . "${'$'}R/etc/os-release"
+            [ "${'$'}{ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${'$'}{ID:-unset}"; exit 16; }
+            { [ "${'$'}{VERSION_CODENAME:-}" = noble ] || [ "${'$'}{VERSION_ID:-}" = 24.04 ]; } || {
+                echo "Expected Ubuntu 24.04 Noble; found ${'$'}{VERSION_ID:-unset}/${'$'}{VERSION_CODENAME:-unset}"; exit 17;
             }
-            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            echo OK
+}MARKER"
+            fi
+            [ -d "${'$'}{'R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
+            [ -d "${'$'}R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
+            [ -d "${'$'}R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
+            [ -r "${'$'}R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
+            . "${'$'}R/etc/os-release"
+            [ "${'$'}{ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${'$'}{ID:-unset}"; exit 16; }
+            { [ "${'$'}{VERSION_CODENAME:-}" = noble ] || [ "${'$'}{VERSION_ID:-}" = 24.04 ]; } || {
+                echo "Expected Ubuntu 24.04 Noble; found ${'$'}{VERSION_ID:-unset}/${'$'}{VERSION_CODENAME:-unset}"; exit 17;
+            }
+            [ -x "${'$'}R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
 }R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
-            [ -d "${'R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
-            [ -d "$R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
-            [ -r "$R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
-            . "$R/etc/os-release"
-            [ "${ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${ID:-unset}"; exit 16; }
-            { [ "${VERSION_CODENAME:-}" = noble ] || [ "${VERSION_ID:-}" = 24.04 ]; } || {
-                echo "Expected Ubuntu 24.04 Noble; found ${VERSION_ID:-unset}/${VERSION_CODENAME:-unset}"; exit 17;
+            [ -d "${'$'}{'R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
+            [ -d "${'$'}R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
+            [ -r "${'$'}R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
+            . "${'$'}R/etc/os-release"
+            [ "${'$'}{ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${'$'}{ID:-unset}"; exit 16; }
+            { [ "${'$'}{VERSION_CODENAME:-}" = noble ] || [ "${'$'}{VERSION_ID:-}" = 24.04 ]; } || {
+                echo "Expected Ubuntu 24.04 Noble; found ${'$'}{VERSION_ID:-unset}/${'$'}{VERSION_CODENAME:-unset}"; exit 17;
             }
-            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
 }R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
-            [ -d "${'R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
-            [ -r "$R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
-            . "$R/etc/os-release"
-            [ "${ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${ID:-unset}"; exit 16; }
-            { [ "${VERSION_CODENAME:-}" = noble ] || [ "${VERSION_ID:-}" = 24.04 ]; } || {
-                echo "Expected Ubuntu 24.04 Noble; found ${VERSION_ID:-unset}/${VERSION_CODENAME:-unset}"; exit 17;
+            [ -d "${'$'}{'R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
+            [ -r "${'$'}R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
+            . "${'$'}R/etc/os-release"
+            [ "${'$'}{ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${'$'}{ID:-unset}"; exit 16; }
+            { [ "${'$'}{VERSION_CODENAME:-}" = noble ] || [ "${'$'}{VERSION_ID:-}" = 24.04 ]; } || {
+                echo "Expected Ubuntu 24.04 Noble; found ${'$'}{VERSION_ID:-unset}/${'$'}{VERSION_CODENAME:-unset}"; exit 17;
             }
-            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
 }R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
-            [ -r "${'R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
-            . "$R/etc/os-release"
-            [ "${ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${ID:-unset}"; exit 16; }
-            { [ "${VERSION_CODENAME:-}" = noble ] || [ "${VERSION_ID:-}" = 24.04 ]; } || {
-                echo "Expected Ubuntu 24.04 Noble; found ${VERSION_ID:-unset}/${VERSION_CODENAME:-unset}"; exit 17;
+            [ -r "${'$'}{'R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
+            . "${'$'}R/etc/os-release"
+            [ "${'$'}{ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${'$'}{ID:-unset}"; exit 16; }
+            { [ "${'$'}{VERSION_CODENAME:-}" = noble ] || [ "${'$'}{VERSION_ID:-}" = 24.04 ]; } || {
+                echo "Expected Ubuntu 24.04 Noble; found ${'$'}{VERSION_ID:-unset}/${'$'}{VERSION_CODENAME:-unset}"; exit 17;
             }
-            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
 }R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
-            . "${'R/etc/os-release"
-            [ "${ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${ID:-unset}"; exit 16; }
-            { [ "${VERSION_CODENAME:-}" = noble ] || [ "${VERSION_ID:-}" = 24.04 ]; } || {
-                echo "Expected Ubuntu 24.04 Noble; found ${VERSION_ID:-unset}/${VERSION_CODENAME:-unset}"; exit 17;
+            . "${'$'}{'R/etc/os-release"
+            [ "${'$'}{ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${'$'}{ID:-unset}"; exit 16; }
+            { [ "${'$'}{VERSION_CODENAME:-}" = noble ] || [ "${'$'}{VERSION_ID:-}" = 24.04 ]; } || {
+                echo "Expected Ubuntu 24.04 Noble; found ${'$'}{VERSION_ID:-unset}/${'$'}{VERSION_CODENAME:-unset}"; exit 17;
             }
-            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
 }R/etc/os-release"
-            [ "${'{ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${ID:-unset}"; exit 16; }
-            { [ "${VERSION_CODENAME:-}" = noble ] || [ "${VERSION_ID:-}" = 24.04 ]; } || {
-                echo "Expected Ubuntu 24.04 Noble; found ${VERSION_ID:-unset}/${VERSION_CODENAME:-unset}"; exit 17;
+            [ "${'$'}{'{ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${'$'}{ID:-unset}"; exit 16; }
+            { [ "${'$'}{VERSION_CODENAME:-}" = noble ] || [ "${'$'}{VERSION_ID:-}" = 24.04 ]; } || {
+                echo "Expected Ubuntu 24.04 Noble; found ${'$'}{VERSION_ID:-unset}/${'$'}{VERSION_CODENAME:-unset}"; exit 17;
             }
-            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
-}{ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${'{ID:-unset}"; exit 16; }
-            { [ "${VERSION_CODENAME:-}" = noble ] || [ "${VERSION_ID:-}" = 24.04 ]; } || {
-                echo "Expected Ubuntu 24.04 Noble; found ${VERSION_ID:-unset}/${VERSION_CODENAME:-unset}"; exit 17;
+}{ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${'$'}{'{ID:-unset}"; exit 16; }
+            { [ "${'$'}{VERSION_CODENAME:-}" = noble ] || [ "${'$'}{VERSION_ID:-}" = 24.04 ]; } || {
+                echo "Expected Ubuntu 24.04 Noble; found ${'$'}{VERSION_ID:-unset}/${'$'}{VERSION_CODENAME:-unset}"; exit 17;
             }
-            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
 }{ID:-unset}"; exit 16; }
-            { [ "${'{VERSION_CODENAME:-}" = noble ] || [ "${VERSION_ID:-}" = 24.04 ]; } || {
-                echo "Expected Ubuntu 24.04 Noble; found ${VERSION_ID:-unset}/${VERSION_CODENAME:-unset}"; exit 17;
+            { [ "${'$'}{'{VERSION_CODENAME:-}" = noble ] || [ "${'$'}{VERSION_ID:-}" = 24.04 ]; } || {
+                echo "Expected Ubuntu 24.04 Noble; found ${'$'}{VERSION_ID:-unset}/${'$'}{VERSION_CODENAME:-unset}"; exit 17;
             }
-            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
-}{VERSION_CODENAME:-}" = noble ] || [ "${'{VERSION_ID:-}" = 24.04 ]; } || {
-                echo "Expected Ubuntu 24.04 Noble; found ${VERSION_ID:-unset}/${VERSION_CODENAME:-unset}"; exit 17;
+}{VERSION_CODENAME:-}" = noble ] || [ "${'$'}{'{VERSION_ID:-}" = 24.04 ]; } || {
+                echo "Expected Ubuntu 24.04 Noble; found ${'$'}{VERSION_ID:-unset}/${'$'}{VERSION_CODENAME:-unset}"; exit 17;
             }
-            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
 }{VERSION_ID:-}" = 24.04 ]; } || {
-                echo "Expected Ubuntu 24.04 Noble; found ${'{VERSION_ID:-unset}/${VERSION_CODENAME:-unset}"; exit 17;
+                echo "Expected Ubuntu 24.04 Noble; found ${'$'}{'{VERSION_ID:-unset}/${'$'}{VERSION_CODENAME:-unset}"; exit 17;
             }
-            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
-}{VERSION_ID:-unset}/${'{VERSION_CODENAME:-unset}"; exit 17;
+}{VERSION_ID:-unset}/${'$'}{'{VERSION_CODENAME:-unset}"; exit 17;
             }
-            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
 }{VERSION_CODENAME:-unset}"; exit 17;
             }
-            [ -x "${'R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}{'R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "${'$'}R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
 }R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
-            [ -x "${'R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}{'R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "${'$'}R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
 }R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
-            [ -x "${'R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            [ -x "${'$'}{'R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
 }R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
             echo OK
