@@ -56,20 +56,19 @@ class RootfsManager(private val context: Context) {
      */
     fun getExternalRootfsStatus(): String {
         val path = rootfsDir.absolutePath
-        val quotedPath = "'" + path.replace("'", "'\\''") + "'"
+        fun quote(value: String) = "'" + value.replace("'", "'\\''") + "'"
+        val marker = File(baseDir, ".mt-rootfs-access-v1").absolutePath
+        val uid = android.os.Process.myUid()
         val script = """
             set -eu
-            R=$quotedPath
+            R=${quote(path)}
+            MARKER=${quote(marker)}
+            APP_UID=$uid
             [ -d "$R" ] || { echo "Rootfs directory missing or inaccessible"; exit 11; }
-            APP_UID=\${android.os.Process.myUid()}
-            MARKER='\${rootfsDir.parentFile?.absolutePath}/.mt-rootfs-access-v1'
-            # Repair root-owned manual extraction once; preserve permission bits.
             ROOT_UID=$(stat -c %u "$R" 2>/dev/null || echo unknown)
             if [ "$ROOT_UID" != "$APP_UID" ] || [ ! -f "$MARKER" ]; then
                 chown -hR "$APP_UID:$APP_UID" "$R" || { echo "Could not assign rootfs ownership to MT app UID"; exit 21; }
-                if command -v restorecon >/dev/null 2>&1; then
-                    restorecon -RF "$R" >/dev/null 2>&1 || true
-                fi
+                command -v restorecon >/dev/null 2>&1 && restorecon -RF "$R" >/dev/null 2>&1 || true
                 echo "$APP_UID" > "$MARKER"
                 chmod 600 "$MARKER"
             fi
@@ -85,7 +84,7 @@ class RootfsManager(private val context: Context) {
             [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
             [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
             [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
-            echo "OK"
+            echo OK
         """.trimIndent()
         return try {
             val process = ProcessBuilder("su", "-c", script).redirectErrorStream(true).start()
