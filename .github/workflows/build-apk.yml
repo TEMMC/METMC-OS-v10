@@ -6,7 +6,7 @@ name: Build METMC OS v10 APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, fix/restore-known-working-phosh]
+    branches: [main, fix/restore-known-working-phosh, rootfs-protection-2026-10-30]
     paths:
       - "android/**"
       - "linux/config/**"
