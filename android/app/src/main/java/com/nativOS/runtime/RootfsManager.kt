@@ -49,36 +49,41 @@ class RootfsManager(private val context: Context) {
      * Validate the separately extracted Ubuntu Noble rootfs used by the app-only APK.
      * Readiness is based on the actual filesystem, not an APK asset or archive.
      */
+    /**
+     * Validate app-private rootfs as root. The app process may not be able to traverse
+     * Android's private data parents after the tree has been installed root:root.
+     * Never use java.io.File metadata/read checks for this root-owned tree.
+     */
     fun getExternalRootfsStatus(): String {
-        if (!rootfsDir.exists()) return "Rootfs directory does not exist"
-        if (!rootfsDir.isDirectory) return "Rootfs path is not a directory"
-        // Ubuntu 24.04 uses merged-/usr: /bin is a symlink to usr/bin.
-        // Validate the real target directly instead of File.exists() on that symlink.
-        for (name in listOf("usr", "usr/bin", "etc")) {
-            if (!File(rootfsDir, name).isDirectory) return "Missing required directory: $name"
-        }
-        val binLink = File(rootfsDir, "bin")
-        val release = File(rootfsDir, "etc/os-release")
-        // Read directly rather than relying on isFile(): Android's File metadata checks
-        // can disagree with reads for symlinked rootfs entries.
-        val contents = runCatching { release.inputStream().bufferedReader().use { it.readText() } }
-            .getOrElse {
-                return "Cannot read etc/os-release (exists=${release.exists()}, symlink=${runCatching { java.nio.file.Files.isSymbolicLink(release.toPath()) }.getOrDefault(false)}): ${it.message ?: "permission denied"}"
+        val path = rootfsDir.absolutePath
+        val quotedPath = "'" + path.replace("'", "'\\''") + "'"
+        val script = """
+            set -eu
+            R=$quotedPath
+            [ -d "$R" ] || { echo "Rootfs directory missing or inaccessible"; exit 11; }
+            [ -d "$R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
+            [ -d "$R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
+            [ -d "$R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
+            [ -r "$R/etc/os-release" ] || { echo "Cannot read etc/os-release as root"; exit 15; }
+            . "$R/etc/os-release"
+            [ "${ID:-}" = ubuntu ] || { echo "Expected Ubuntu ID; found ${ID:-unset}"; exit 16; }
+            { [ "${VERSION_CODENAME:-}" = noble ] || [ "${VERSION_ID:-}" = 24.04 ]; } || {
+                echo "Expected Ubuntu 24.04 Noble; found ${VERSION_ID:-unset}/${VERSION_CODENAME:-unset}"; exit 17;
             }
-        val fields = contents.lineSequence().mapNotNull { line ->
-            val item = line.trim()
-            val split = item.indexOf('=')
-            if (split <= 0 || item.startsWith("#")) null
-            else item.substring(0, split).trim() to item.substring(split + 1).trim().trim('"')
-        }.toMap()
-        val id = fields["ID"]?.lowercase()
-        val version = fields["VERSION_ID"]
-        val codename = fields["VERSION_CODENAME"]?.lowercase()
-        if (id != "ubuntu") return "Expected ID=ubuntu in os-release; found ${id ?: "no ID"}"
-        if (codename != "noble" && version != "24.04") {
-            return "Expected Ubuntu 24.04 Noble; found VERSION_ID=${version ?: "unset"}, VERSION_CODENAME=${codename ?: "unset"}"
+            [ -x "$R/usr/libexec/phosh" ] || { echo "Missing executable usr/libexec/phosh"; exit 18; }
+            [ -x "$R/usr/local/bin/phoc" ] || { echo "Missing executable usr/local/bin/phoc"; exit 19; }
+            [ -x "$R/usr/local/bin/nativOS-bridge" ] || { echo "Missing executable usr/local/bin/nativOS-bridge"; exit 20; }
+            echo "OK"
+        """.trimIndent()
+        return try {
+            val process = ProcessBuilder("su", "-c", script).redirectErrorStream(true).start()
+            val output = process.inputStream.bufferedReader().use { it.readText() }.trim()
+            val exit = process.waitFor()
+            if (exit == 0 && output.lineSequence().lastOrNull() == "OK") "OK"
+            else output.ifBlank { "Root validation failed (exit=$exit)" }
+        } catch (error: Exception) {
+            "Could not validate rootfs with superuser access: ${error.message ?: error.javaClass.simpleName}"
         }
-        return "OK"
     }
 
     fun isExternalRootfsReady(): Boolean = getExternalRootfsStatus() == "OK"
