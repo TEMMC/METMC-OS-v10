@@ -48,9 +48,15 @@ class RootfsManager(private val context: Context) {
         File(rootfsDir, "etc/os-release").isFile
 
     /** Accept supported local systems without forcing a distro migration during an APK upgrade. */
-    fun isSupportedRootfsReady(): Boolean {
-        if (!isRootfsReady()) return false
-        val release = runCatching { File(rootfsDir, "etc/os-release").readText() }.getOrDefault("")
+    fun isSupportedRootfsReady(): Boolean = isSupportedRootfsAt(rootfsDir)
+
+    private fun isSupportedRootfsAt(directory: File): Boolean {
+        if (!directory.isDirectory ||
+            !File(directory, "bin").isDirectory ||
+            !File(directory, "usr").isDirectory ||
+            !File(directory, "etc").isDirectory ||
+            !File(directory, "etc/os-release").isFile) return false
+        val release = runCatching { File(directory, "etc/os-release").readText() }.getOrDefault("")
         return Regex("""(?m)^ID=["']?(alpine|ubuntu)["']?$""").containsMatchIn(release)
     }
 
@@ -249,39 +255,33 @@ class RootfsManager(private val context: Context) {
     }
 
     fun extractRootfs(onProgress: (progress: Double, status: String) -> Unit) {
-        // Installation only: never extract over an existing rootfs, even if incomplete.
+        // Installation only. Never extract over the active rootfs.
         if (rootfsDir.exists()) {
             Log.e(TAG, "Refusing rootfs extraction because the destination already exists")
             onProgress(-1.0, "Existing rootfs protected; use an explicit recovery workflow to replace it")
             return
         }
-        var previousRootfs: File? = null
+
+        val distro = getInstalledDistro().ifEmpty { DEFAULT_DISTRO }
+        val tarball = File(downloadDir, if (distro == "alpine") "${distro}-rootfs.tar" else "${distro}-rootfs.tar.gz")
+        val stagingRootfs = File(baseDir, "rootfs-installing")
         try {
-            val distro = getInstalledDistro().ifEmpty { DEFAULT_DISTRO }
-            val tarball = File(downloadDir, if (distro == "alpine") "${distro}-rootfs.tar" else "${distro}-rootfs.tar.gz")
-            if (!tarball.exists()) {
-                onProgress(-1.0, "Rootfs tarball not found.")
-                return
+            if (!tarball.isFile || tarball.length() == 0L) {
+                throw IllegalStateException("Rootfs archive is missing or empty")
+            }
+            // This directory is never used as the live chroot. A failed extraction
+            // can be discarded without affecting the current installation.
+            if (stagingRootfs.exists() && !stagingRootfs.deleteRecursively()) {
+                throw IllegalStateException("Could not clear incomplete rootfs staging directory")
+            }
+            if (!stagingRootfs.mkdirs()) {
+                throw IllegalStateException("Could not create rootfs staging directory")
             }
 
-            // Keep the previous installation until the new rootfs validates.
-            // This allows a Linux distribution migration without immediately
-            // destroying the old system if extraction or validation fails.
-            if (rootfsDir.exists()) {
-                val backup = File(baseDir, "rootfs-previous-${System.currentTimeMillis()}")
-                if (!rootfsDir.renameTo(backup)) {
-                    throw IllegalStateException("Could not safely move the previous Linux rootfs")
-                }
-                previousRootfs = backup
-            }
-            if (!rootfsDir.mkdirs() && !rootfsDir.isDirectory) {
-                throw IllegalStateException("Could not create the new Linux rootfs directory")
-            }
-
-            onProgress(0.1, "Extracting Linux filesystem...")
-            Log.i(TAG, "Extracting rootfs from ${tarball.absolutePath}")
+            onProgress(0.1, "Extracting Linux filesystem into isolated staging...")
+            Log.i(TAG, "Extracting rootfs archive into ${stagingRootfs.absolutePath}")
             val tarArgs = if (distro == "alpine") "xf" else "zxf"
-            val process = ProcessBuilder("tar", tarArgs, tarball.absolutePath, "-C", rootfsDir.absolutePath)
+            val process = ProcessBuilder("tar", tarArgs, tarball.absolutePath, "-C", stagingRootfs.absolutePath)
                 .redirectErrorStream(true).start()
             val reader = process.inputStream.bufferedReader()
             var line: String?
@@ -290,78 +290,60 @@ class RootfsManager(private val context: Context) {
             while (reader.readLine().also { line = it } != null) {
                 lastLine = line!!
                 lineCount++
-                if (lineCount % 500 == 0) onProgress(0.1 + (lineCount % 5000) / 10000.0, "Extracting files...")
+                if (lineCount % 500 == 0) {
+                    onProgress(0.1 + (lineCount % 5000) / 10000.0, "Extracting files...")
+                }
             }
             val exitCode = process.waitFor()
             if (exitCode != 0) throw RuntimeException("tar failed (code $exitCode): $lastLine")
 
-            onProgress(0.7, "Configuring Linux environment...")
-            configureRootfs()
-            if (!isSupportedRootfsReady()) {
-                throw IllegalStateException("Extracted rootfs is not a supported Alpine or Ubuntu installation")
+            onProgress(0.7, "Configuring staged Linux environment...")
+            configureRootfs(stagingRootfs)
+            if (!isSupportedRootfsAt(stagingRootfs)) {
+                throw IllegalStateException("Extracted rootfs is not a supported, structurally valid Alpine or Ubuntu installation")
+            }
+
+            // Atomic same-filesystem promotion. The live path appears only after
+            // extraction and structural validation have both succeeded.
+            if (rootfsDir.exists()) {
+                throw IllegalStateException("An active rootfs appeared during installation; refusing to replace it")
+            }
+            if (!stagingRootfs.renameTo(rootfsDir)) {
+                throw IllegalStateException("Could not atomically activate the validated rootfs")
             }
             setupCompleteFile.writeText("done")
-
-            // Preserve the user's Linux home directory when replacing an older distro.
-            previousRootfs?.let { backup ->
-                val oldHome = File(backup, "home/metmc")
-                if (oldHome.exists()) {
-                    val newHome = File(rootfsDir, "home/metmc")
-                    if (newHome.exists() && !newHome.deleteRecursively()) {
-                        throw IllegalStateException("Could not prepare the new metmc home directory")
-                    }
-                    newHome.parentFile?.mkdirs()
-                    if (!oldHome.renameTo(newHome)) {
-                        oldHome.copyRecursively(newHome, overwrite = true)
-                        if (!oldHome.deleteRecursively()) {
-                            Log.w(TAG, "Old metmc home remains in the previous-rootfs backup")
-                        }
-                    }
-                }
-            }
-
-            previousRootfs?.let { backup ->
-                if (backup.exists() && !backup.deleteRecursively()) {
-                    Log.w(TAG, "Could not remove previous rootfs backup: ${backup.absolutePath}")
-                }
-            }
             tarball.delete()
-            onProgress(1.0, "Linux filesystem ready")
-        } catch (e: Exception) {
-            previousRootfs?.let { backup ->
-                if (backup.exists()) {
-                    rootfsDir.deleteRecursively()
-                    if (!backup.renameTo(rootfsDir)) {
-                        Log.e(TAG, "Failed to restore previous rootfs from ${backup.absolutePath}")
-                    }
-                }
+            onProgress(1.0, "Linux filesystem installed and verified")
+        } catch (error: Throwable) {
+            if (stagingRootfs.exists() && !stagingRootfs.deleteRecursively()) {
+                Log.w(TAG, "Could not remove failed staging rootfs: ${stagingRootfs.absolutePath}")
             }
-            Log.e(TAG, "Extraction failed: ${e.message}", e)
-            onProgress(-1.0, "Extraction failed: ${e.message}")
+            Log.e(TAG, "Rootfs installation failed; active rootfs was not changed", error)
+            onProgress(-1.0, "Rootfs installation failed: ${error.message}")
         }
     }
 
-    private fun configureRootfs() {
-        File(rootfsDir, "etc/resolv.conf").apply {
+    private fun configureRootfs(targetRootfs: File = rootfsDir) {
+        File(targetRootfs, "etc/resolv.conf").apply {
             parentFile?.mkdirs()
             writeText("nameserver 8.8.8.8\nnameserver 8.8.4.4\nnameserver 1.1.1.1\n")
         }
-        File(rootfsDir, "etc/hostname").writeText("metmc-os\n")
-        File(rootfsDir, "etc/hosts").apply {
+        File(targetRootfs, "etc/hostname").writeText("metmc-os\n")
+        File(targetRootfs, "etc/hosts").apply {
             parentFile?.mkdirs()
             writeText("127.0.0.1 localhost\n127.0.1.1 metmc-os\n::1 localhost\n")
         }
-        File(rootfsDir, "etc/profile.d/nativOS.sh").delete()
-        File(rootfsDir, "etc/profile.d/metmc-os.sh").apply {
+        File(targetRootfs, "etc/profile.d/nativOS.sh").delete()
+        File(targetRootfs, "etc/profile.d/metmc-os.sh").apply {
             parentFile?.mkdirs()
             writeText("#!/bin/bash\nexport DISPLAY=:0\n")
         }
-        File(rootfsDir, "etc/sudoers.d/nativOS").delete()
-        File(rootfsDir, "etc/sudoers.d/metmc").apply {
+        File(targetRootfs, "etc/sudoers.d/nativOS").delete()
+        File(targetRootfs, "etc/sudoers.d/metmc").apply {
             parentFile?.mkdirs()
             writeText("Defaults !requiretty\nmetmc ALL=(ALL:ALL) NOPASSWD: ALL\n")
         }
-        listOf("tmp", "tmp/runtime-root", "tmp/runtime-metmc", "run", "var/run", "dev/shm").forEach { File(rootfsDir, it).mkdirs() }
+        listOf("tmp", "tmp/runtime-root", "tmp/runtime-metmc", "run", "var/run", "dev/shm").forEach { File(targetRootfs, it).mkdirs() }
     }
 
     /** User-initiated repair/install path; never called during boot. */
