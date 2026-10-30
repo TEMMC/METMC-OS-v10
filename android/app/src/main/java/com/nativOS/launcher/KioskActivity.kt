@@ -731,16 +731,17 @@ class KioskActivity : Activity() {
                 updateOverlay(
                     -1.0,
                     "MT-Phosh/MT-Phoc components missing",
-                    "The bundled Ubuntu rootfs must contain usr/bin/phosh-session, usr/bin/phoc, and usr/libexec/phosh. Boot will not download or install packages."
+                    "The installed Ubuntu rootfs must contain Phosh, Phoc, and the MT bridge. Expected Phoc at usr/local/bin/phoc and bridge at usr/local/bin/nativOS-bridge. Boot will not download or install packages."
                 )
                 return
             }
 
             updateOverlay(0.95, "Validating local MT desktop components...", "No downloads or updates")
+            // The separately installed MT rootfs ships the bridge daemon under
+            // its NativOS-compatible service name. Do not require legacy Labwc
+            // helper wrappers that are not part of the Phosh/Phoc image.
             val requiredBridgeFiles = listOf(
-                "usr/local/bin/mt-bridge",
-                "usr/local/bin/metmc-settings",
-                "usr/local/bin/metmc-wifi"
+                "usr/local/bin/nativOS-bridge"
             )
             val missingBridgeFiles = requiredBridgeFiles.filterNot {
                 java.io.File(rootfsManager.getRootfsPath(), it).canExecute()
