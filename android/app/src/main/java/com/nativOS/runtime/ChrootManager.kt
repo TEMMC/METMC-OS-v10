@@ -86,10 +86,15 @@ class ChrootManager(private val context: Context) {
         File(rootfsDir, "usr/bin/foot").exists() &&
         (File(rootfsDir, "usr/bin/Xwayland").exists() || File(rootfsDir, "usr/bin/xwayland").exists())
     /** MT-Phosh/MT-Phoc is preferred when the integrated mobile shell is bundled. */
-    fun isPhoshInstalled(): Boolean =
-        File(rootfsDir, "usr/bin/phosh-session").canExecute() &&
-        File(rootfsDir, "usr/bin/phoc").canExecute() &&
-        File(rootfsDir, "usr/libexec/phosh").canExecute()
+    fun isPhoshInstalled(): Boolean {
+        val phosh = listOf("usr/bin/phosh-session", "usr/libexec/phosh")
+            .any { File(rootfsDir, it).canExecute() }
+        val phoc = listOf("usr/bin/phoc", "usr/local/bin/phoc")
+            .any { File(rootfsDir, it).canExecute() }
+        val bridge = File(rootfsDir, "usr/local/bin/nativOS-bridge").canExecute()
+        Log.i(TAG, "MT desktop probe: phosh=$phosh phoc=$phoc bridge=$bridge rootfs=$rootfsDir")
+        return phosh && phoc
+    }
 
     fun isRunning(): Boolean = sessionProcess?.isAlive == true
 
