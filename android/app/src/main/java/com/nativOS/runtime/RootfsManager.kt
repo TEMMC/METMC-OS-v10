@@ -61,6 +61,18 @@ class RootfsManager(private val context: Context) {
             set -eu
             R=$quotedPath
             [ -d "$R" ] || { echo "Rootfs directory missing or inaccessible"; exit 11; }
+            APP_UID=\${android.os.Process.myUid()}
+            MARKER='\${rootfsDir.parentFile?.absolutePath}/.mt-rootfs-access-v1'
+            # Repair root-owned manual extraction once; preserve permission bits.
+            ROOT_UID=$(stat -c %u "$R" 2>/dev/null || echo unknown)
+            if [ "$ROOT_UID" != "$APP_UID" ] || [ ! -f "$MARKER" ]; then
+                chown -hR "$APP_UID:$APP_UID" "$R" || { echo "Could not assign rootfs ownership to MT app UID"; exit 21; }
+                if command -v restorecon >/dev/null 2>&1; then
+                    restorecon -RF "$R" >/dev/null 2>&1 || true
+                fi
+                echo "$APP_UID" > "$MARKER"
+                chmod 600 "$MARKER"
+            fi
             [ -d "$R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
             [ -d "$R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
             [ -d "$R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
