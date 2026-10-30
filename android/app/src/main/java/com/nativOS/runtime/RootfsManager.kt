@@ -59,9 +59,12 @@ class RootfsManager(private val context: Context) {
         }
         val binLink = File(rootfsDir, "bin")
         val release = File(rootfsDir, "etc/os-release")
-        if (!release.isFile) return "Missing etc/os-release"
-        val contents = runCatching { release.readText() }
-            .getOrElse { return "Cannot read etc/os-release: ${it.message ?: "permission denied"}" }
+        // Read directly rather than relying on isFile(): Android's File metadata checks
+        // can disagree with reads for symlinked rootfs entries.
+        val contents = runCatching { release.inputStream().bufferedReader().use { it.readText() } }
+            .getOrElse {
+                return "Cannot read etc/os-release (exists=${release.exists()}, symlink=${runCatching { java.nio.file.Files.isSymbolicLink(release.toPath()) }.getOrDefault(false)}): ${it.message ?: "permission denied"}"
+            }
         val fields = contents.lineSequence().mapNotNull { line ->
             val item = line.trim()
             val split = item.indexOf('=')
@@ -84,11 +87,16 @@ class RootfsManager(private val context: Context) {
     fun isBundledDistroReady(): Boolean = isExternalRootfsReady()
 
     private fun isUbuntuRootfs(): Boolean {
-        val release = File(rootfsDir, "etc/os-release")
-        if (!release.isFile) return false
-        val contents = runCatching { release.readText() }.getOrDefault("")
-        return Regex("(?m)^ID=ubuntu$").containsMatchIn(contents) &&
-            Regex("(?m)^VERSION_CODENAME=noble$").containsMatchIn(contents)
+        val contents = runCatching {
+            File(rootfsDir, "etc/os-release").inputStream().bufferedReader().use { it.readText() }
+        }.getOrDefault("")
+        val fields = contents.lineSequence().mapNotNull { line ->
+            val split = line.indexOf('=')
+            if (split <= 0 || line.trimStart().startsWith("#")) null
+            else line.substring(0, split).trim() to line.substring(split + 1).trim().trim('"')
+        }.toMap()
+        return fields["ID"]?.lowercase() == "ubuntu" &&
+            (fields["VERSION_CODENAME"]?.lowercase() == "noble" || fields["VERSION_ID"] == "24.04")
     }
 
     private fun sha256(file: File): String {
