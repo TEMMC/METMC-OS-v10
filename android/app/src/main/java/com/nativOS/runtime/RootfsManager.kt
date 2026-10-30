@@ -41,11 +41,21 @@ class RootfsManager(private val context: Context) {
     fun getRootfsPath(): String = rootfsDir.absolutePath
 
     fun isRootfsReady(): Boolean =
-        rootfsDir.exists() && File(rootfsDir, "bin").exists() &&
-        File(rootfsDir, "usr").exists() && File(rootfsDir, "etc").exists()
+        rootfsDir.isDirectory &&
+        File(rootfsDir, "bin").isDirectory &&
+        File(rootfsDir, "usr").isDirectory &&
+        File(rootfsDir, "etc").isDirectory &&
+        File(rootfsDir, "etc/os-release").isFile
 
-    /** The APK bundles Alpine ARM64; startup never bootstraps Linux over the network. */
-    fun isBundledDistroReady(): Boolean = isRootfsReady() && isAlpineRootfs()
+    /** Accept supported local systems without forcing a distro migration during an APK upgrade. */
+    fun isSupportedRootfsReady(): Boolean {
+        if (!isRootfsReady()) return false
+        val release = runCatching { File(rootfsDir, "etc/os-release").readText() }.getOrDefault("")
+        return Regex("""(?m)^ID=["']?(alpine|ubuntu)["']?$""").containsMatchIn(release)
+    }
+
+    /** Compatibility name: readiness no longer means a particular APK-bundled distro. */
+    fun isBundledDistroReady(): Boolean = isSupportedRootfsReady()
 
     private fun isAlpineRootfs(): Boolean {
         val release = File(rootfsDir, "etc/os-release")
@@ -61,6 +71,11 @@ class RootfsManager(private val context: Context) {
 
     /** Copy the production rootfs bundled in the signed APK into the staging area. */
     fun stageBundledRootfs(onProgress: (progress: Double, status: String) -> Unit): Boolean {
+        if (rootfsDir.exists()) {
+            Log.w(TAG, "Refusing to stage an APK-bundled rootfs over an existing installation")
+            onProgress(-1.0, "An existing Linux rootfs is protected; APK updates cannot replace it")
+            return false
+        }
         val assetName = BUNDLED_ROOTFS_ASSET.substringAfterLast('/')
         val available = runCatching {
             context.assets.list("rootfs")?.contains(assetName) == true
@@ -114,47 +129,28 @@ class RootfsManager(private val context: Context) {
         }
     }
 
-    /** Verify the bundled Labwc desktop and compact basic-tool set without networking. */
-    fun ensureLabwcRuntime(chrootManager: ChrootManager): Boolean {
-        val required = listOf(
-            "usr/bin/labwc", "usr/bin/waybar", "usr/bin/fuzzel",
-            "usr/bin/foot", "usr/bin/thunar", "sbin/apk",
-            "usr/bin/curl", "sbin/ip", "usr/bin/htop",
-            "usr/local/bin/nativOS-bridge", "usr/local/bin/metmc-settings", "usr/local/bin/metmc-wifi"
-        )
+    /**
+     * Validate the desktop selected by the installed rootfs. Phosh/Phoc must
+     * not be rejected merely because optional Labwc fallback packages are absent.
+     * Validation is read-only except for legacy Labwc touch-layout seeding.
+     */
+    fun ensureDesktopRuntime(chrootManager: ChrootManager): Boolean {
+        val phoshRequired = listOf("usr/bin/phosh-session", "usr/bin/phoc", "usr/libexec/phosh", "usr/local/bin/nativOS-bridge")
+        val labwcRequired = listOf("usr/bin/labwc", "usr/bin/waybar", "usr/bin/fuzzel", "usr/bin/foot", "usr/bin/thunar", "usr/bin/curl", "usr/bin/htop", "usr/local/bin/nativOS-bridge")
+        val isPhosh = chrootManager.isPhoshInstalled()
+        val required = if (isPhosh) phoshRequired else labwcRequired
         val missing = required.filterNot { File(rootfsDir, it).exists() }
         if (missing.isNotEmpty()) {
-            Log.w(TAG, "Offline Alpine/Labwc rootfs is missing: ${missing.joinToString()}")
+            Log.w(TAG, "Installed desktop runtime is incomplete: ${missing.joinToString()}")
             return false
         }
-        Log.i(TAG, "Alpine Labwc desktop and compact tools are present")
+        if (isPhosh) {
+            Log.i(TAG, "MT-Phosh/MT-Phoc runtime validated independently of Labwc")
+            return true
+        }
+        Log.i(TAG, "Labwc desktop and compact tools are present")
         return configureLabwcTouchLayout(chrootManager)
     }
-
-    /** Seed the neon hacker theme and touch-first desktop config without downloads. */
-    fun configureLabwcTouchLayout(chrootManager: ChrootManager): Boolean {
-        val result = chrootManager.execChroot(
-            """
-                set -e
-                id metmc >/dev/null 2>&1 || exit 1
-                mkdir -p /home/metmc/.config/labwc /home/metmc/.config/waybar /home/metmc/.config/fuzzel /home/metmc/.config/foot /home/metmc/.config/gtk-3.0
-                for item in labwc/rc.xml labwc/autostart labwc/menu.xml waybar/config.jsonc waybar/style.css fuzzel/fuzzel.ini foot/foot.ini gtk-3.0/settings.ini; do
-                    source="/etc/skel/.config/${'$'}item"
-                    target="/home/metmc/.config/${'$'}item"
-                    if [ ! -e "${'$'}target" ] && [ -f "${'$'}source" ]; then cp "${'$'}source" "${'$'}target"; fi
-                done
-                mkdir -p /home/metmc/.local/share/themes/METMC-Hacker/openbox-3
-                if [ -f /usr/share/themes/METMC-Hacker/openbox-3/themerc ]; then
-                    cp /usr/share/themes/METMC-Hacker/openbox-3/themerc /home/metmc/.local/share/themes/METMC-Hacker/openbox-3/themerc
-                fi
-                chown -R metmc:metmc /home/metmc/.config /home/metmc/.local
-            """.trimIndent()
-        )
-        if (result == 0) Log.i(TAG, "Labwc hacker theme configured")
-        else Log.w(TAG, "Labwc theme setup failed (exit $result)")
-        return result == 0
-    }
-
     /** Add or repair the signed per-user Flathub remote used by GNOME Software. */
     fun ensureFlathub(chrootManager: ChrootManager): Boolean {
         if (!isFlatpakInstalled()) return false
@@ -253,6 +249,12 @@ class RootfsManager(private val context: Context) {
     }
 
     fun extractRootfs(onProgress: (progress: Double, status: String) -> Unit) {
+        // Installation only: never extract over an existing rootfs, even if incomplete.
+        if (rootfsDir.exists()) {
+            Log.e(TAG, "Refusing rootfs extraction because the destination already exists")
+            onProgress(-1.0, "Existing rootfs protected; use an explicit recovery workflow to replace it")
+            return
+        }
         var previousRootfs: File? = null
         try {
             val distro = getInstalledDistro().ifEmpty { DEFAULT_DISTRO }
@@ -295,8 +297,8 @@ class RootfsManager(private val context: Context) {
 
             onProgress(0.7, "Configuring Linux environment...")
             configureRootfs()
-            if (distro == "alpine" && !isAlpineRootfs()) {
-                throw IllegalStateException("Bundled rootfs is not Alpine Linux 3.22")
+            if (!isSupportedRootfsReady()) {
+                throw IllegalStateException("Extracted rootfs is not a supported Alpine or Ubuntu installation")
             }
             setupCompleteFile.writeText("done")
 
