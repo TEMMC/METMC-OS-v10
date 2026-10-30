@@ -1,0 +1,211 @@
+name: Build MT OS Rootfs from known-good artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, build/app-only-external-rootfs]
+    paths:
+      - ".github/workflows/build-mt-rootfs.yml"
+      - "linux/bridge-client/**"
+      - "linux/config/**"
+      - "integrations/**"
+
+permissions:
+  contents: read
+
+jobs:
+  build-rootfs:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - name: Checkout MT OS integration
+        uses: actions/checkout@v4
+
+      - name: Install download and rootfs packaging tools
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ca-certificates curl debootstrap tar gzip unzip xz-utils
+          # Do not compile MT-Phosh, MT-Phoc, or MT-Bridge in this workflow.
+
+      - name: Create Ubuntu 24.04 Noble ARM64 rootfs for the prebuilt desktop artifacts
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ROOTFS="$RUNNER_TEMP/mt-rootfs"
+          sudo mkdir -p "$ROOTFS"
+          sudo debootstrap --arch=arm64 --variant=minbase noble "$ROOTFS" http://ports.ubuntu.com/ubuntu-ports
+          sudo cp /etc/resolv.conf "$ROOTFS/etc/resolv.conf"
+          sudo mount --bind /dev "$ROOTFS/dev"
+          sudo mount --bind /dev/pts "$ROOTFS/dev/pts"
+          sudo mount -t proc proc "$ROOTFS/proc"
+          sudo mount -t sysfs sysfs "$ROOTFS/sys"
+          cleanup() {
+            sudo umount -lf "$ROOTFS/sys" 2>/dev/null || true
+            sudo umount -lf "$ROOTFS/proc" 2>/dev/null || true
+            sudo umount -lf "$ROOTFS/dev/pts" 2>/dev/null || true
+            sudo umount -lf "$ROOTFS/dev" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          cat > "$RUNNER_TEMP/sources.list" <<'APT_SOURCES'
+          deb http://ports.ubuntu.com/ubuntu-ports noble main restricted universe multiverse
+          deb http://ports.ubuntu.com/ubuntu-ports noble-updates main restricted universe multiverse
+          deb http://ports.ubuntu.com/ubuntu-ports noble-security main restricted universe multiverse
+          APT_SOURCES
+          sudo install -m 0644 "$RUNNER_TEMP/sources.list" "$ROOTFS/etc/apt/sources.list"
+          sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive bash -euxc "apt-get update && apt-get install -y --no-install-recommends systemd dbus dbus-user-session sudo ca-certificates gnome-console nautilus gnome-control-center gsettings-desktop-schemas gnome-settings-daemon adwaita-icon-theme hicolor-icon-theme fonts-cantarell xwayland weston foot python3 python3-dbus python3-gi python3-gi-cairo python3-requests network-manager pipewire-audio wireplumber libinput-tools mesa-utils desktop-file-utils polkitd pkexec udev iproute2 iputils-ping xdg-desktop-portal xdg-desktop-portal-gtk && apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* && mkdir -p /tmp /run /var/tmp && chmod 1777 /tmp /var/tmp"
+          sudo chroot "$ROOTFS" /bin/bash -eu -c '
+            id metmc >/dev/null 2>&1 || useradd --create-home --shell /bin/bash metmc
+            install -d -m 0755 /etc/sudoers.d /home/metmc/.config
+            printf "%s\\n" "Defaults !requiretty" "metmc ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/metmc
+            chmod 0755 /etc/sudoers.d
+            chmod 0440 /etc/sudoers.d/metmc
+            chown -R metmc:metmc /home/metmc
+            passwd -l root >/dev/null 2>&1 || true
+          '
+          cleanup
+          trap - EXIT
+          echo "ROOTFS=$ROOTFS" >> "$GITHUB_ENV"
+
+      - name: Download and install the successful MT-Phoc artifact (no compilation)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -n "${{ secrets.MT_ARTIFACTS_TOKEN }}" || { echo "MT_ARTIFACTS_TOKEN is missing"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/prebuilt/phoc"
+          curl -fL --retry 5 --retry-all-errors \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.MT_ARTIFACTS_TOKEN }}" \
+            "https://api.github.com/repos/TEMMC/MT-phoc/actions/artifacts/12661260748/zip" \
+            -o "$RUNNER_TEMP/prebuilt/phoc/artifact.zip"
+          unzip -q "$RUNNER_TEMP/prebuilt/phoc/artifact.zip" -d "$RUNNER_TEMP/prebuilt/phoc/unpacked"
+          PHOC_TAR="$(find "$RUNNER_TEMP/prebuilt/phoc/unpacked" -maxdepth 2 -type f -name 'MT-phoc-linux-install.tar.gz' -print -quit)"
+          if [ -z "$PHOC_TAR" ]; then
+            PHOC_TAR="$(find "$RUNNER_TEMP/prebuilt/phoc/unpacked" -maxdepth 2 -type f -name '*.tar.gz' -print -quit)"
+          fi
+          test -n "$PHOC_TAR"
+          sudo tar -xzf "$PHOC_TAR" -C "$ROOTFS"
+          if [ -x "$ROOTFS/usr/local/bin/phoc" ] && [ ! -e "$ROOTFS/usr/bin/phoc" ]; then
+            sudo ln -s ../local/bin/phoc "$ROOTFS/usr/bin/phoc"
+          fi
+          test -x "$ROOTFS/usr/bin/phoc"
+
+      - name: Download and install the successful MT-Phosh artifact (no compilation)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p "$RUNNER_TEMP/prebuilt/phosh"
+          curl -fL --retry 5 --retry-all-errors \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.MT_ARTIFACTS_TOKEN }}" \
+            "https://api.github.com/repos/TEMMC/MT-phosh-/actions/artifacts/12583781785/zip" \
+            -o "$RUNNER_TEMP/prebuilt/phosh/artifact.zip"
+          unzip -q "$RUNNER_TEMP/prebuilt/phosh/artifact.zip" -d "$RUNNER_TEMP/prebuilt/phosh/unpacked"
+          PHOSH_TAR="$(find "$RUNNER_TEMP/prebuilt/phosh/unpacked" -maxdepth 2 -type f -name 'mt-phosh-linux-install.tar.gz' -print -quit)"
+          test -n "$PHOSH_TAR"
+          sudo tar -xzf "$PHOSH_TAR" -C "$ROOTFS"
+          if [ -x "$ROOTFS/usr/libexec/phosh" ] && [ ! -e "$ROOTFS/usr/bin/phosh" ]; then
+            sudo ln -s ../libexec/phosh "$ROOTFS/usr/bin/phosh"
+          fi
+          test -x "$ROOTFS/usr/libexec/phosh" || test -x "$ROOTFS/usr/bin/phosh"
+          test -x "$ROOTFS/usr/bin/phosh-session"
+
+      - name: Download and install the successful MT-Bridge artifact (no compilation)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p "$RUNNER_TEMP/prebuilt/bridge"
+          curl -fL --retry 5 --retry-all-errors \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.MT_ARTIFACTS_TOKEN }}" \
+            "https://api.github.com/repos/TEMMC/METMC-OS-v10/actions/artifacts/12662013410/zip" \
+            -o "$RUNNER_TEMP/prebuilt/bridge/artifact.zip"
+          unzip -q "$RUNNER_TEMP/prebuilt/bridge/artifact.zip" -d "$RUNNER_TEMP/prebuilt/bridge/unpacked"
+          BRIDGE_TAR="$(find "$RUNNER_TEMP/prebuilt/bridge/unpacked" -maxdepth 2 -type f -name 'MT-Android-Linux-Bridge-arm64.tar.gz' -print -quit)"
+          test -n "$BRIDGE_TAR"
+          mkdir -p "$RUNNER_TEMP/prebuilt/bridge/payload"
+          tar -xzf "$BRIDGE_TAR" -C "$RUNNER_TEMP/prebuilt/bridge/payload"
+          BRIDGE="$RUNNER_TEMP/prebuilt/bridge/payload"
+          sudo install -d "$ROOTFS/usr/local/bin" "$ROOTFS/etc/systemd/system" \
+            "$ROOTFS/run/nativOS" "$ROOTFS/etc/nativOS" "$ROOTFS/usr/share/mt-os" \
+            "$ROOTFS/usr/share/applications"
+          # Match the real contents of the published bridge artifact; do not assume
+          # mt-bridge.py, bridge_transport.py, or README-bridge.md exist in this build.
+          for item in nativOS-bridge.py metmc-settings.py metmc-wifi.py; do
+            test -s "$BRIDGE/linux/bridge-client/$item"
+          done
+          test -s "$BRIDGE/linux/config/nativOS-bridge.service"
+          sudo install -m 0755 "$BRIDGE/linux/bridge-client/nativOS-bridge.py" "$ROOTFS/usr/local/bin/nativOS-bridge"
+          sudo install -m 0755 "$BRIDGE/linux/bridge-client/metmc-settings.py" "$ROOTFS/usr/local/bin/metmc-settings"
+          sudo install -m 0755 "$BRIDGE/linux/bridge-client/metmc-wifi.py" "$ROOTFS/usr/local/bin/metmc-wifi"
+          # The daemon imports bridge_transport at runtime; ship the shared module beside it.
+          sudo install -m 0644 linux/bridge-client/bridge_transport.py "$ROOTFS/usr/local/bin/bridge_transport.py"
+          sudo install -m 0644 "$BRIDGE/linux/config/nativOS-bridge.service" "$ROOTFS/etc/systemd/system/nativOS-bridge.service"
+          for entry in metmc-bluetooth metmc-settings metmc-display metmc-sound metmc-location metmc-wifi; do
+            sudo install -m 0644 "linux/config/$entry.desktop" "$ROOTFS/usr/share/applications/$entry.desktop"
+          done
+          if [ -s "$BRIDGE/README-bridge.md" ]; then
+            sudo install -m 0644 "$BRIDGE/README-bridge.md" "$ROOTFS/usr/share/mt-os/README-bridge.md"
+          elif [ -s "$BRIDGE/README.txt" ]; then
+            sudo install -m 0644 "$BRIDGE/README.txt" "$ROOTFS/usr/share/mt-os/README-bridge.txt"
+          fi
+          python3 -m py_compile \
+            "$BRIDGE/linux/bridge-client/nativOS-bridge.py" \
+            "$BRIDGE/linux/bridge-client/metmc-settings.py" \
+            "$BRIDGE/linux/bridge-client/metmc-wifi.py" \
+            "linux/bridge-client/bridge_transport.py"
+
+      - name: Preserve the original NativOS Phoc display configuration
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl -fL --retry 5 --retry-all-errors \
+            https://raw.githubusercontent.com/orailnoor/NativOS/main/linux/config/phoc.ini \
+            -o "$RUNNER_TEMP/phoc-nativos.ini"
+          sudo install -m 0644 "$RUNNER_TEMP/phoc-nativos.ini" "$ROOTFS/etc/nativOS/phoc.ini"
+          sudo install -m 0644 "$RUNNER_TEMP/phoc-nativos.ini" "$ROOTFS/home/metmc/.config/phoc.ini"
+          sudo chroot "$ROOTFS" chown metmc:metmc /home/metmc/.config/phoc.ini
+          sudo cp "$ROOTFS/etc/nativOS/phoc.ini" "$ROOTFS/usr/share/mt-os/phoc-nativos-reference.ini"
+          sudo tee "$ROOTFS/usr/share/mt-os/MT-ROOTFS-MANIFEST.txt" >/dev/null <<'EOF'
+          MT OS external rootfs
+          Base: Ubuntu 24.04 Noble ARM64
+          MT-Phoc: successful artifact 12661260748, run 40344456949
+          MT-Phosh: successful artifact 12583781785, run 40153637822
+          MT-Bridge: successful artifact 12662013410, run 40349174071
+          Display configuration: original NativOS linux/config/phoc.ini, preserved byte-for-byte
+          No source compilation or forks are performed by this rootfs workflow.
+          Target: ARM64 Android chroot; not a flashable ROM
+          EOF
+
+      - name: Validate prebuilt binaries and package rootfs
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -x "$ROOTFS/usr/libexec/phosh" || test -x "$ROOTFS/usr/bin/phosh"
+          test -x "$ROOTFS/usr/bin/phoc"
+          test -x "$ROOTFS/usr/bin/phosh-session"
+          test -x "$ROOTFS/usr/local/bin/nativOS-bridge"
+          test -s "$ROOTFS/usr/local/bin/bridge_transport.py"
+          test -x "$ROOTFS/usr/local/bin/metmc-settings"
+          test -x "$ROOTFS/usr/local/bin/metmc-wifi"
+          test -s "$ROOTFS/etc/nativOS/phoc.ini"
+          cmp "$ROOTFS/etc/nativOS/phoc.ini" "$ROOTFS/usr/share/mt-os/phoc-nativos-reference.ini"
+          mkdir -p "$RUNNER_TEMP/output"
+          sudo tar --numeric-owner --owner=0 --group=0 --xattrs --acls \
+            --exclude='./dev/*' --exclude='./proc/*' --exclude='./sys/*' \
+            -C "$ROOTFS" -czf "$RUNNER_TEMP/output/MT-OS-Rootfs-arm64.tar.gz" .
+          (cd "$RUNNER_TEMP/output" && sha256sum MT-OS-Rootfs-arm64.tar.gz > SHA256SUMS.txt)
+          du -h "$RUNNER_TEMP/output/MT-OS-Rootfs-arm64.tar.gz"
+          tar -tzf "$RUNNER_TEMP/output/MT-OS-Rootfs-arm64.tar.gz" \
+            | grep -E '(^|/)(phosh|phoc|nativOS-bridge|metmc-settings|metmc-wifi)$|etc/nativOS/phoc.ini|MT-ROOTFS-MANIFEST'
+
+      - name: Upload separate MT OS rootfs
+        uses: actions/upload-artifact@v4
+        with:
+          name: MT-OS-Rootfs-arm64-Prebuilt-Phosh-Phoc-Bridge
+          path: |
+            ${{ runner.temp }}/output/MT-OS-Rootfs-arm64.tar.gz
+            ${{ runner.temp }}/output/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30

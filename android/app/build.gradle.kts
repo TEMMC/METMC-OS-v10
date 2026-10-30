@@ -52,38 +52,6 @@ val preparePatchedXlorie by tasks.registering {
     }
 }
 
-val verifyBundledRootfs by tasks.registering {
-    val rootfsDirectory = layout.projectDirectory.dir("src/main/assets/rootfs")
-    inputs.dir(rootfsDirectory)
-
-    doLast {
-        val asset = rootfsDirectory.file("nativos-rootfs-arm64.tar").asFile
-        val checksumFile = rootfsDirectory.file("nativos-rootfs-arm64.tar.sha256").asFile
-        check(asset.isFile && asset.length() > 100L * 1024L * 1024L) {
-            "Bundled rootfs is missing or implausibly small. Run scripts/build-rootfs-asset.sh."
-        }
-        check(checksumFile.isFile) {
-            "Bundled rootfs checksum is missing: ${checksumFile.path}"
-        }
-        val expected = checksumFile.readText().trim().substringBefore(' ').lowercase()
-        check(expected.matches(Regex("[0-9a-f]{64}"))) {
-            "Bundled rootfs checksum file is invalid"
-        }
-        val digest = MessageDigest.getInstance("SHA-256")
-        asset.inputStream().buffered().use { input ->
-            val buffer = ByteArray(1024 * 1024)
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                digest.update(buffer, 0, count)
-            }
-        }
-        val actual = digest.digest().joinToString("") { "%02x".format(it) }
-        check(actual == expected) {
-            "Bundled rootfs checksum mismatch: expected $expected, got $actual"
-        }
-    }
-}
 
 android {
     namespace = "com.nativOS" // Keep upstream Kotlin namespace to preserve source references.
@@ -93,8 +61,8 @@ android {
         applicationId = "com.temmc.metmcosv10"
         minSdk = 28  // Android 9+ (modern root tools, Camera2 stable)
         targetSdk = 35
-        versionCode = 16
-        versionName = "10.7.0" // Lightweight touch-friendly Xfce desktop
+        versionCode = 18
+        versionName = "10.10.2" // External rootfs ownership and SELinux access repair
 
         ndk {
             abiFilters += listOf("arm64-v8a")
@@ -154,7 +122,6 @@ android {
 
 tasks.named("preBuild").configure {
     dependsOn(preparePatchedXlorie)
-    dependsOn(verifyBundledRootfs)
 }
 
 dependencies {

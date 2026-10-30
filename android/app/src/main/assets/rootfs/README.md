@@ -1,16 +1,22 @@
-# METMC OS v10 — bundled Linux root filesystem
+# MT OS V10 — external Ubuntu Noble root filesystem
 
-Every APK build requires `nativos-rootfs-arm64.tgz` and its matching `nativos-rootfs-arm64.tgz.sha256` in this directory. Gradle fails before packaging if either file is absent or the checksum does not match.
+The Android APK is intentionally built separately from the Linux root filesystem.
+This directory does not contain a rootfs archive. The standalone ARM64 rootfs is
+published as a separate release asset and is extracted by the user with Termux.
 
-Generate the archive from a clean, fully provisioned ARM64 root filesystem:
+Expected app-private destination:
 
-```sh
-scripts/build-rootfs-asset.sh /path/to/prepared-rootfs \
-  android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tgz
-```
+`/data/user/0/com.temmc.metmcosv10/files/rootfs`
 
-The prepared image must already contain Xfce/Xfwm4, Xfce Terminal, Thunar, essential networking tools, sudo, icons, and the compatibility libraries expected by the METMC OS runtime. Do not package a user's live root filesystem without reviewing it for accounts, tokens, history, and personal data.
+The rootfs must be Ubuntu 24.04 Noble ARM64 and include the prebuilt MT-Phosh,
+MT-Phoc, and MT-Bridge runtime components. Preserve the original NativOS Phoc
+display configuration at `/etc/nativOS/phoc.ini` and
+`/home/metmc/.config/phoc.ini`.
 
-The packaging script requires GNU tar (`gtar` on macOS), normalizes ownership, ordering, timestamps, and gzip metadata, and records installed package versions in `/usr/share/nativos/rootfs-packages.txt`. Set `SOURCE_DATE_EPOCH` when producing a reproducible release.
+Before launching the app, verify the downloaded rootfs archive against its
+published SHA-256 checksum. Extract it as root into the destination above.
+The app validates the existing filesystem and mounts it; it does not download,
+replace, or re-extract the rootfs during boot.
 
-Internal paths and filenames beginning with `nativos` are retained for runtime compatibility; they are implementation identifiers, not the user-facing product name.
+This is an Android chroot root filesystem, not a flashable ROM or a separate
+Linux kernel.

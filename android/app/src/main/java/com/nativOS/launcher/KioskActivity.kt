@@ -679,44 +679,19 @@ class KioskActivity : Activity() {
             }
             updateOverlay(0.05, "Root access confirmed", "")
 
-            // Step 2: Ensure the bundled Alpine ARM64 rootfs is installed.
-            // Existing Linux installations are migrated once, preserving /home/metmc where possible.
-            if (rootfsManager.isRootfsReady() && !rootfsManager.isBundledDistroReady()) {
-                updateOverlay(0.05, "Switching Linux system to Alpine Linux...", "One-time migration; preserving /home/metmc")
-                chrootManager.stopSession()
-            }
-            if (!rootfsManager.isRootfsReady() || !rootfsManager.isBundledDistroReady()) {
-                val bundled = rootfsManager.stageBundledRootfs { progress, status ->
-                    updateOverlay(0.05 + progress * 0.45, status, "Bundled in this APK — no network required")
-                }
-                if (!bundled) {
-                    updateOverlay(
-                        -1.0,
-                        "Offline root filesystem missing",
-                        "This APK must include the prepared Linux rootfs. Rebuild it through GitHub Actions; boot will not download files."
-                    )
-                    return
-                }
-
-                updateOverlay(0.50, "Extracting bundled Linux filesystem...", "No network required")
-                bootFailed = false
-                rootfsManager.extractRootfs { progress, status ->
-                    if (progress < 0) {
-                        bootFailed = true
-                        updateOverlay(-1.0, "Rootfs extraction failed", status)
-                    } else {
-                        updateOverlay(0.50 + progress * 0.20, status, "")
-                    }
-                }
-                if (bootFailed) return
-            } else {
-                updateOverlay(0.70, "Local Linux filesystem found", "Offline startup")
-            }
-
-            if (!rootfsManager.isBundledDistroReady()) {
-                updateOverlay(-1.0, "ERROR: Alpine rootfs setup failed", "The Alpine Linux filesystem could not be prepared")
+            // Step 2: Use the separately extracted app-private Ubuntu Noble rootfs.
+            // MT's APK is app-only: never require an embedded archive, migrate, download,
+            // stage, or extract a replacement over the user's existing Linux filesystem.
+            updateOverlay(0.10, "Checking external Ubuntu rootfs...", rootfsManager.getRootfsPath())
+            if (!rootfsManager.isExternalRootfsReady()) {
+                updateOverlay(
+                    -1.0,
+                    "External Ubuntu rootfs not ready",
+                    "${rootfsManager.getExternalRootfsStatus()} — ${rootfsManager.getRootfsPath()}"
+                )
                 return
             }
+            updateOverlay(0.70, "External Linux filesystem found", "Offline startup — existing rootfs preserved")
 
             // Step 3: Mount chroot
             updateOverlay(0.72, "Mounting Linux environment...", "")
@@ -724,25 +699,27 @@ class KioskActivity : Activity() {
             chrootManager.bindX11Socket()
             AndroidAppIntegration.sync(this)
 
-            // Step 4: Validate the offline Labwc Wayland desktop. Never run apk or
-            // install packages during startup; the bundled rootfs must contain
-            // the complete desktop and essential tools.
-            updateOverlay(0.74, "Checking offline desktop...", "")
-            if (!chrootManager.isPhoshInstalled() && !chrootManager.isLabwcInstalled()) {
+            // Step 4: Validate the bundled MT-Phosh/MT-Phoc desktop.
+            // The APK contains Ubuntu Noble and must not validate Alpine/Labwc tools.
+            updateOverlay(0.74, "Checking offline MT-Phosh/MT-Phoc desktop...", "")
+            if (!chrootManager.isPhoshInstalled()) {
                 updateOverlay(
                     -1.0,
-                    "Offline desktop components missing",
-                    "The bundled Linux rootfs has neither MT-Phosh/MT-Phoc nor the Labwc fallback. Rebuild the APK with a complete desktop; boot will not install packages."
+                    "MT-Phosh/MT-Phoc components missing",
+                    "The installed Ubuntu rootfs must contain Phosh, Phoc, and the MT bridge. Expected Phoc at usr/local/bin/phoc and bridge at usr/local/bin/nativOS-bridge. Boot will not download or install packages."
                 )
                 return
             }
 
-            updateOverlay(0.95, "Validating local desktop components...", "No downloads or updates")
-            if (!rootfsManager.ensureLabwcRuntime(chrootManager)) {
+            updateOverlay(0.95, "Validating local MT desktop components...", "No downloads or updates")
+            // The separately installed MT rootfs ships the bridge daemon under
+            // its NativOS-compatible service name. Do not require legacy Labwc
+            // helper wrappers that are not part of the Phosh/Phoc image.
+            if (!chrootManager.isBridgeExecutable()) {
                 updateOverlay(
                     -1.0,
-                    "Offline desktop components missing",
-                    "Labwc runtime is incomplete in the bundled rootfs. Rebuild the APK with Labwc, Waybar, Xwayland and the basic tools included."
+                    "Offline MT runtime incomplete",
+                    "The rootfs bridge is missing or not executable: usr/local/bin/nativOS-bridge"
                 )
                 return
             }
