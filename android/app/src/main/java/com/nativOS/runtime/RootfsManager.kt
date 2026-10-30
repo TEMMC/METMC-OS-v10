@@ -52,9 +52,12 @@ class RootfsManager(private val context: Context) {
     fun getExternalRootfsStatus(): String {
         if (!rootfsDir.exists()) return "Rootfs directory does not exist"
         if (!rootfsDir.isDirectory) return "Rootfs path is not a directory"
-        for (name in listOf("bin", "usr", "etc")) {
-            if (!File(rootfsDir, name).exists()) return "Missing required directory: $name"
+        // Ubuntu 24.04 uses merged-/usr: /bin is a symlink to usr/bin.
+        // Validate the real target directly instead of File.exists() on that symlink.
+        for (name in listOf("usr", "usr/bin", "etc")) {
+            if (!File(rootfsDir, name).isDirectory) return "Missing required directory: $name"
         }
+        val binLink = File(rootfsDir, "bin")
         val release = File(rootfsDir, "etc/os-release")
         if (!release.isFile) return "Missing etc/os-release"
         val contents = runCatching { release.readText() }
