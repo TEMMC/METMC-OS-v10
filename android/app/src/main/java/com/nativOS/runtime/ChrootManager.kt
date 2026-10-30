@@ -88,10 +88,19 @@ class ChrootManager(private val context: Context) {
     /** MT-Phosh/MT-Phoc is preferred when the integrated mobile shell is bundled. */
     /** Probe root-owned Linux binaries through su, not the unprivileged app UID. */
     fun isPhoshInstalled(): Boolean {
-        val r = rootfsDir.absolutePath.replace("'", "'\\''")
-        val command = "R='" + r + "'; ( [ -x \"${'
+        val root = rootfsDir.absolutePath
+        fun shellQuote(value: String): String =
+            "'" + value.replace("'", "'\\''") + "'"
+
+        val quotedRoot = shellQuote(root)
+        val command = """
+            R=$quotedRoot
+            test -x "$R/usr/libexec/phosh" &&
+            test -x "$R/usr/local/bin/phoc" &&
+            test -x "$R/usr/local/bin/nativOS-bridge"
+        """.trimIndent()
         val ready = rootShell.exec(command) { } == 0
-        Log.i(TAG, "MT desktop root probe: ready=$ready rootfs=$rootfsDir")
+        Log.i(TAG, "MT-Phosh runtime probe: ready=$ready rootfs=$root")
         return ready
     }
 
