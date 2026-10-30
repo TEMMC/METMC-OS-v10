@@ -49,11 +49,33 @@ class RootfsManager(private val context: Context) {
      * Validate the separately extracted Ubuntu Noble rootfs used by the app-only APK.
      * Readiness is based on the actual filesystem, not an APK asset or archive.
      */
-    fun isExternalRootfsReady(): Boolean {
-        if (!rootfsDir.isDirectory) return false
-        if (listOf("bin", "usr", "etc").any { !File(rootfsDir, it).exists() }) return false
-        return isUbuntuRootfs()
+    fun getExternalRootfsStatus(): String {
+        if (!rootfsDir.exists()) return "Rootfs directory does not exist"
+        if (!rootfsDir.isDirectory) return "Rootfs path is not a directory"
+        for (name in listOf("bin", "usr", "etc")) {
+            if (!File(rootfsDir, name).exists()) return "Missing required directory: $name"
+        }
+        val release = File(rootfsDir, "etc/os-release")
+        if (!release.isFile) return "Missing etc/os-release"
+        val contents = runCatching { release.readText() }
+            .getOrElse { return "Cannot read etc/os-release: ${it.message ?: "permission denied"}" }
+        val fields = contents.lineSequence().mapNotNull { line ->
+            val item = line.trim()
+            val split = item.indexOf('=')
+            if (split <= 0 || item.startsWith("#")) null
+            else item.substring(0, split).trim() to item.substring(split + 1).trim().trim('"', '\\'')
+        }.toMap()
+        val id = fields["ID"]?.lowercase()
+        val version = fields["VERSION_ID"]
+        val codename = fields["VERSION_CODENAME"]?.lowercase()
+        if (id != "ubuntu") return "Expected ID=ubuntu in os-release; found ${id ?: "no ID"}"
+        if (codename != "noble" && version != "24.04") {
+            return "Expected Ubuntu 24.04 Noble; found VERSION_ID=${version ?: "unset"}, VERSION_CODENAME=${codename ?: "unset"}"
+        }
+        return "OK"
     }
+
+    fun isExternalRootfsReady(): Boolean = getExternalRootfsStatus() == "OK"
 
     /** Backward-compatible alias for older callers. */
     fun isBundledDistroReady(): Boolean = isExternalRootfsReady()
