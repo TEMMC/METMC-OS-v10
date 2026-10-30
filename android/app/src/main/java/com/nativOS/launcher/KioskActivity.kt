@@ -687,7 +687,7 @@ class KioskActivity : Activity() {
                 updateOverlay(
                     -1.0,
                     "External Ubuntu rootfs not ready",
-                    "Expected a valid Ubuntu 24.04 Noble rootfs at ${rootfsManager.getRootfsPath()}. Extract the separate MT rootfs there; this APK does not contain it."
+                    "${rootfsManager.getExternalRootfsStatus()} — ${rootfsManager.getRootfsPath()}"
                 )
                 return
             }
