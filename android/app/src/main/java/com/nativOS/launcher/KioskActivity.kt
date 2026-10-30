@@ -679,43 +679,46 @@ class KioskActivity : Activity() {
             }
             updateOverlay(0.05, "Root access confirmed", "")
 
-            // Step 2: Ensure the bundled Alpine ARM64 rootfs is installed.
-            // Existing Linux installations are migrated once, preserving /home/metmc where possible.
-            if (rootfsManager.isRootfsReady() && !rootfsManager.isBundledDistroReady()) {
-                updateOverlay(0.05, "Switching Linux system to Alpine Linux...", "One-time migration; preserving /home/metmc")
-                chrootManager.stopSession()
-            }
-            if (!rootfsManager.isRootfsReady() || !rootfsManager.isBundledDistroReady()) {
+            // Step 2: Preserve any existing supported Linux rootfs.
+            // APK upgrades are never allowed to migrate, re-extract, or replace it.
+            if (rootfsManager.isRootfsReady()) {
+                if (!rootfsManager.isSupportedRootfsReady()) {
+                    updateOverlay(
+                        -1.0,
+                        "Existing Linux rootfs needs attention",
+                        "The existing filesystem was left untouched. Use a separate, explicit recovery operation; startup will not replace it."
+                    )
+                    return
+                }
+                updateOverlay(0.70, "Existing Linux filesystem preserved", "Offline startup — no extraction or migration")
+            } else {
                 val bundled = rootfsManager.stageBundledRootfs { progress, status ->
-                    updateOverlay(0.05 + progress * 0.45, status, "Bundled in this APK — no network required")
+                    updateOverlay(0.05 + progress * 0.45, status, "First installation only — no network required")
                 }
                 if (!bundled) {
                     updateOverlay(
                         -1.0,
-                        "Offline root filesystem missing",
-                        "This APK must include the prepared Linux rootfs. Rebuild it through GitHub Actions; boot will not download files."
+                        "Offline root filesystem unavailable",
+                        "The bundled rootfs could not be staged. No existing installation was changed."
                     )
                     return
                 }
 
-                updateOverlay(0.50, "Extracting bundled Linux filesystem...", "No network required")
+                updateOverlay(0.50, "Installing Linux filesystem for the first time...", "No network required")
                 bootFailed = false
                 rootfsManager.extractRootfs { progress, status ->
                     if (progress < 0) {
                         bootFailed = true
-                        updateOverlay(-1.0, "Rootfs extraction failed", status)
+                        updateOverlay(-1.0, "Rootfs installation failed", status)
                     } else {
                         updateOverlay(0.50 + progress * 0.20, status, "")
                     }
                 }
                 if (bootFailed) return
-            } else {
-                updateOverlay(0.70, "Local Linux filesystem found", "Offline startup")
-            }
-
-            if (!rootfsManager.isBundledDistroReady()) {
-                updateOverlay(-1.0, "ERROR: Alpine rootfs setup failed", "The Alpine Linux filesystem could not be prepared")
-                return
+                if (!rootfsManager.isSupportedRootfsReady()) {
+                    updateOverlay(-1.0, "Rootfs installation could not be verified", "The extracted filesystem was retained for diagnosis; no automatic retry or overwrite will occur.")
+                    return
+                }
             }
 
             // Step 3: Mount chroot
@@ -724,25 +727,24 @@ class KioskActivity : Activity() {
             chrootManager.bindX11Socket()
             AndroidAppIntegration.sync(this)
 
-            // Step 4: Validate the offline Labwc Wayland desktop. Never run apk or
-            // install packages during startup; the bundled rootfs must contain
-            // the complete desktop and essential tools.
+            // Step 4: Validate only the desktop actually installed in this rootfs.
+            // Phosh/Phoc does not depend on Labwc, Waybar, or Fuzzel being installed.
             updateOverlay(0.74, "Checking offline desktop...", "")
             if (!chrootManager.isPhoshInstalled() && !chrootManager.isLabwcInstalled()) {
                 updateOverlay(
                     -1.0,
-                    "Offline desktop components missing",
-                    "The bundled Linux rootfs has neither MT-Phosh/MT-Phoc nor the Labwc fallback. Rebuild the APK with a complete desktop; boot will not install packages."
+                    "Desktop components missing",
+                    "Neither MT-Phosh/MT-Phoc nor the Labwc fallback is complete. The existing rootfs was not modified."
                 )
                 return
             }
 
-            updateOverlay(0.95, "Validating local desktop components...", "No downloads or updates")
-            if (!rootfsManager.ensureLabwcRuntime(chrootManager)) {
+            updateOverlay(0.95, "Validating installed desktop...", "Read-only validation; no downloads or package changes")
+            if (!rootfsManager.ensureDesktopRuntime(chrootManager)) {
                 updateOverlay(
                     -1.0,
-                    "Offline desktop components missing",
-                    "Labwc runtime is incomplete in the bundled rootfs. Rebuild the APK with Labwc, Waybar, Xwayland and the basic tools included."
+                    "Installed desktop components incomplete",
+                    "The selected desktop runtime is incomplete. The existing rootfs was left in place for diagnosis."
                 )
                 return
             }
