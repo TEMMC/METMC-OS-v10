@@ -90,14 +90,14 @@ class ChrootManager(private val context: Context) {
     fun isPhoshInstalled(): Boolean {
         val r = rootfsDir.absolutePath.replace("'", "'\\''")
         val command = "R='" + r + "'; ( [ -x \"$R/usr/bin/phosh-session\" ] || [ -x \"$R/usr/libexec/phosh\" ] ) && ( [ -x \"$R/usr/bin/phoc\" ] || [ -x \"$R/usr/local/bin/phoc\" ] )"
-        val ready = rootShell.exec(command, {}) == 0
+        val ready = rootShell.exec(command) { } == 0
         Log.i(TAG, "MT desktop root probe: ready=$ready rootfs=$rootfsDir")
         return ready
     }
 
     fun isBridgeExecutable(): Boolean {
         val r = rootfsDir.absolutePath.replace("'", "'\\''")
-        return rootShell.exec("[ -x '" + r + "/usr/local/bin/nativOS-bridge' ]", {}) == 0
+        return rootShell.exec("[ -x '" + r + "/usr/local/bin/nativOS-bridge' ]") { } == 0
     }
 
     fun isRunning(): Boolean = sessionProcess?.isAlive == true
