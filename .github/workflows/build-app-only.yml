@@ -1,4 +1,4 @@
-name: Build MT OS app only (external rootfs)
+name: The Update
 
 on:
   workflow_dispatch:
@@ -40,7 +40,7 @@ jobs:
           set -euo pipefail
           test -n "${KEYSTORE_BASE64}" || { echo "::error::Missing METMC_SIGNING_KEYSTORE_BASE64 secret"; exit 1; }
           mkdir -p "$HOME/.android"
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/mt-os-release.keystore"
+          printf '%s' "${KEYSTORE_BASE64}" | base64 --decode > "$HOME/.android/mt-os-release.keystore"
           test -s "$HOME/.android/mt-os-release.keystore"
           chmod 600 "$HOME/.android/mt-os-release.keystore"
 
@@ -84,7 +84,7 @@ jobs:
       - name: Upload app-only APK
         uses: actions/upload-artifact@v4
         with:
-          name: MT-OS-App-Only-External-Rootfs
+          name: MT-OS-The-Update
           path: |
             android/app/build/outputs/apk/debug/app-debug.apk
             android/app/build/outputs/apk/debug/app-debug.apk.sha256
