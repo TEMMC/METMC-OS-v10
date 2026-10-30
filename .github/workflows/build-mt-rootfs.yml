@@ -3,9 +3,12 @@ name: Build MT OS Rootfs from known-good artifacts
 on:
   workflow_dispatch:
   push:
-    branches: [build/app-only-external-rootfs]
+    branches: [main, build/app-only-external-rootfs]
     paths:
       - ".github/workflows/build-mt-rootfs.yml"
+      - "linux/bridge-client/**"
+      - "linux/config/**"
+      - "integrations/**"
 
 permissions:
   contents: read
@@ -35,11 +38,13 @@ jobs:
           sudo debootstrap --arch=arm64 --variant=minbase noble "$ROOTFS" http://ports.ubuntu.com/ubuntu-ports
           sudo cp /etc/resolv.conf "$ROOTFS/etc/resolv.conf"
           sudo mount --bind /dev "$ROOTFS/dev"
+          sudo mount --bind /dev/pts "$ROOTFS/dev/pts"
           sudo mount -t proc proc "$ROOTFS/proc"
           sudo mount -t sysfs sysfs "$ROOTFS/sys"
           cleanup() {
             sudo umount -lf "$ROOTFS/sys" 2>/dev/null || true
             sudo umount -lf "$ROOTFS/proc" 2>/dev/null || true
+            sudo umount -lf "$ROOTFS/dev/pts" 2>/dev/null || true
             sudo umount -lf "$ROOTFS/dev" 2>/dev/null || true
           }
           trap cleanup EXIT
@@ -50,6 +55,15 @@ jobs:
           APT_SOURCES
           sudo install -m 0644 "$RUNNER_TEMP/sources.list" "$ROOTFS/etc/apt/sources.list"
           sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive bash -euxc "apt-get update && apt-get install -y --no-install-recommends systemd dbus dbus-user-session sudo ca-certificates gnome-console nautilus gnome-control-center gsettings-desktop-schemas gnome-settings-daemon adwaita-icon-theme hicolor-icon-theme fonts-cantarell xwayland weston foot python3 python3-dbus python3-gi python3-gi-cairo python3-requests network-manager pipewire-audio wireplumber libinput-tools mesa-utils desktop-file-utils polkitd pkexec udev iproute2 iputils-ping xdg-desktop-portal xdg-desktop-portal-gtk && apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* && mkdir -p /tmp /run /var/tmp && chmod 1777 /tmp /var/tmp"
+          sudo chroot "$ROOTFS" /bin/bash -eu -c '
+            id metmc >/dev/null 2>&1 || useradd --create-home --shell /bin/bash metmc
+            install -d -m 0755 /etc/sudoers.d /home/metmc/.config
+            printf "%s\\n" "Defaults !requiretty" "metmc ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/metmc
+            chmod 0755 /etc/sudoers.d
+            chmod 0440 /etc/sudoers.d/metmc
+            chown -R metmc:metmc /home/metmc
+            passwd -l root >/dev/null 2>&1 || true
+          '
           cleanup
           trap - EXIT
           echo "ROOTFS=$ROOTFS" >> "$GITHUB_ENV"
@@ -72,7 +86,10 @@ jobs:
           fi
           test -n "$PHOC_TAR"
           sudo tar -xzf "$PHOC_TAR" -C "$ROOTFS"
-          test -x "$ROOTFS/usr/local/bin/phoc" || test -x "$ROOTFS/usr/bin/phoc"
+          if [ -x "$ROOTFS/usr/local/bin/phoc" ] && [ ! -e "$ROOTFS/usr/bin/phoc" ]; then
+            sudo ln -s ../local/bin/phoc "$ROOTFS/usr/bin/phoc"
+          fi
+          test -x "$ROOTFS/usr/bin/phoc"
 
       - name: Download and install the successful MT-Phosh artifact (no compilation)
         shell: bash
@@ -92,6 +109,7 @@ jobs:
             sudo ln -s ../libexec/phosh "$ROOTFS/usr/bin/phosh"
           fi
           test -x "$ROOTFS/usr/libexec/phosh" || test -x "$ROOTFS/usr/bin/phosh"
+          test -x "$ROOTFS/usr/bin/phosh-session"
 
       - name: Download and install the successful MT-Bridge artifact (no compilation)
         shell: bash
@@ -110,7 +128,8 @@ jobs:
           tar -xzf "$BRIDGE_TAR" -C "$RUNNER_TEMP/prebuilt/bridge/payload"
           BRIDGE="$RUNNER_TEMP/prebuilt/bridge/payload"
           sudo install -d "$ROOTFS/usr/local/bin" "$ROOTFS/etc/systemd/system" \
-            "$ROOTFS/run/nativOS" "$ROOTFS/etc/nativOS" "$ROOTFS/usr/share/mt-os"
+            "$ROOTFS/run/nativOS" "$ROOTFS/etc/nativOS" "$ROOTFS/usr/share/mt-os" \
+            "$ROOTFS/usr/share/applications"
           # Match the real contents of the published bridge artifact; do not assume
           # mt-bridge.py, bridge_transport.py, or README-bridge.md exist in this build.
           for item in nativOS-bridge.py metmc-settings.py metmc-wifi.py; do
@@ -118,9 +137,14 @@ jobs:
           done
           test -s "$BRIDGE/linux/config/nativOS-bridge.service"
           sudo install -m 0755 "$BRIDGE/linux/bridge-client/nativOS-bridge.py" "$ROOTFS/usr/local/bin/nativOS-bridge"
-          sudo install -m 0755 "$BRIDGE/linux/bridge-client/metmc-settings.py" "$ROOTFS/usr/local/bin/mt-settings"
-          sudo install -m 0755 "$BRIDGE/linux/bridge-client/metmc-wifi.py" "$ROOTFS/usr/local/bin/mt-wifi"
+          sudo install -m 0755 "$BRIDGE/linux/bridge-client/metmc-settings.py" "$ROOTFS/usr/local/bin/metmc-settings"
+          sudo install -m 0755 "$BRIDGE/linux/bridge-client/metmc-wifi.py" "$ROOTFS/usr/local/bin/metmc-wifi"
+          # The daemon imports bridge_transport at runtime; ship the shared module beside it.
+          sudo install -m 0644 linux/bridge-client/bridge_transport.py "$ROOTFS/usr/local/bin/bridge_transport.py"
           sudo install -m 0644 "$BRIDGE/linux/config/nativOS-bridge.service" "$ROOTFS/etc/systemd/system/nativOS-bridge.service"
+          for entry in metmc-bluetooth metmc-settings metmc-display metmc-sound metmc-location metmc-wifi; do
+            sudo install -m 0644 "linux/config/$entry.desktop" "$ROOTFS/usr/share/applications/$entry.desktop"
+          done
           if [ -s "$BRIDGE/README-bridge.md" ]; then
             sudo install -m 0644 "$BRIDGE/README-bridge.md" "$ROOTFS/usr/share/mt-os/README-bridge.md"
           elif [ -s "$BRIDGE/README.txt" ]; then
@@ -129,7 +153,8 @@ jobs:
           python3 -m py_compile \
             "$BRIDGE/linux/bridge-client/nativOS-bridge.py" \
             "$BRIDGE/linux/bridge-client/metmc-settings.py" \
-            "$BRIDGE/linux/bridge-client/metmc-wifi.py"
+            "$BRIDGE/linux/bridge-client/metmc-wifi.py" \
+            "linux/bridge-client/bridge_transport.py"
 
       - name: Preserve the original NativOS Phoc display configuration
         shell: bash
@@ -139,6 +164,7 @@ jobs:
             https://raw.githubusercontent.com/orailnoor/NativOS/main/linux/config/phoc.ini \
             -o "$RUNNER_TEMP/phoc-nativos.ini"
           sudo install -m 0644 "$RUNNER_TEMP/phoc-nativos.ini" "$ROOTFS/etc/nativOS/phoc.ini"
+          sudo install -o metmc -g metmc -m 0644 "$RUNNER_TEMP/phoc-nativos.ini" "$ROOTFS/home/metmc/.config/phoc.ini"
           sudo cp "$ROOTFS/etc/nativOS/phoc.ini" "$ROOTFS/usr/share/mt-os/phoc-nativos-reference.ini"
           sudo tee "$ROOTFS/usr/share/mt-os/MT-ROOTFS-MANIFEST.txt" >/dev/null <<'EOF'
           MT OS external rootfs
@@ -156,8 +182,12 @@ jobs:
         run: |
           set -euxo pipefail
           test -x "$ROOTFS/usr/libexec/phosh" || test -x "$ROOTFS/usr/bin/phosh"
-          test -x "$ROOTFS/usr/local/bin/phoc" || test -x "$ROOTFS/usr/bin/phoc"
+          test -x "$ROOTFS/usr/bin/phoc"
+          test -x "$ROOTFS/usr/bin/phosh-session"
           test -x "$ROOTFS/usr/local/bin/nativOS-bridge"
+          test -s "$ROOTFS/usr/local/bin/bridge_transport.py"
+          test -x "$ROOTFS/usr/local/bin/metmc-settings"
+          test -x "$ROOTFS/usr/local/bin/metmc-wifi"
           test -s "$ROOTFS/etc/nativOS/phoc.ini"
           cmp "$ROOTFS/etc/nativOS/phoc.ini" "$ROOTFS/usr/share/mt-os/phoc-nativos-reference.ini"
           mkdir -p "$RUNNER_TEMP/output"

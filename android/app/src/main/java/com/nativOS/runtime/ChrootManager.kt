@@ -822,8 +822,11 @@ METMC_LAUNCH_EOF
                 passwd -l root >/dev/null 2>&1 || true
                 rm -rf /root/.local/share/flatpak /home/metmc/.local/share/flatpak /var/lib/flatpak /etc/flatpak /usr/share/flatpak
                 rm -f /usr/local/bin/bwrap /usr/local/bin/nativos-flatpak-drop /run/nativos-flatpak-drop
-            chown -R metmc:metmc "${'$'}METMC_HOME" /tmp/runtime-metmc
-                chmod 0750 /home/metmc
+                METMC_HOME=$(getent passwd metmc | cut -d: -f6)
+                [ -n "${'$'}METMC_HOME" ] || exit 1
+                mkdir -p "${'$'}METMC_HOME" /tmp/runtime-metmc
+                chown -R metmc:metmc "${'$'}METMC_HOME" /tmp/runtime-metmc
+                chmod 0750 "${'$'}METMC_HOME"
             """.trimIndent()
         )
         if (result == 0) {
@@ -891,7 +894,9 @@ METMC_LAUNCH_EOF
                 export WLR_BACKENDS=x11 WLR_RENDERER=gles2 WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
                 export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
                 export GDK_BACKEND=wayland,x11 QT_QPA_PLATFORM='wayland;xcb' MOZ_ENABLE_WAYLAND=1 SDL_VIDEODRIVER=wayland,x11
-                if [ -x /usr/bin/phosh-session ] && [ -x /usr/bin/phoc ] && [ -x /usr/libexec/phosh ]; then
+                PHOC_BIN=/usr/local/bin/phoc
+                [ -x "${'$'}PHOC_BIN" ] || PHOC_BIN=/usr/bin/phoc
+                if [ -x /usr/bin/phosh-session ] && [ -x "${'$'}PHOC_BIN" ] && [ -x /usr/libexec/phosh ]; then
                     echo "Starting MT-Phosh on MT-Phoc nested inside Android X11"
                     echo "Graphics: trying GLES2/EGL hardware rendering first"
                     ls -l /dev/dri 2>/dev/null || true

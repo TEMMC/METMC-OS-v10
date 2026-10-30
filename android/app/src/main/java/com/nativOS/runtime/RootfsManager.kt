@@ -57,21 +57,12 @@ class RootfsManager(private val context: Context) {
     fun getExternalRootfsStatus(): String {
         val path = rootfsDir.absolutePath
         fun quote(value: String) = "'" + value.replace("'", "'\\''") + "'"
-        val marker = File(baseDir, ".mt-rootfs-access-v1").absolutePath
-        val uid = android.os.Process.myUid()
         val script = """
             set -eu
             R=${quote(path)}
             MARKER=${quote(marker)}
             APP_UID=$uid
             [ -d "${'$'}R" ] || { echo "Rootfs directory missing or inaccessible"; exit 11; }
-            ROOT_UID=${'$'}(stat -c %u "${'$'}R" 2>/dev/null || echo unknown)
-            if [ "${'$'}ROOT_UID" != "${'$'}APP_UID" ] || [ ! -f "${'$'}MARKER" ]; then
-                chown -hR "${'$'}APP_UID:${'$'}APP_UID" "${'$'}R" || { echo "Could not assign rootfs ownership to MT app UID"; exit 21; }
-                command -v restorecon >/dev/null 2>&1 && restorecon -RF "${'$'}R" >/dev/null 2>&1 || true
-                echo "${'$'}APP_UID" > "${'$'}MARKER"
-                chmod 600 "${'$'}MARKER"
-            fi
             [ -d "${'$'}R/usr" ] || { echo "Missing required directory: usr"; exit 12; }
             [ -d "${'$'}R/usr/bin" ] || { echo "Missing required directory: usr/bin"; exit 13; }
             [ -d "${'$'}R/etc" ] || { echo "Missing required directory: etc"; exit 14; }
@@ -173,23 +164,6 @@ class RootfsManager(private val context: Context) {
             }
         }
         val exitCode = process.waitFor()
-        if (phase == "extract" && exitCode == 0) {
-            val destination = args.indexOf("-C").let { index ->
-                if (index >= 0 && index + 1 < args.size) args[index + 1] else null
-            }
-            if (destination != null) {
-                val uid = android.os.Process.myUid()
-                val ownership = ProcessBuilder(
-                    "su", "-c", "chown -R $uid:$uid ${quote(destination)}"
-                ).redirectErrorStream(true).start()
-                val ownershipOutput = ownership.inputStream.bufferedReader().readText().trim()
-                val ownershipExit = ownership.waitFor()
-                if (ownershipExit != 0) {
-                    Log.e(TAG, "Could not return staging ownership to app UID $uid: $ownershipOutput")
-                    return ownershipExit
-                }
-            }
-        }
         Log.i(TAG, "tar[$phase] exit=$exitCode outputLines=$lineCount tail=${tail.joinToString(" | ")}")
         return exitCode
     }
