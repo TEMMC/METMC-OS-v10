@@ -63,7 +63,7 @@ class RootfsManager(private val context: Context) {
             val item = line.trim()
             val split = item.indexOf('=')
             if (split <= 0 || item.startsWith("#")) null
-            else item.substring(0, split).trim() to item.substring(split + 1).trim().trim('"', '\\'')
+            else item.substring(0, split).trim() to item.substring(split + 1).trim().trim('"')
         }.toMap()
         val id = fields["ID"]?.lowercase()
         val version = fields["VERSION_ID"]
