@@ -679,44 +679,19 @@ class KioskActivity : Activity() {
             }
             updateOverlay(0.05, "Root access confirmed", "")
 
-            // Step 2: Ensure the bundled Ubuntu Noble ARM64 rootfs is installed.
-            // Existing installations are migrated once, preserving /home/metmc where possible.
-            if (rootfsManager.isRootfsReady() && !rootfsManager.isBundledDistroReady()) {
-                updateOverlay(0.05, "Switching Linux system to Ubuntu Noble...", "One-time migration; preserving /home/metmc")
-                chrootManager.stopSession()
-            }
-            if (!rootfsManager.isRootfsReady() || !rootfsManager.isBundledDistroReady()) {
-                val bundled = rootfsManager.stageBundledRootfs { progress, status ->
-                    updateOverlay(0.05 + progress * 0.45, status, "Bundled in this APK — no network required")
-                }
-                if (!bundled) {
-                    updateOverlay(
-                        -1.0,
-                        "Offline root filesystem missing",
-                        "This APK must include the prepared Linux rootfs. Rebuild it through GitHub Actions; boot will not download files."
-                    )
-                    return
-                }
-
-                updateOverlay(0.50, "Extracting bundled Linux filesystem...", "No network required")
-                bootFailed = false
-                rootfsManager.extractRootfs { progress, status ->
-                    if (progress < 0) {
-                        bootFailed = true
-                        updateOverlay(-1.0, "Rootfs extraction failed", status)
-                    } else {
-                        updateOverlay(0.50 + progress * 0.20, status, "")
-                    }
-                }
-                if (bootFailed) return
-            } else {
-                updateOverlay(0.70, "Local Linux filesystem found", "Offline startup")
-            }
-
-            if (!rootfsManager.isBundledDistroReady()) {
-                updateOverlay(-1.0, "ERROR: Ubuntu rootfs setup failed", "The Ubuntu Noble filesystem could not be prepared")
+            // Step 2: Use the separately extracted app-private Ubuntu Noble rootfs.
+            // MT's APK is app-only: never require an embedded archive, migrate, download,
+            // stage, or extract a replacement over the user's existing Linux filesystem.
+            updateOverlay(0.10, "Checking external Ubuntu rootfs...", rootfsManager.getRootfsPath())
+            if (!rootfsManager.isExternalRootfsReady()) {
+                updateOverlay(
+                    -1.0,
+                    "External Ubuntu rootfs not ready",
+                    "Expected a valid Ubuntu 24.04 Noble rootfs at ${rootfsManager.getRootfsPath()}. Extract the separate MT rootfs there; this APK does not contain it."
+                )
                 return
             }
+            updateOverlay(0.70, "External Linux filesystem found", "Offline startup — existing rootfs preserved")
 
             // Step 3: Mount chroot
             updateOverlay(0.72, "Mounting Linux environment...", "")
