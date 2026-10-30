@@ -61,8 +61,8 @@ android {
         applicationId = "com.temmc.metmcosv10"
         minSdk = 28  // Android 9+ (modern root tools, Camera2 stable)
         targetSdk = 35
-        versionCode = 16
-        versionName = "10.7.0" // Lightweight touch-friendly Xfce desktop
+        versionCode = 17
+        versionName = "10.10.1" // MT-Phosh/MT-Phoc external-rootfs compatibility fix
 
         ndk {
             abiFilters += listOf("arm64-v8a")
