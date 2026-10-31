@@ -22,7 +22,7 @@ class ChrootManager(private val context: Context) {
     private val sessionOutputLock = Any()
 
     fun getSessionDiagnostics(): String = synchronized(sessionOutputLock) {
-        listOf(lastSessionFailure, lastSessionOutput)
+        listOf(lastSessionOutput, lastSessionFailure)
             .filter { it.isNotBlank() }
             .joinToString("\n")
             .takeLast(1800)
