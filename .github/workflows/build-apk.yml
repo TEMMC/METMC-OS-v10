@@ -1,7 +1,6 @@
 name: Build METMC OS v10 APK
 
-# METMC OS V10 v10.8.0: prepare Linux packages during CI so device boot never needs network access.
-# Rootfs package changes happen in GitHub Actions; runtime boot uses only the bundled rootfs.
+# App-only build: Linux rootfs is distributed and installed separately.
 
 on:
   workflow_dispatch:
@@ -35,26 +34,8 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      # App-only rebuild: reuse the separately published, verified rootfs snapshot.
-      # No distro bootstrap, apt install, desktop build, or rootfs modification occurs here.
-      - name: Download unchanged rootfs snapshot
-        shell: bash
-        run: |
-          set -euo pipefail
-          ROOTFS_GZ="/tmp/MT-OS-Rootfs-arm64.tar.gz"
-          curl --fail --location --retry 5 --retry-all-errors \
-            "https://github.com/TEMMC/METMC-OS-v10/releases/download/v10.10.0/MT-OS-Rootfs-arm64.tar.gz" \
-            --output "$ROOTFS_GZ"
-          echo "51e2b34e3a30bc91f19c547cc97d22ed96deb57b0c109e242119ae3ca58dcc97  $ROOTFS_GZ" | sha256sum --check -
-          mkdir -p android/app/src/main/assets/rootfs
-          gzip -dc "$ROOTFS_GZ" > android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tar
-          test "$(stat -c %s android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tar)" -gt 104857600
-          tar -tf android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tar | grep -m1 -E '(^|/)usr/libexec/phosh$'
-          tar -tf android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tar | grep -m1 -E '(^|/)usr/local/bin/phoc$'
-          cd android/app/src/main/assets/rootfs
-          sha256sum nativos-rootfs-arm64.tar > nativos-rootfs-arm64.tar.sha256
-          sha256sum --check nativos-rootfs-arm64.tar.sha256
-          echo "Verified existing MT rootfs snapshot; rootfs was not rebuilt or changed."
+      # Android application only. The Linux rootfs is a separate user-managed artifact.
+      # This workflow never downloads, builds, packages, extracts, or changes the rootfs.
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
