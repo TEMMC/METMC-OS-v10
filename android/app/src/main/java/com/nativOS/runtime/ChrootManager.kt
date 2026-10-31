@@ -157,8 +157,7 @@ class ChrootManager(private val context: Context) {
             Log.w(TAG, "Could not enable privileged helpers on chroot bind mount")
         }
 
-        // Fix missing symlinks in Android's /dev
-        val devPath = File(rootfsDir, "dev").absolutePath        rootShell.exec("ln -snf /proc/self/fd $devPath/fd")
+        // Fix missing symlinks in Android's /dev        val devPath = File(rootfsDir, "dev").absolutePath        rootShell.exec("ln -snf /proc/self/fd $devPath/fd")
         rootShell.exec("ln -snf /proc/self/fd/0 $devPath/stdin")
         rootShell.exec("ln -snf /proc/self/fd/1 $devPath/stdout")
         rootShell.exec("ln -snf /proc/self/fd/2 $devPath/stderr")
@@ -317,8 +316,7 @@ class ChrootManager(private val context: Context) {
                 int close_range(unsigned int first, unsigned int last, int flags) {
                     (void) first; (void) last; (void) flags;
                     errno = ENOSYS;
-                    return -1;                }
-                """.trimIndent()
+                    return -1;                }                """.trimIndent()
             )
             val result = execChroot(
                 "mkdir -p /usr/local/lib && " +
@@ -477,8 +475,7 @@ class ChrootManager(private val context: Context) {
                                              XCB_GET_PROPERTY_TYPE_ANY, 0, 64), 0);
                         xcb_get_geometry_reply_t *geometry = xcb_get_geometry_reply(
                             connection, xcb_get_geometry(connection, child), 0);                        if (attributes && geometry && window_class &&
-                            attributes->map_state == XCB_MAP_STATE_VIEWABLE &&
-                            xcb_get_property_value_length(window_class) == 0) {
+                            attributes->map_state == XCB_MAP_STATE_VIEWABLE &&                            xcb_get_property_value_length(window_class) == 0) {
                             uint32_t area = geometry->width * geometry->height;
                             if (area > largest_area) {
                                 largest_area = area;
@@ -637,8 +634,7 @@ class ChrootManager(private val context: Context) {
 
                     if (!target_destroyed && requested_action) {                        xcb_unmap_window(connection, target);
                         xcb_reparent_window(connection, target, screen->root,
-                                            original->x, original->y);
-                        uint32_t restored[] = {
+                                            original->x, original->y);                        uint32_t restored[] = {
                             (uint32_t) original->x, (uint32_t) original->y,
                             original->width, original->height, original->border_width
                         };
@@ -797,8 +793,7 @@ ENVARGS=()
 for name in ${'$'}KEEP; do  if printenv "${'$'}name" >/dev/null 2>&1; then ENVARGS+=("${'$'}name=$(printenv "${'$'}name")"); fi
 done
 exec sudo -E -u metmc -- env "${'$'}{ENVARGS[@]}" "${'$'}@"
-METMC_LAUNCH_EOF
-                chmod 0755 /usr/local/bin/metmc-launch
+METMC_LAUNCH_EOF                chmod 0755 /usr/local/bin/metmc-launch
                 # Lock direct root login; administrative work goes through sudo as metmc.
                 passwd -l root >/dev/null 2>&1 || true
                 rm -rf /root/.local/share/flatpak /home/metmc/.local/share/flatpak /var/lib/flatpak /etc/flatpak /usr/share/flatpak
@@ -887,7 +882,191 @@ PHOCEOF
                 # under /usr/local/bin; distro packages commonly use /usr/bin.
                 PHOC_BIN=""
                 for candidate in /usr/local/bin/phoc /usr/bin/phoc; do
-                    if [ -x "$candidate" ]; then PHOC_BIN="$candidate"; break; fi
+                    if [ -x "${' ]; then PHOC_BIN="$candidate"; break; fi
+                done
+                if [ -x /usr/bin/phosh-session ] && [ -n "${' ] && [ -x /usr/libexec/phosh ]; then
+                    echo "Starting MT-Phosh on MT-Phoc nested inside Android X11"
+                    echo "Using Phoc executable: $PHOC_BIN"
+                    echo "Graphics: trying GLES2/EGL hardware rendering first"
+                    ls -l /dev/dri 2>/dev/null || true
+                    export XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh
+                    if dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Phosh/GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"
+                    fi
+                fi
+                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
+                    echo "Starting nested Labwc fallback desktop on Android X11"
+                    export XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
+                    if WLR_RENDERER=gles2 dbus-run-session -- labwc; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Labwc GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- labwc
+                    fi
+                fi
+                echo "ERROR: Alpine Labwc, Waybar, or Fuzzel is missing from the bundled rootfs" >&2
+                exit 127
+            '
+        """.trimIndent()
+        Log.i(TAG, "Starting Alpine Labwc Wayland multi-window desktop")
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
+        val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
+        sessionProcess = process
+        Thread {
+            try {
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { Log.d(TAG, "SESSION: $it") }
+                }
+            } catch (_: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Verify that Labwc and its touch-sized taskbar are actually running. */
+    fun awaitLabwcReady(timeoutMs: Long = 45_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            val ready = if (isPhoshInstalled()) {
+                execChroot("pgrep -x phoc >/dev/null 2>&1 && pgrep -x phosh >/dev/null 2>&1") == 0
+            } else {
+                execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0
+            }
+            if (ready) {
+                Log.i(TAG, if (isPhoshInstalled()) "MT-Phosh and MT-Phoc readiness check passed" else "Labwc compositor and Waybar taskbar readiness check passed")
+                Thread.sleep(700)
+                return true
+            }
+            try { Thread.sleep(300) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
+        return false
+    }
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
+
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '${'$'}root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '${'$'}root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        // Unmount every nested bind mount under the rootfs (including removable
+        // storage), deepest first, so a distro migration can safely rename it.
+        val mountedTargets = mounts.mapNotNull { line ->
+            val target = line.substringAfter(" on ", "").substringBefore(" type ")
+            if (target == rootfsDir.absolutePath || target.startsWith(rootfsDir.absolutePath + "/")) target else null
+        }
+        val targets = (mountedTargets + listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )).distinct().sortedByDescending { it.length }
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks package-management temporary directories.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"}candidate" ]; then PHOC_BIN="${'; break; fi
                 done
                 if [ -x /usr/bin/phosh-session ] && [ -n "$PHOC_BIN" ] && [ -x /usr/libexec/phosh ]; then
                     echo "Starting MT-Phosh on MT-Phoc nested inside Android X11"
@@ -957,7 +1136,3433 @@ PHOCEOF
         Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
         return false
     }
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
 
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '${'$'}root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '${'$'}root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        // Unmount every nested bind mount under the rootfs (including removable
+        // storage), deepest first, so a distro migration can safely rename it.
+        val mountedTargets = mounts.mapNotNull { line ->
+            val target = line.substringAfter(" on ", "").substringBefore(" type ")
+            if (target == rootfsDir.absolutePath || target.startsWith(rootfsDir.absolutePath + "/")) target else null
+        }
+        val targets = (mountedTargets + listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )).distinct().sortedByDescending { it.length }
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks package-management temporary directories.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"}candidate"; break; fi
+                done
+                if [ -x /usr/bin/phosh-session ] && [ -n "$PHOC_BIN" ] && [ -x /usr/libexec/phosh ]; then
+                    echo "Starting MT-Phosh on MT-Phoc nested inside Android X11"
+                    echo "Using Phoc executable: $PHOC_BIN"
+                    echo "Graphics: trying GLES2/EGL hardware rendering first"
+                    ls -l /dev/dri 2>/dev/null || true
+                    export XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh
+                    if dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Phosh/GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"
+                    fi
+                fi
+                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
+                    echo "Starting nested Labwc fallback desktop on Android X11"
+                    export XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
+                    if WLR_RENDERER=gles2 dbus-run-session -- labwc; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Labwc GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- labwc
+                    fi
+                fi
+                echo "ERROR: Alpine Labwc, Waybar, or Fuzzel is missing from the bundled rootfs" >&2
+                exit 127
+            '
+        """.trimIndent()
+        Log.i(TAG, "Starting Alpine Labwc Wayland multi-window desktop")
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
+        val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
+        sessionProcess = process
+        Thread {
+            try {
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { Log.d(TAG, "SESSION: $it") }
+                }
+            } catch (_: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Verify that Labwc and its touch-sized taskbar are actually running. */
+    fun awaitLabwcReady(timeoutMs: Long = 45_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            val ready = if (isPhoshInstalled()) {
+                execChroot("pgrep -x phoc >/dev/null 2>&1 && pgrep -x phosh >/dev/null 2>&1") == 0
+            } else {
+                execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0
+            }
+            if (ready) {
+                Log.i(TAG, if (isPhoshInstalled()) "MT-Phosh and MT-Phoc readiness check passed" else "Labwc compositor and Waybar taskbar readiness check passed")
+                Thread.sleep(700)
+                return true
+            }
+            try { Thread.sleep(300) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
+        return false
+    }
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
+
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '${'$'}root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '${'$'}root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        // Unmount every nested bind mount under the rootfs (including removable
+        // storage), deepest first, so a distro migration can safely rename it.
+        val mountedTargets = mounts.mapNotNull { line ->
+            val target = line.substringAfter(" on ", "").substringBefore(" type ")
+            if (target == rootfsDir.absolutePath || target.startsWith(rootfsDir.absolutePath + "/")) target else null
+        }
+        val targets = (mountedTargets + listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )).distinct().sortedByDescending { it.length }
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks package-management temporary directories.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"}PHOC_BIN" ] && [ -x /usr/libexec/phosh ]; then
+                    echo "Starting MT-Phosh on MT-Phoc nested inside Android X11"
+                    echo "Using Phoc executable: $PHOC_BIN"
+                    echo "Graphics: trying GLES2/EGL hardware rendering first"
+                    ls -l /dev/dri 2>/dev/null || true
+                    export XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh
+                    if dbus-run-session -- "${' -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Phosh/GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"
+                    fi
+                fi
+                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
+                    echo "Starting nested Labwc fallback desktop on Android X11"
+                    export XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
+                    if WLR_RENDERER=gles2 dbus-run-session -- labwc; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Labwc GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- labwc
+                    fi
+                fi
+                echo "ERROR: Alpine Labwc, Waybar, or Fuzzel is missing from the bundled rootfs" >&2
+                exit 127
+            '
+        """.trimIndent()
+        Log.i(TAG, "Starting Alpine Labwc Wayland multi-window desktop")
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
+        val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
+        sessionProcess = process
+        Thread {
+            try {
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { Log.d(TAG, "SESSION: $it") }
+                }
+            } catch (_: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Verify that Labwc and its touch-sized taskbar are actually running. */
+    fun awaitLabwcReady(timeoutMs: Long = 45_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            val ready = if (isPhoshInstalled()) {
+                execChroot("pgrep -x phoc >/dev/null 2>&1 && pgrep -x phosh >/dev/null 2>&1") == 0
+            } else {
+                execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0
+            }
+            if (ready) {
+                Log.i(TAG, if (isPhoshInstalled()) "MT-Phosh and MT-Phoc readiness check passed" else "Labwc compositor and Waybar taskbar readiness check passed")
+                Thread.sleep(700)
+                return true
+            }
+            try { Thread.sleep(300) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
+        return false
+    }
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
+
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '${'$'}root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '${'$'}root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        // Unmount every nested bind mount under the rootfs (including removable
+        // storage), deepest first, so a distro migration can safely rename it.
+        val mountedTargets = mounts.mapNotNull { line ->
+            val target = line.substringAfter(" on ", "").substringBefore(" type ")
+            if (target == rootfsDir.absolutePath || target.startsWith(rootfsDir.absolutePath + "/")) target else null
+        }
+        val targets = (mountedTargets + listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )).distinct().sortedByDescending { it.length }
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks package-management temporary directories.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"}candidate" ]; then PHOC_BIN="${'; break; fi
+                done
+                if [ -x /usr/bin/phosh-session ] && [ -n "$PHOC_BIN" ] && [ -x /usr/libexec/phosh ]; then
+                    echo "Starting MT-Phosh on MT-Phoc nested inside Android X11"
+                    echo "Using Phoc executable: $PHOC_BIN"
+                    echo "Graphics: trying GLES2/EGL hardware rendering first"
+                    ls -l /dev/dri 2>/dev/null || true
+                    export XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh
+                    if dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Phosh/GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"
+                    fi
+                fi
+                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
+                    echo "Starting nested Labwc fallback desktop on Android X11"
+                    export XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
+                    if WLR_RENDERER=gles2 dbus-run-session -- labwc; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Labwc GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- labwc
+                    fi
+                fi
+                echo "ERROR: Alpine Labwc, Waybar, or Fuzzel is missing from the bundled rootfs" >&2
+                exit 127
+            '
+        """.trimIndent()
+        Log.i(TAG, "Starting Alpine Labwc Wayland multi-window desktop")
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
+        val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
+        sessionProcess = process
+        Thread {
+            try {
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { Log.d(TAG, "SESSION: $it") }
+                }
+            } catch (_: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Verify that Labwc and its touch-sized taskbar are actually running. */
+    fun awaitLabwcReady(timeoutMs: Long = 45_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            val ready = if (isPhoshInstalled()) {
+                execChroot("pgrep -x phoc >/dev/null 2>&1 && pgrep -x phosh >/dev/null 2>&1") == 0
+            } else {
+                execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0
+            }
+            if (ready) {
+                Log.i(TAG, if (isPhoshInstalled()) "MT-Phosh and MT-Phoc readiness check passed" else "Labwc compositor and Waybar taskbar readiness check passed")
+                Thread.sleep(700)
+                return true
+            }
+            try { Thread.sleep(300) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
+        return false
+    }
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
+
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '${'$'}root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '${'$'}root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        // Unmount every nested bind mount under the rootfs (including removable
+        // storage), deepest first, so a distro migration can safely rename it.
+        val mountedTargets = mounts.mapNotNull { line ->
+            val target = line.substringAfter(" on ", "").substringBefore(" type ")
+            if (target == rootfsDir.absolutePath || target.startsWith(rootfsDir.absolutePath + "/")) target else null
+        }
+        val targets = (mountedTargets + listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )).distinct().sortedByDescending { it.length }
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks package-management temporary directories.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"}candidate"; break; fi
+                done
+                if [ -x /usr/bin/phosh-session ] && [ -n "$PHOC_BIN" ] && [ -x /usr/libexec/phosh ]; then
+                    echo "Starting MT-Phosh on MT-Phoc nested inside Android X11"
+                    echo "Using Phoc executable: $PHOC_BIN"
+                    echo "Graphics: trying GLES2/EGL hardware rendering first"
+                    ls -l /dev/dri 2>/dev/null || true
+                    export XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh
+                    if dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Phosh/GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"
+                    fi
+                fi
+                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
+                    echo "Starting nested Labwc fallback desktop on Android X11"
+                    export XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
+                    if WLR_RENDERER=gles2 dbus-run-session -- labwc; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Labwc GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- labwc
+                    fi
+                fi
+                echo "ERROR: Alpine Labwc, Waybar, or Fuzzel is missing from the bundled rootfs" >&2
+                exit 127
+            '
+        """.trimIndent()
+        Log.i(TAG, "Starting Alpine Labwc Wayland multi-window desktop")
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
+        val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
+        sessionProcess = process
+        Thread {
+            try {
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { Log.d(TAG, "SESSION: $it") }
+                }
+            } catch (_: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Verify that Labwc and its touch-sized taskbar are actually running. */
+    fun awaitLabwcReady(timeoutMs: Long = 45_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            val ready = if (isPhoshInstalled()) {
+                execChroot("pgrep -x phoc >/dev/null 2>&1 && pgrep -x phosh >/dev/null 2>&1") == 0
+            } else {
+                execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0
+            }
+            if (ready) {
+                Log.i(TAG, if (isPhoshInstalled()) "MT-Phosh and MT-Phoc readiness check passed" else "Labwc compositor and Waybar taskbar readiness check passed")
+                Thread.sleep(700)
+                return true
+            }
+            try { Thread.sleep(300) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
+        return false
+    }
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
+
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '${'$'}root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '${'$'}root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        // Unmount every nested bind mount under the rootfs (including removable
+        // storage), deepest first, so a distro migration can safely rename it.
+        val mountedTargets = mounts.mapNotNull { line ->
+            val target = line.substringAfter(" on ", "").substringBefore(" type ")
+            if (target == rootfsDir.absolutePath || target.startsWith(rootfsDir.absolutePath + "/")) target else null
+        }
+        val targets = (mountedTargets + listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )).distinct().sortedByDescending { it.length }
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks package-management temporary directories.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"}PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Phosh/GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- "${' -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"
+                    fi
+                fi
+                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
+                    echo "Starting nested Labwc fallback desktop on Android X11"
+                    export XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
+                    if WLR_RENDERER=gles2 dbus-run-session -- labwc; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Labwc GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- labwc
+                    fi
+                fi
+                echo "ERROR: Alpine Labwc, Waybar, or Fuzzel is missing from the bundled rootfs" >&2
+                exit 127
+            '
+        """.trimIndent()
+        Log.i(TAG, "Starting Alpine Labwc Wayland multi-window desktop")
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
+        val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
+        sessionProcess = process
+        Thread {
+            try {
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { Log.d(TAG, "SESSION: $it") }
+                }
+            } catch (_: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Verify that Labwc and its touch-sized taskbar are actually running. */
+    fun awaitLabwcReady(timeoutMs: Long = 45_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            val ready = if (isPhoshInstalled()) {
+                execChroot("pgrep -x phoc >/dev/null 2>&1 && pgrep -x phosh >/dev/null 2>&1") == 0
+            } else {
+                execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0
+            }
+            if (ready) {
+                Log.i(TAG, if (isPhoshInstalled()) "MT-Phosh and MT-Phoc readiness check passed" else "Labwc compositor and Waybar taskbar readiness check passed")
+                Thread.sleep(700)
+                return true
+            }
+            try { Thread.sleep(300) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
+        return false
+    }
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
+
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '${'$'}root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '${'$'}root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        // Unmount every nested bind mount under the rootfs (including removable
+        // storage), deepest first, so a distro migration can safely rename it.
+        val mountedTargets = mounts.mapNotNull { line ->
+            val target = line.substringAfter(" on ", "").substringBefore(" type ")
+            if (target == rootfsDir.absolutePath || target.startsWith(rootfsDir.absolutePath + "/")) target else null
+        }
+        val targets = (mountedTargets + listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )).distinct().sortedByDescending { it.length }
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks package-management temporary directories.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"}candidate" ]; then PHOC_BIN="${'; break; fi
+                done
+                if [ -x /usr/bin/phosh-session ] && [ -n "$PHOC_BIN" ] && [ -x /usr/libexec/phosh ]; then
+                    echo "Starting MT-Phosh on MT-Phoc nested inside Android X11"
+                    echo "Using Phoc executable: $PHOC_BIN"
+                    echo "Graphics: trying GLES2/EGL hardware rendering first"
+                    ls -l /dev/dri 2>/dev/null || true
+                    export XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh
+                    if dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Phosh/GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"
+                    fi
+                fi
+                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
+                    echo "Starting nested Labwc fallback desktop on Android X11"
+                    export XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
+                    if WLR_RENDERER=gles2 dbus-run-session -- labwc; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Labwc GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- labwc
+                    fi
+                fi
+                echo "ERROR: Alpine Labwc, Waybar, or Fuzzel is missing from the bundled rootfs" >&2
+                exit 127
+            '
+        """.trimIndent()
+        Log.i(TAG, "Starting Alpine Labwc Wayland multi-window desktop")
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
+        val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
+        sessionProcess = process
+        Thread {
+            try {
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { Log.d(TAG, "SESSION: $it") }
+                }
+            } catch (_: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Verify that Labwc and its touch-sized taskbar are actually running. */
+    fun awaitLabwcReady(timeoutMs: Long = 45_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            val ready = if (isPhoshInstalled()) {
+                execChroot("pgrep -x phoc >/dev/null 2>&1 && pgrep -x phosh >/dev/null 2>&1") == 0
+            } else {
+                execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0
+            }
+            if (ready) {
+                Log.i(TAG, if (isPhoshInstalled()) "MT-Phosh and MT-Phoc readiness check passed" else "Labwc compositor and Waybar taskbar readiness check passed")
+                Thread.sleep(700)
+                return true
+            }
+            try { Thread.sleep(300) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
+        return false
+    }
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
+
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '${'$'}root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '${'$'}root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        // Unmount every nested bind mount under the rootfs (including removable
+        // storage), deepest first, so a distro migration can safely rename it.
+        val mountedTargets = mounts.mapNotNull { line ->
+            val target = line.substringAfter(" on ", "").substringBefore(" type ")
+            if (target == rootfsDir.absolutePath || target.startsWith(rootfsDir.absolutePath + "/")) target else null
+        }
+        val targets = (mountedTargets + listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )).distinct().sortedByDescending { it.length }
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks package-management temporary directories.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"}candidate"; break; fi
+                done
+                if [ -x /usr/bin/phosh-session ] && [ -n "$PHOC_BIN" ] && [ -x /usr/libexec/phosh ]; then
+                    echo "Starting MT-Phosh on MT-Phoc nested inside Android X11"
+                    echo "Using Phoc executable: $PHOC_BIN"
+                    echo "Graphics: trying GLES2/EGL hardware rendering first"
+                    ls -l /dev/dri 2>/dev/null || true
+                    export XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh
+                    if dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Phosh/GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"
+                    fi
+                fi
+                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
+                    echo "Starting nested Labwc fallback desktop on Android X11"
+                    export XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
+                    if WLR_RENDERER=gles2 dbus-run-session -- labwc; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Labwc GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- labwc
+                    fi
+                fi
+                echo "ERROR: Alpine Labwc, Waybar, or Fuzzel is missing from the bundled rootfs" >&2
+                exit 127
+            '
+        """.trimIndent()
+        Log.i(TAG, "Starting Alpine Labwc Wayland multi-window desktop")
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
+        val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
+        sessionProcess = process
+        Thread {
+            try {
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { Log.d(TAG, "SESSION: $it") }
+                }
+            } catch (_: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Verify that Labwc and its touch-sized taskbar are actually running. */
+    fun awaitLabwcReady(timeoutMs: Long = 45_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            val ready = if (isPhoshInstalled()) {
+                execChroot("pgrep -x phoc >/dev/null 2>&1 && pgrep -x phosh >/dev/null 2>&1") == 0
+            } else {
+                execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0
+            }
+            if (ready) {
+                Log.i(TAG, if (isPhoshInstalled()) "MT-Phosh and MT-Phoc readiness check passed" else "Labwc compositor and Waybar taskbar readiness check passed")
+                Thread.sleep(700)
+                return true
+            }
+            try { Thread.sleep(300) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
+        return false
+    }
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
+
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '${'$'}root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '${'$'}root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        // Unmount every nested bind mount under the rootfs (including removable
+        // storage), deepest first, so a distro migration can safely rename it.
+        val mountedTargets = mounts.mapNotNull { line ->
+            val target = line.substringAfter(" on ", "").substringBefore(" type ")
+            if (target == rootfsDir.absolutePath || target.startsWith(rootfsDir.absolutePath + "/")) target else null
+        }
+        val targets = (mountedTargets + listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )).distinct().sortedByDescending { it.length }
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks package-management temporary directories.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"}PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"
+                    fi
+                fi
+                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
+                    echo "Starting nested Labwc fallback desktop on Android X11"
+                    export XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
+                    if WLR_RENDERER=gles2 dbus-run-session -- labwc; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Labwc GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- labwc
+                    fi
+                fi
+                echo "ERROR: Alpine Labwc, Waybar, or Fuzzel is missing from the bundled rootfs" >&2
+                exit 127
+            '
+        """.trimIndent()
+        Log.i(TAG, "Starting Alpine Labwc Wayland multi-window desktop")
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
+        val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
+        sessionProcess = process
+        Thread {
+            try {
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { Log.d(TAG, "SESSION: $it") }
+                }
+            } catch (_: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Verify that Labwc and its touch-sized taskbar are actually running. */
+    fun awaitLabwcReady(timeoutMs: Long = 45_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            val ready = if (isPhoshInstalled()) {
+                execChroot("pgrep -x phoc >/dev/null 2>&1 && pgrep -x phosh >/dev/null 2>&1") == 0
+            } else {
+                execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0
+            }
+            if (ready) {
+                Log.i(TAG, if (isPhoshInstalled()) "MT-Phosh and MT-Phoc readiness check passed" else "Labwc compositor and Waybar taskbar readiness check passed")
+                Thread.sleep(700)
+                return true
+            }
+            try { Thread.sleep(300) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
+        return false
+    }
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
+
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '${'$'}root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '${'$'}root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        // Unmount every nested bind mount under the rootfs (including removable
+        // storage), deepest first, so a distro migration can safely rename it.
+        val mountedTargets = mounts.mapNotNull { line ->
+            val target = line.substringAfter(" on ", "").substringBefore(" type ")
+            if (target == rootfsDir.absolutePath || target.startsWith(rootfsDir.absolutePath + "/")) target else null
+        }
+        val targets = (mountedTargets + listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )).distinct().sortedByDescending { it.length }
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks package-management temporary directories.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"}candidate" ]; then PHOC_BIN="${'; break; fi
+                done
+                if [ -x /usr/bin/phosh-session ] && [ -n "${' ] && [ -x /usr/libexec/phosh ]; then
+                    echo "Starting MT-Phosh on MT-Phoc nested inside Android X11"
+                    echo "Using Phoc executable: $PHOC_BIN"
+                    echo "Graphics: trying GLES2/EGL hardware rendering first"
+                    ls -l /dev/dri 2>/dev/null || true
+                    export XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh
+                    if dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Phosh/GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"
+                    fi
+                fi
+                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
+                    echo "Starting nested Labwc fallback desktop on Android X11"
+                    export XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
+                    if WLR_RENDERER=gles2 dbus-run-session -- labwc; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Labwc GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- labwc
+                    fi
+                fi
+                echo "ERROR: Alpine Labwc, Waybar, or Fuzzel is missing from the bundled rootfs" >&2
+                exit 127
+            '
+        """.trimIndent()
+        Log.i(TAG, "Starting Alpine Labwc Wayland multi-window desktop")
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
+        val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
+        sessionProcess = process
+        Thread {
+            try {
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { Log.d(TAG, "SESSION: $it") }
+                }
+            } catch (_: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Verify that Labwc and its touch-sized taskbar are actually running. */
+    fun awaitLabwcReady(timeoutMs: Long = 45_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            val ready = if (isPhoshInstalled()) {
+                execChroot("pgrep -x phoc >/dev/null 2>&1 && pgrep -x phosh >/dev/null 2>&1") == 0
+            } else {
+                execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0
+            }
+            if (ready) {
+                Log.i(TAG, if (isPhoshInstalled()) "MT-Phosh and MT-Phoc readiness check passed" else "Labwc compositor and Waybar taskbar readiness check passed")
+                Thread.sleep(700)
+                return true
+            }
+            try { Thread.sleep(300) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
+        return false
+    }
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
+
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '${'$'}root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '${'$'}root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        // Unmount every nested bind mount under the rootfs (including removable
+        // storage), deepest first, so a distro migration can safely rename it.
+        val mountedTargets = mounts.mapNotNull { line ->
+            val target = line.substringAfter(" on ", "").substringBefore(" type ")
+            if (target == rootfsDir.absolutePath || target.startsWith(rootfsDir.absolutePath + "/")) target else null
+        }
+        val targets = (mountedTargets + listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )).distinct().sortedByDescending { it.length }
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks package-management temporary directories.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"}candidate"; break; fi
+                done
+                if [ -x /usr/bin/phosh-session ] && [ -n "$PHOC_BIN" ] && [ -x /usr/libexec/phosh ]; then
+                    echo "Starting MT-Phosh on MT-Phoc nested inside Android X11"
+                    echo "Using Phoc executable: $PHOC_BIN"
+                    echo "Graphics: trying GLES2/EGL hardware rendering first"
+                    ls -l /dev/dri 2>/dev/null || true
+                    export XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh
+                    if dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Phosh/GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"
+                    fi
+                fi
+                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
+                    echo "Starting nested Labwc fallback desktop on Android X11"
+                    export XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
+                    if WLR_RENDERER=gles2 dbus-run-session -- labwc; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Labwc GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- labwc
+                    fi
+                fi
+                echo "ERROR: Alpine Labwc, Waybar, or Fuzzel is missing from the bundled rootfs" >&2
+                exit 127
+            '
+        """.trimIndent()
+        Log.i(TAG, "Starting Alpine Labwc Wayland multi-window desktop")
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
+        val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
+        sessionProcess = process
+        Thread {
+            try {
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { Log.d(TAG, "SESSION: $it") }
+                }
+            } catch (_: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Verify that Labwc and its touch-sized taskbar are actually running. */
+    fun awaitLabwcReady(timeoutMs: Long = 45_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            val ready = if (isPhoshInstalled()) {
+                execChroot("pgrep -x phoc >/dev/null 2>&1 && pgrep -x phosh >/dev/null 2>&1") == 0
+            } else {
+                execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0
+            }
+            if (ready) {
+                Log.i(TAG, if (isPhoshInstalled()) "MT-Phosh and MT-Phoc readiness check passed" else "Labwc compositor and Waybar taskbar readiness check passed")
+                Thread.sleep(700)
+                return true
+            }
+            try { Thread.sleep(300) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
+        return false
+    }
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
+
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '${'$'}root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '${'$'}root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        // Unmount every nested bind mount under the rootfs (including removable
+        // storage), deepest first, so a distro migration can safely rename it.
+        val mountedTargets = mounts.mapNotNull { line ->
+            val target = line.substringAfter(" on ", "").substringBefore(" type ")
+            if (target == rootfsDir.absolutePath || target.startsWith(rootfsDir.absolutePath + "/")) target else null
+        }
+        val targets = (mountedTargets + listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )).distinct().sortedByDescending { it.length }
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks package-management temporary directories.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"}PHOC_BIN" ] && [ -x /usr/libexec/phosh ]; then
+                    echo "Starting MT-Phosh on MT-Phoc nested inside Android X11"
+                    echo "Using Phoc executable: $PHOC_BIN"
+                    echo "Graphics: trying GLES2/EGL hardware rendering first"
+                    ls -l /dev/dri 2>/dev/null || true
+                    export XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh
+                    if dbus-run-session -- "${' -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Phosh/GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"
+                    fi
+                fi
+                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
+                    echo "Starting nested Labwc fallback desktop on Android X11"
+                    export XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
+                    if WLR_RENDERER=gles2 dbus-run-session -- labwc; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Labwc GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- labwc
+                    fi
+                fi
+                echo "ERROR: Alpine Labwc, Waybar, or Fuzzel is missing from the bundled rootfs" >&2
+                exit 127
+            '
+        """.trimIndent()
+        Log.i(TAG, "Starting Alpine Labwc Wayland multi-window desktop")
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
+        val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
+        sessionProcess = process
+        Thread {
+            try {
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { Log.d(TAG, "SESSION: $it") }
+                }
+            } catch (_: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Verify that Labwc and its touch-sized taskbar are actually running. */
+    fun awaitLabwcReady(timeoutMs: Long = 45_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            val ready = if (isPhoshInstalled()) {
+                execChroot("pgrep -x phoc >/dev/null 2>&1 && pgrep -x phosh >/dev/null 2>&1") == 0
+            } else {
+                execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0
+            }
+            if (ready) {
+                Log.i(TAG, if (isPhoshInstalled()) "MT-Phosh and MT-Phoc readiness check passed" else "Labwc compositor and Waybar taskbar readiness check passed")
+                Thread.sleep(700)
+                return true
+            }
+            try { Thread.sleep(300) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
+        return false
+    }
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
+
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '${'$'}root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '${'$'}root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        // Unmount every nested bind mount under the rootfs (including removable
+        // storage), deepest first, so a distro migration can safely rename it.
+        val mountedTargets = mounts.mapNotNull { line ->
+            val target = line.substringAfter(" on ", "").substringBefore(" type ")
+            if (target == rootfsDir.absolutePath || target.startsWith(rootfsDir.absolutePath + "/")) target else null
+        }
+        val targets = (mountedTargets + listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )).distinct().sortedByDescending { it.length }
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks package-management temporary directories.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"}candidate"; break; fi
+                done
+                if [ -x /usr/bin/phosh-session ] && [ -n "$PHOC_BIN" ] && [ -x /usr/libexec/phosh ]; then
+                    echo "Starting MT-Phosh on MT-Phoc nested inside Android X11"
+                    echo "Using Phoc executable: $PHOC_BIN"
+                    echo "Graphics: trying GLES2/EGL hardware rendering first"
+                    ls -l /dev/dri 2>/dev/null || true
+                    export XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh
+                    if dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Phosh/GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"
+                    fi
+                fi
+                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
+                    echo "Starting nested Labwc fallback desktop on Android X11"
+                    export XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
+                    if WLR_RENDERER=gles2 dbus-run-session -- labwc; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Labwc GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- labwc
+                    fi
+                fi
+                echo "ERROR: Alpine Labwc, Waybar, or Fuzzel is missing from the bundled rootfs" >&2
+                exit 127
+            '
+        """.trimIndent()
+        Log.i(TAG, "Starting Alpine Labwc Wayland multi-window desktop")
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
+        val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
+        sessionProcess = process
+        Thread {
+            try {
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { Log.d(TAG, "SESSION: $it") }
+                }
+            } catch (_: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Verify that Labwc and its touch-sized taskbar are actually running. */
+    fun awaitLabwcReady(timeoutMs: Long = 45_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            val ready = if (isPhoshInstalled()) {
+                execChroot("pgrep -x phoc >/dev/null 2>&1 && pgrep -x phosh >/dev/null 2>&1") == 0
+            } else {
+                execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0
+            }
+            if (ready) {
+                Log.i(TAG, if (isPhoshInstalled()) "MT-Phosh and MT-Phoc readiness check passed" else "Labwc compositor and Waybar taskbar readiness check passed")
+                Thread.sleep(700)
+                return true
+            }
+            try { Thread.sleep(300) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
+        return false
+    }
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
+
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '${'$'}root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '${'$'}root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        // Unmount every nested bind mount under the rootfs (including removable
+        // storage), deepest first, so a distro migration can safely rename it.
+        val mountedTargets = mounts.mapNotNull { line ->
+            val target = line.substringAfter(" on ", "").substringBefore(" type ")
+            if (target == rootfsDir.absolutePath || target.startsWith(rootfsDir.absolutePath + "/")) target else null
+        }
+        val targets = (mountedTargets + listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )).distinct().sortedByDescending { it.length }
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks package-management temporary directories.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"}PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Phosh/GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- "${' -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"
+                    fi
+                fi
+                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
+                    echo "Starting nested Labwc fallback desktop on Android X11"
+                    export XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
+                    if WLR_RENDERER=gles2 dbus-run-session -- labwc; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Labwc GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- labwc
+                    fi
+                fi
+                echo "ERROR: Alpine Labwc, Waybar, or Fuzzel is missing from the bundled rootfs" >&2
+                exit 127
+            '
+        """.trimIndent()
+        Log.i(TAG, "Starting Alpine Labwc Wayland multi-window desktop")
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
+        val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
+        sessionProcess = process
+        Thread {
+            try {
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { Log.d(TAG, "SESSION: $it") }
+                }
+            } catch (_: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Verify that Labwc and its touch-sized taskbar are actually running. */
+    fun awaitLabwcReady(timeoutMs: Long = 45_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            val ready = if (isPhoshInstalled()) {
+                execChroot("pgrep -x phoc >/dev/null 2>&1 && pgrep -x phosh >/dev/null 2>&1") == 0
+            } else {
+                execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0
+            }
+            if (ready) {
+                Log.i(TAG, if (isPhoshInstalled()) "MT-Phosh and MT-Phoc readiness check passed" else "Labwc compositor and Waybar taskbar readiness check passed")
+                Thread.sleep(700)
+                return true
+            }
+            try { Thread.sleep(300) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
+        return false
+    }
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
+
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '${'$'}root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '${'$'}root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        // Unmount every nested bind mount under the rootfs (including removable
+        // storage), deepest first, so a distro migration can safely rename it.
+        val mountedTargets = mounts.mapNotNull { line ->
+            val target = line.substringAfter(" on ", "").substringBefore(" type ")
+            if (target == rootfsDir.absolutePath || target.startsWith(rootfsDir.absolutePath + "/")) target else null
+        }
+        val targets = (mountedTargets + listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )).distinct().sortedByDescending { it.length }
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks package-management temporary directories.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"}candidate"; break; fi
+                done
+                if [ -x /usr/bin/phosh-session ] && [ -n "$PHOC_BIN" ] && [ -x /usr/libexec/phosh ]; then
+                    echo "Starting MT-Phosh on MT-Phoc nested inside Android X11"
+                    echo "Using Phoc executable: $PHOC_BIN"
+                    echo "Graphics: trying GLES2/EGL hardware rendering first"
+                    ls -l /dev/dri 2>/dev/null || true
+                    export XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh
+                    if dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Phosh/GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"
+                    fi
+                fi
+                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
+                    echo "Starting nested Labwc fallback desktop on Android X11"
+                    export XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
+                    if WLR_RENDERER=gles2 dbus-run-session -- labwc; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Labwc GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- labwc
+                    fi
+                fi
+                echo "ERROR: Alpine Labwc, Waybar, or Fuzzel is missing from the bundled rootfs" >&2
+                exit 127
+            '
+        """.trimIndent()
+        Log.i(TAG, "Starting Alpine Labwc Wayland multi-window desktop")
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
+        val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
+        sessionProcess = process
+        Thread {
+            try {
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { Log.d(TAG, "SESSION: $it") }
+                }
+            } catch (_: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Verify that Labwc and its touch-sized taskbar are actually running. */
+    fun awaitLabwcReady(timeoutMs: Long = 45_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            val ready = if (isPhoshInstalled()) {
+                execChroot("pgrep -x phoc >/dev/null 2>&1 && pgrep -x phosh >/dev/null 2>&1") == 0
+            } else {
+                execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0
+            }
+            if (ready) {
+                Log.i(TAG, if (isPhoshInstalled()) "MT-Phosh and MT-Phoc readiness check passed" else "Labwc compositor and Waybar taskbar readiness check passed")
+                Thread.sleep(700)
+                return true
+            }
+            try { Thread.sleep(300) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
+        return false
+    }
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
+
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '${'$'}root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '${'$'}root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        // Unmount every nested bind mount under the rootfs (including removable
+        // storage), deepest first, so a distro migration can safely rename it.
+        val mountedTargets = mounts.mapNotNull { line ->
+            val target = line.substringAfter(" on ", "").substringBefore(" type ")
+            if (target == rootfsDir.absolutePath || target.startsWith(rootfsDir.absolutePath + "/")) target else null
+        }
+        val targets = (mountedTargets + listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )).distinct().sortedByDescending { it.length }
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks package-management temporary directories.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"}PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"
+                    fi
+                fi
+                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
+                    echo "Starting nested Labwc fallback desktop on Android X11"
+                    export XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
+                    if WLR_RENDERER=gles2 dbus-run-session -- labwc; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Labwc GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- labwc
+                    fi
+                fi
+                echo "ERROR: Alpine Labwc, Waybar, or Fuzzel is missing from the bundled rootfs" >&2
+                exit 127
+            '
+        """.trimIndent()
+        Log.i(TAG, "Starting Alpine Labwc Wayland multi-window desktop")
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
+        val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
+        sessionProcess = process
+        Thread {
+            try {
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { Log.d(TAG, "SESSION: $it") }
+                }
+            } catch (_: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Verify that Labwc and its touch-sized taskbar are actually running. */
+    fun awaitLabwcReady(timeoutMs: Long = 45_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            val ready = if (isPhoshInstalled()) {
+                execChroot("pgrep -x phoc >/dev/null 2>&1 && pgrep -x phosh >/dev/null 2>&1") == 0
+            } else {
+                execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0
+            }
+            if (ready) {
+                Log.i(TAG, if (isPhoshInstalled()) "MT-Phosh and MT-Phoc readiness check passed" else "Labwc compositor and Waybar taskbar readiness check passed")
+                Thread.sleep(700)
+                return true
+            }
+            try { Thread.sleep(300) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
+        return false
+    }
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
+
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '${'$'}root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '${'$'}root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        // Unmount every nested bind mount under the rootfs (including removable
+        // storage), deepest first, so a distro migration can safely rename it.
+        val mountedTargets = mounts.mapNotNull { line ->
+            val target = line.substringAfter(" on ", "").substringBefore(" type ")
+            if (target == rootfsDir.absolutePath || target.startsWith(rootfsDir.absolutePath + "/")) target else null
+        }
+        val targets = (mountedTargets + listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )).distinct().sortedByDescending { it.length }
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks package-management temporary directories.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"}candidate"; break; fi
+                done
+                if [ -x /usr/bin/phosh-session ] && [ -n "${' ] && [ -x /usr/libexec/phosh ]; then
+                    echo "Starting MT-Phosh on MT-Phoc nested inside Android X11"
+                    echo "Using Phoc executable: $PHOC_BIN"
+                    echo "Graphics: trying GLES2/EGL hardware rendering first"
+                    ls -l /dev/dri 2>/dev/null || true
+                    export XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh
+                    if dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Phosh/GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"
+                    fi
+                fi
+                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
+                    echo "Starting nested Labwc fallback desktop on Android X11"
+                    export XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
+                    if WLR_RENDERER=gles2 dbus-run-session -- labwc; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Labwc GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- labwc
+                    fi
+                fi
+                echo "ERROR: Alpine Labwc, Waybar, or Fuzzel is missing from the bundled rootfs" >&2
+                exit 127
+            '
+        """.trimIndent()
+        Log.i(TAG, "Starting Alpine Labwc Wayland multi-window desktop")
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
+        val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
+        sessionProcess = process
+        Thread {
+            try {
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { Log.d(TAG, "SESSION: $it") }
+                }
+            } catch (_: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Verify that Labwc and its touch-sized taskbar are actually running. */
+    fun awaitLabwcReady(timeoutMs: Long = 45_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            val ready = if (isPhoshInstalled()) {
+                execChroot("pgrep -x phoc >/dev/null 2>&1 && pgrep -x phosh >/dev/null 2>&1") == 0
+            } else {
+                execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0
+            }
+            if (ready) {
+                Log.i(TAG, if (isPhoshInstalled()) "MT-Phosh and MT-Phoc readiness check passed" else "Labwc compositor and Waybar taskbar readiness check passed")
+                Thread.sleep(700)
+                return true
+            }
+            try { Thread.sleep(300) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
+        return false
+    }
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
+
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '${'$'}root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '${'$'}root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        // Unmount every nested bind mount under the rootfs (including removable
+        // storage), deepest first, so a distro migration can safely rename it.
+        val mountedTargets = mounts.mapNotNull { line ->
+            val target = line.substringAfter(" on ", "").substringBefore(" type ")
+            if (target == rootfsDir.absolutePath || target.startsWith(rootfsDir.absolutePath + "/")) target else null
+        }
+        val targets = (mountedTargets + listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )).distinct().sortedByDescending { it.length }
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks package-management temporary directories.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"}PHOC_BIN" ] && [ -x /usr/libexec/phosh ]; then
+                    echo "Starting MT-Phosh on MT-Phoc nested inside Android X11"
+                    echo "Using Phoc executable: $PHOC_BIN"
+                    echo "Graphics: trying GLES2/EGL hardware rendering first"
+                    ls -l /dev/dri 2>/dev/null || true
+                    export XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh
+                    if dbus-run-session -- "${' -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Phosh/GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"
+                    fi
+                fi
+                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
+                    echo "Starting nested Labwc fallback desktop on Android X11"
+                    export XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
+                    if WLR_RENDERER=gles2 dbus-run-session -- labwc; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Labwc GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- labwc
+                    fi
+                fi
+                echo "ERROR: Alpine Labwc, Waybar, or Fuzzel is missing from the bundled rootfs" >&2
+                exit 127
+            '
+        """.trimIndent()
+        Log.i(TAG, "Starting Alpine Labwc Wayland multi-window desktop")
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
+        val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
+        sessionProcess = process
+        Thread {
+            try {
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { Log.d(TAG, "SESSION: $it") }
+                }
+            } catch (_: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Verify that Labwc and its touch-sized taskbar are actually running. */
+    fun awaitLabwcReady(timeoutMs: Long = 45_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            val ready = if (isPhoshInstalled()) {
+                execChroot("pgrep -x phoc >/dev/null 2>&1 && pgrep -x phosh >/dev/null 2>&1") == 0
+            } else {
+                execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0
+            }
+            if (ready) {
+                Log.i(TAG, if (isPhoshInstalled()) "MT-Phosh and MT-Phoc readiness check passed" else "Labwc compositor and Waybar taskbar readiness check passed")
+                Thread.sleep(700)
+                return true
+            }
+            try { Thread.sleep(300) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
+        return false
+    }
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
+
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '${'$'}root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '${'$'}root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        // Unmount every nested bind mount under the rootfs (including removable
+        // storage), deepest first, so a distro migration can safely rename it.
+        val mountedTargets = mounts.mapNotNull { line ->
+            val target = line.substringAfter(" on ", "").substringBefore(" type ")
+            if (target == rootfsDir.absolutePath || target.startsWith(rootfsDir.absolutePath + "/")) target else null
+        }
+        val targets = (mountedTargets + listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )).distinct().sortedByDescending { it.length }
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks package-management temporary directories.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"}PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Phosh/GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- "${' -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"
+                    fi
+                fi
+                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
+                    echo "Starting nested Labwc fallback desktop on Android X11"
+                    export XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
+                    if WLR_RENDERER=gles2 dbus-run-session -- labwc; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Labwc GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- labwc
+                    fi
+                fi
+                echo "ERROR: Alpine Labwc, Waybar, or Fuzzel is missing from the bundled rootfs" >&2
+                exit 127
+            '
+        """.trimIndent()
+        Log.i(TAG, "Starting Alpine Labwc Wayland multi-window desktop")
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
+        val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
+        sessionProcess = process
+        Thread {
+            try {
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { Log.d(TAG, "SESSION: $it") }
+                }
+            } catch (_: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Verify that Labwc and its touch-sized taskbar are actually running. */
+    fun awaitLabwcReady(timeoutMs: Long = 45_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            val ready = if (isPhoshInstalled()) {
+                execChroot("pgrep -x phoc >/dev/null 2>&1 && pgrep -x phosh >/dev/null 2>&1") == 0
+            } else {
+                execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0
+            }
+            if (ready) {
+                Log.i(TAG, if (isPhoshInstalled()) "MT-Phosh and MT-Phoc readiness check passed" else "Labwc compositor and Waybar taskbar readiness check passed")
+                Thread.sleep(700)
+                return true
+            }
+            try { Thread.sleep(300) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
+        return false
+    }
+    private fun stopTrackedSessionProcess() {
+        sessionProcess?.let { process ->
+            try {
+                process.destroyForcibly()                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (error: Exception) {
+                Log.w(TAG, "Error stopping tracked session: ${error.message}")
+            }
+        }
+        sessionProcess = null
+    }
+
+    /** Kill only processes whose filesystem root is this app's chroot. */
+    private fun killRootfsProcesses() {
+        val root = rootfsDir.absolutePath
+        val command = """
+            targets=''
+            for proc in /proc/[0-9]*; do
+                [ "${'$'}proc/root" -ef '${'$'}root' ] 2>/dev/null || continue
+                targets="${'$'}targets ${'$'}{proc#/proc/}"
+            done
+            if [ -n "${'$'}targets" ]; then
+                kill -TERM ${'$'}targets 2>/dev/null || true
+                sleep 1
+                for pid in ${'$'}targets; do
+                    [ "/proc/${'$'}pid/root" -ef '${'$'}root' ] 2>/dev/null &&
+                        kill -KILL "${'$'}pid" 2>/dev/null || true
+                done
+            fi
+        """.trimIndent()
+        try {
+            val result = rootShell.exec(command) { output ->
+                if (output.isNotBlank()) Log.d(TAG, "cleanup: ${output.trimEnd()}")
+            }
+            if (result == 0) {
+                Log.i(TAG, "Cleared stale chroot processes")
+            } else {
+                Log.w(TAG, "Stale chroot cleanup exited with code $result")
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not clear stale chroot processes", error)
+        }
+    }
+
+    /** Stop the chroot session and unmount bind mounts. */
+    fun stopSession() {
+        Log.i(TAG, "Stopping session...")
+        stopTrackedSessionProcess()
+        killRootfsProcesses()
+        unmountAll()
+        Log.i(TAG, "Session stopped")
+    }
+
+    /** Unmount all NativOS-related mounts. */
+    fun unmountAll() {
+        if (!hasRoot()) return
+        val mounts = rootShell.exec("mount").lines()
+        // Unmount every nested bind mount under the rootfs (including removable
+        // storage), deepest first, so a distro migration can safely rename it.
+        val mountedTargets = mounts.mapNotNull { line ->
+            val target = line.substringAfter(" on ", "").substringBefore(" type ")
+            if (target == rootfsDir.absolutePath || target.startsWith(rootfsDir.absolutePath + "/")) target else null
+        }
+        val targets = (mountedTargets + listOf(
+            File(rootfsDir, "mnt/android").absolutePath,
+            File(rootfsDir, "run/nativOS").absolutePath,
+            File(rootfsDir, "tmp/.X11-unix").absolutePath,
+            File(rootfsDir, "dev/pts").absolutePath,
+            File(rootfsDir, "dev/shm").absolutePath,
+            File(rootfsDir, "dev").absolutePath,
+            File(rootfsDir, "proc").absolutePath,
+            File(rootfsDir, "sys").absolutePath,
+            File(rootfsDir, "run").absolutePath,
+            File(rootfsDir, "tmp").absolutePath,
+            rootfsDir.absolutePath
+        )).distinct().sortedByDescending { it.length }
+        targets.forEach { target ->
+            if (mounts.any { it.contains(" on $target ") }) {
+                try {
+                    rootShell.exec("umount -l $target 2>/dev/null || umount $target 2>/dev/null || true")
+                    Log.i(TAG, "Unmounted $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unmount $target: ${e.message}")
+                }
+            }
+        }
+    }
+
+    // ── Command execution ──
+
+    /** Execute a command inside the chroot as root. */
+    fun execChroot(command: String, onLog: (String) -> Unit = {}): Int {
+        // Never inherit Android's TMPDIR (normally /data/local/tmp): that path
+        // does not exist inside the chroot and breaks package-management temporary directories.
+        val wrapped = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; " +
+            "export TMPDIR=/tmp HOME=/root; $command"
+        val output = rootShell.exec("chroot ${rootfsDir.absolutePath} /bin/bash -c ${shellQuote(wrapped)}") { chunk ->
+            Log.d(TAG, "chroot: ${chunk.trimEnd()}")
+            onLog(chunk)
+        }
+        return output
+    }
+
+    private fun mountIfNeeded(relative: String, mountArgs: String, alreadyMounted: () -> Boolean) {
+        if (alreadyMounted()) return
+        val target = File(rootfsDir, relative).absolutePath
+        try {
+            rootShell.exec("mkdir -p $target && mount $mountArgs $target")
+            Log.i(TAG, "Mounted $target")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to mount $target: ${e.message}")
+        }
+    }
+
+    private fun shellQuote(input: String): String {
+        return "'" + input.replace("'", "'\"'\"'") + "'"}PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"
+                    fi
+                fi
+                if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
+                    echo "Starting nested Labwc fallback desktop on Android X11"
+                    export XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
+                    if WLR_RENDERER=gles2 dbus-run-session -- labwc; then
+                        exit 0
+                    else
+                        renderer_status=$?
+                        echo "Labwc GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
+                        WLR_RENDERER=pixman exec dbus-run-session -- labwc
+                    fi
+                fi
+                echo "ERROR: Alpine Labwc, Waybar, or Fuzzel is missing from the bundled rootfs" >&2
+                exit 127
+            '
+        """.trimIndent()
+        Log.i(TAG, "Starting Alpine Labwc Wayland multi-window desktop")
+        val su = rootShell.findSuPath() ?: return
+        val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
+        val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
+        sessionProcess = process
+        Thread {
+            try {
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { Log.d(TAG, "SESSION: $it") }
+                }
+            } catch (_: java.io.IOException) {
+                Log.d(TAG, "Session output stream closed")
+            }
+        }.start()
+    }
+
+    /** Verify that Labwc and its touch-sized taskbar are actually running. */
+    fun awaitLabwcReady(timeoutMs: Long = 45_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (sessionProcess?.isAlive != true) return false
+            val ready = if (isPhoshInstalled()) {
+                execChroot("pgrep -x phoc >/dev/null 2>&1 && pgrep -x phosh >/dev/null 2>&1") == 0
+            } else {
+                execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0
+            }
+            if (ready) {
+                Log.i(TAG, if (isPhoshInstalled()) "MT-Phosh and MT-Phoc readiness check passed" else "Labwc compositor and Waybar taskbar readiness check passed")
+                Thread.sleep(700)
+                return true
+            }
+            try { Thread.sleep(300) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
+        return false
+    }
     private fun stopTrackedSessionProcess() {
         sessionProcess?.let { process ->
             try {
@@ -1073,5 +4678,3 @@ PHOCEOF
 
     private fun shellQuote(input: String): String {
         return "'" + input.replace("'", "'\"'\"'") + "'"
-    }
-}
