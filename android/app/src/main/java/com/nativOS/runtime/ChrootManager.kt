@@ -25,7 +25,11 @@ class ChrootManager(private val context: Context) {
         listOf(lastSessionOutput, lastSessionFailure)
             .filter { it.isNotBlank() }
             .joinToString("\n")
-            .takeLast(1800)
+            .lineSequence()
+            .toList()
+            .takeLast(10)
+            .joinToString("\n")
+            .takeLast(1200)
     }
 
     private fun appendSessionOutput(line: String) {
