@@ -17,6 +17,24 @@ class ChrootManager(private val context: Context) {
         @Volatile private var sessionProcess: Process? = null
     }
 
+    @Volatile private var lastSessionOutput: String = ""
+    @Volatile private var lastSessionFailure: String = ""
+    private val sessionOutputLock = Any()
+
+    fun getSessionDiagnostics(): String = synchronized(sessionOutputLock) {
+        listOf(lastSessionFailure, lastSessionOutput)
+            .filter { it.isNotBlank() }
+            .joinToString("\n")
+            .takeLast(1800)
+    }
+
+    private fun appendSessionOutput(line: String) {
+        synchronized(sessionOutputLock) {
+            lastSessionOutput = (lastSessionOutput + line + "\n").takeLast(6000)
+        }
+        Log.e(TAG, "SESSION: $line")
+    }
+
     private val rootShell = RootShell(context)
 
     private val baseDir: File get() = context.filesDir
@@ -828,9 +846,12 @@ METMC_LAUNCH_EOF
     @Synchronized
     fun startLabwcSession(screenWidth: Int = 1080, screenHeight: Int = 2160) {
         if (!hasRoot() || !isRootfsReady()) {
-            Log.e(TAG, "Cannot start Labwc: root or rootfs unavailable")
+            lastSessionFailure = "Cannot start desktop: root access or rootfs is unavailable."
+            Log.e(TAG, lastSessionFailure)
             return
         }
+        lastSessionOutput = ""
+        lastSessionFailure = ""
         if (isRunning()) stopTrackedSessionProcess()
         killRootfsProcesses()
         ensureMounts()
@@ -923,43 +944,65 @@ PHOCEOF
                 exit 127
             '
         """.trimIndent()
-        Log.i(TAG, "Starting Alpine Labwc Wayland multi-window desktop")
-        val su = rootShell.findSuPath() ?: return
+        Log.i(TAG, "Starting MT-Phosh/MT-Phoc or Labwc desktop session")
+        val su = rootShell.findSuPath() ?: run {
+            lastSessionFailure = "Could not locate su to start the Linux desktop."
+            return
+        }
         val fullCommand = "chroot ${rootfsDir.absolutePath} /usr/bin/env -i /bin/sh -c ${shellQuote(runScript)}"
-        val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
-        sessionProcess = process
-        Thread {
-            try {
-                process.inputStream.bufferedReader().useLines { lines ->
-                    lines.forEach { Log.d(TAG, "SESSION: $it") }
+        try {
+            val process = ProcessBuilder(su, "-c", fullCommand).redirectErrorStream(true).start()
+            sessionProcess = process
+            Thread({
+                try {
+                    process.inputStream.bufferedReader().useLines { lines ->
+                        lines.forEach { appendSessionOutput(it) }
+                    }
+                } catch (error: Exception) {
+                    appendSessionOutput("Could not read desktop startup output: ${error.message}")
                 }
-            } catch (_: java.io.IOException) {
-                Log.d(TAG, "Session output stream closed")
-            }
-        }.start()
+            }, "mt-desktop-session-log").start()
+        } catch (error: Exception) {
+            lastSessionFailure = "Could not launch Linux desktop process: ${error.message}"
+            Log.e(TAG, lastSessionFailure, error)
+        }
     }
 
     /** Verify that Labwc and its touch-sized taskbar are actually running. */
     fun awaitLabwcReady(timeoutMs: Long = 45_000): Boolean {
+        val desktopName = if (isPhoshInstalled()) "MT-Phosh/MT-Phoc" else "Labwc/Waybar"
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
-            if (sessionProcess?.isAlive != true) return false
+            val process = sessionProcess
+            if (process == null) {
+                lastSessionFailure = "Desktop process was not created."
+                return false
+            }
+            if (!process.isAlive) {
+                val exitCode = runCatching { process.exitValue() }.getOrDefault(-1)
+                Thread.sleep(150)
+                lastSessionFailure = "$desktopName exited before readiness (exit code $exitCode)."
+                Log.e(TAG, lastSessionFailure)
+                return false
+            }
             val ready = if (isPhoshInstalled()) {
                 execChroot("pgrep -x phoc >/dev/null 2>&1 && pgrep -x phosh >/dev/null 2>&1") == 0
             } else {
                 execChroot("pgrep -x labwc >/dev/null 2>&1 && pgrep -x waybar >/dev/null 2>&1") == 0
             }
             if (ready) {
-                Log.i(TAG, if (isPhoshInstalled()) "MT-Phosh and MT-Phoc readiness check passed" else "Labwc compositor and Waybar taskbar readiness check passed")
+                Log.i(TAG, "$desktopName readiness check passed")
                 Thread.sleep(700)
                 return true
             }
             try { Thread.sleep(300) } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
+                lastSessionFailure = "Interrupted while waiting for $desktopName."
                 return false
             }
         }
-        Log.e(TAG, "Labwc compositor and taskbar did not become ready within ${timeoutMs}ms")
+        lastSessionFailure = "$desktopName did not become ready within ${timeoutMs}ms. Check the session output below."
+        Log.e(TAG, lastSessionFailure)
         return false
     }
 
