@@ -41,7 +41,7 @@ jobs:
       - name: Download last successful APK artifact
         uses: actions/download-artifact@v4
         with:
-          name: METMC-OS-v10-App-Only-APK
+          name: METMC-OS-v10-Android-APK
           run-id: 40691408689
           path: /tmp/known-good-apk
 
