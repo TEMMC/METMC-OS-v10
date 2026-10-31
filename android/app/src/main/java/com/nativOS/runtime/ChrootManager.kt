@@ -88,7 +88,8 @@ class ChrootManager(private val context: Context) {
     /** MT-Phosh/MT-Phoc is preferred when the integrated mobile shell is bundled. */
     fun isPhoshInstalled(): Boolean =
         File(rootfsDir, "usr/bin/phosh-session").canExecute() &&
-        File(rootfsDir, "usr/bin/phoc").canExecute() &&
+        (File(rootfsDir, "usr/local/bin/phoc").canExecute() ||
+            File(rootfsDir, "usr/bin/phoc").canExecute()) &&
         File(rootfsDir, "usr/libexec/phosh").canExecute()
 
     fun isRunning(): Boolean = sessionProcess?.isAlive == true
@@ -157,8 +158,7 @@ class ChrootManager(private val context: Context) {
         }
 
         // Fix missing symlinks in Android's /dev
-        val devPath = File(rootfsDir, "dev").absolutePath
-        rootShell.exec("ln -snf /proc/self/fd $devPath/fd")
+        val devPath = File(rootfsDir, "dev").absolutePath        rootShell.exec("ln -snf /proc/self/fd $devPath/fd")
         rootShell.exec("ln -snf /proc/self/fd/0 $devPath/stdin")
         rootShell.exec("ln -snf /proc/self/fd/1 $devPath/stdout")
         rootShell.exec("ln -snf /proc/self/fd/2 $devPath/stderr")
@@ -317,8 +317,7 @@ class ChrootManager(private val context: Context) {
                 int close_range(unsigned int first, unsigned int last, int flags) {
                     (void) first; (void) last; (void) flags;
                     errno = ENOSYS;
-                    return -1;
-                }
+                    return -1;                }
                 """.trimIndent()
             )
             val result = execChroot(
@@ -477,8 +476,7 @@ class ChrootManager(private val context: Context) {
                             xcb_get_property(connection, 0, child, wm_class,
                                              XCB_GET_PROPERTY_TYPE_ANY, 0, 64), 0);
                         xcb_get_geometry_reply_t *geometry = xcb_get_geometry_reply(
-                            connection, xcb_get_geometry(connection, child), 0);
-                        if (attributes && geometry && window_class &&
+                            connection, xcb_get_geometry(connection, child), 0);                        if (attributes && geometry && window_class &&
                             attributes->map_state == XCB_MAP_STATE_VIEWABLE &&
                             xcb_get_property_value_length(window_class) == 0) {
                             uint32_t area = geometry->width * geometry->height;
@@ -637,8 +635,7 @@ class ChrootManager(private val context: Context) {
                         usleep(20000);
                     }
 
-                    if (!target_destroyed && requested_action) {
-                        xcb_unmap_window(connection, target);
+                    if (!target_destroyed && requested_action) {                        xcb_unmap_window(connection, target);
                         xcb_reparent_window(connection, target, screen->root,
                                             original->x, original->y);
                         uint32_t restored[] = {
@@ -797,8 +794,7 @@ fi
 id metmc >/dev/null 2>&1 || { echo "METMC launcher: Linux user metmc is missing; reopen METMC OS to provision it." >&2; exit 127; }
 KEEP='DISPLAY WAYLAND_DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS DBUS_SYSTEM_BUS_ADDRESS PULSE_SERVER PIPEWIRE_REMOTE XAUTHORITY LD_PRELOAD PATH LANG LANGUAGE TERM'
 ENVARGS=()
-for name in ${'$'}KEEP; do
-  if printenv "${'$'}name" >/dev/null 2>&1; then ENVARGS+=("${'$'}name=$(printenv "${'$'}name")"); fi
+for name in ${'$'}KEEP; do  if printenv "${'$'}name" >/dev/null 2>&1; then ENVARGS+=("${'$'}name=$(printenv "${'$'}name")"); fi
 done
 exec sudo -E -u metmc -- env "${'$'}{ENVARGS[@]}" "${'$'}@"
 METMC_LAUNCH_EOF
@@ -886,17 +882,25 @@ PHOCEOF
                 export WLR_BACKENDS=x11 WLR_X11_OUTPUTS=1 WLR_RENDERER=pixman WLR_DRM_NO_ATOMIC=1 WLR_LIBINPUT_NO_DEVICES=1 WLR_NO_HARDWARE_CURSORS=1
                 export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Labwc XDG_SESSION_DESKTOP=labwc
                 export GDK_BACKEND=wayland,x11 QT_QPA_PLATFORM='wayland;xcb' MOZ_ENABLE_WAYLAND=1 SDL_VIDEODRIVER=wayland,x11
-                if [ -x /usr/bin/phosh-session ] && [ -x /usr/bin/phoc ] && [ -x /usr/libexec/phosh ]; then
+                # Resolve the same Phoc executable locations accepted by the
+                # Android-side installation check. Custom MT-Phoc builds install
+                # under /usr/local/bin; distro packages commonly use /usr/bin.
+                PHOC_BIN=""
+                for candidate in /usr/local/bin/phoc /usr/bin/phoc; do
+                    if [ -x "$candidate" ]; then PHOC_BIN="$candidate"; break; fi
+                done
+                if [ -x /usr/bin/phosh-session ] && [ -n "$PHOC_BIN" ] && [ -x /usr/libexec/phosh ]; then
                     echo "Starting MT-Phosh on MT-Phoc nested inside Android X11"
+                    echo "Using Phoc executable: $PHOC_BIN"
                     echo "Graphics: trying GLES2/EGL hardware rendering first"
                     ls -l /dev/dri 2>/dev/null || true
                     export XDG_CURRENT_DESKTOP=Phosh XDG_SESSION_DESKTOP=phosh
-                    if dbus-run-session -- /usr/local/bin/phoc -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"; then
+                    if dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"; then
                         exit 0
                     else
                         renderer_status=$?
                         echo "Phosh/GLES2 exited with status ${'$'}renderer_status; retrying with pixman software rendering"
-                        WLR_RENDERER=pixman exec dbus-run-session -- /usr/local/bin/phoc -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"
+                        WLR_RENDERER=pixman exec dbus-run-session -- "$PHOC_BIN" -C /etc/nativOS/phoc.ini -E "/usr/libexec/phosh -U"
                     fi
                 fi
                 if [ -x /usr/bin/labwc ] && [ -x /usr/bin/waybar ] && [ -x /usr/bin/fuzzel ]; then
@@ -957,8 +961,7 @@ PHOCEOF
     private fun stopTrackedSessionProcess() {
         sessionProcess?.let { process ->
             try {
-                process.destroyForcibly()
-                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+                process.destroyForcibly()                process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
             } catch (error: Exception) {
                 Log.w(TAG, "Error stopping tracked session: ${error.message}")
             }
