@@ -21,7 +21,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: metmc-os-v10-apk-${{ github.ref }}
+  group: metmc-os-v10-app-only-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
