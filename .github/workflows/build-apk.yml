@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: metmc-os-v10-app-only-${{ github.ref }}
+  group: metmc-os-app-only-no-rootfs-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
