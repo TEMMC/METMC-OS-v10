@@ -679,26 +679,22 @@ class KioskActivity : Activity() {
             }
             updateOverlay(0.05, "Root access confirmed", "")
 
-            // Step 2: Ensure the bundled Alpine ARM64 rootfs is installed.
-            // Existing Linux installations are migrated once, preserving /home/metmc where possible.
-            if (rootfsManager.isRootfsReady() && !rootfsManager.isBundledDistroReady()) {
-                updateOverlay(0.05, "Switching Linux system to Alpine Linux...", "One-time migration; preserving /home/metmc")
-                chrootManager.stopSession()
-            }
-            if (!rootfsManager.isRootfsReady() || !rootfsManager.isBundledDistroReady()) {
+            // Step 2: Use the separately extracted Linux rootfs.
+            // Never migrate, replace, or delete an existing user rootfs during an app update.
+            if (!rootfsManager.isRootfsReady()) {
                 val bundled = rootfsManager.stageBundledRootfs { progress, status ->
-                    updateOverlay(0.05 + progress * 0.45, status, "Bundled in this APK — no network required")
+                    updateOverlay(0.05 + progress * 0.45, status, "Optional bundled rootfs")
                 }
                 if (!bundled) {
                     updateOverlay(
                         -1.0,
-                        "Offline root filesystem missing",
-                        "This APK must include the prepared Linux rootfs. Rebuild it through GitHub Actions; boot will not download files."
+                        "Separate Linux rootfs missing",
+                        "Extract the MT OS rootfs archive with Termux into ${rootfsManager.getRootfsPath()}. This APK contains the Android app only."
                     )
                     return
                 }
 
-                updateOverlay(0.50, "Extracting bundled Linux filesystem...", "No network required")
+                updateOverlay(0.50, "Extracting Linux filesystem...", "No network required")
                 bootFailed = false
                 rootfsManager.extractRootfs { progress, status ->
                     if (progress < 0) {
@@ -709,14 +705,17 @@ class KioskActivity : Activity() {
                     }
                 }
                 if (bootFailed) return
-            } else {
-                updateOverlay(0.70, "Local Linux filesystem found", "Offline startup")
             }
 
             if (!rootfsManager.isBundledDistroReady()) {
-                updateOverlay(-1.0, "ERROR: Alpine rootfs setup failed", "The Alpine Linux filesystem could not be prepared")
+                updateOverlay(
+                    -1.0,
+                    "Linux rootfs is incomplete or unsupported",
+                    "Keep your existing rootfs intact. MT OS currently supports Ubuntu 24.04 and Alpine 3.22 rootfs layouts."
+                )
                 return
             }
+            updateOverlay(0.70, "Separate Linux filesystem found", "Existing rootfs preserved")
 
             // Step 3: Mount chroot
             updateOverlay(0.72, "Mounting Linux environment...", "")
