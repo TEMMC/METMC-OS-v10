@@ -122,7 +122,7 @@ jobs:
       - name: Upload app-only installable APK
         uses: actions/upload-artifact@v4
         with:
-          name: METMC-OS-v10-Android-APK
+          name: METMC-OS-v10-App-Only-APK
           path: |
             android/app/build/outputs/apk/debug/app-debug.apk
             android/app/build/outputs/apk/debug/app-debug.apk.sha256
