@@ -302,7 +302,7 @@ class RootfsManager(private val context: Context) {
 
             onProgress(0.7, "Configuring Linux environment...")
             configureRootfs()
-            if (distro == "alpine" && !isAlpineRootfs()) {
+            if (distro == "alpine" && !isSupportedRootfs()) {
                 throw IllegalStateException("Bundled rootfs is not Alpine Linux 3.22")
             }
             setupCompleteFile.writeText("done")
