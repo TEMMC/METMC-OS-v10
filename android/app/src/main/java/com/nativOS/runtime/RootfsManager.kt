@@ -44,15 +44,22 @@ class RootfsManager(private val context: Context) {
         rootfsDir.exists() && File(rootfsDir, "bin").exists() &&
         File(rootfsDir, "usr").exists() && File(rootfsDir, "etc").exists()
 
-    /** The APK bundles Alpine ARM64; startup never bootstraps Linux over the network. */
-    fun isBundledDistroReady(): Boolean = isRootfsReady() && isAlpineRootfs()
+    /** Accept a separately extracted, supported MT rootfs; the APK need not bundle it. */
+    fun isBundledDistroReady(): Boolean = isRootfsReady() && isSupportedRootfs()
 
-    private fun isAlpineRootfs(): Boolean {
+    private fun isSupportedRootfs(): Boolean {
         val release = File(rootfsDir, "etc/os-release")
-        if (!release.exists()) return false
+        if (!release.isFile) return false
         val contents = runCatching { release.readText() }.getOrDefault("")
-        return Regex("(?m)^ID=alpine$").containsMatchIn(contents) &&
-            Regex("(?m)^VERSION_ID=3\\.22(?:\\.|$)").containsMatchIn(contents)
+        val id = Regex("(?m)^ID=(.+)$").find(contents)
+            ?.groupValues?.get(1)?.trim().orEmpty().trim('"', '\'').lowercase()
+        val version = Regex("(?m)^VERSION_ID=(.+)$").find(contents)
+            ?.groupValues?.get(1)?.trim().orEmpty().trim('"', '\'')
+        return when (id) {
+            "alpine" -> version.startsWith("3.22")
+            "ubuntu" -> version.startsWith("24.04")
+            else -> false
+        }
     }
 
     fun isSetupComplete(): Boolean = setupCompleteFile.exists()
