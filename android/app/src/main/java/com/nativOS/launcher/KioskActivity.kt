@@ -710,15 +710,14 @@ class KioskActivity : Activity() {
             chrootManager.bindX11Socket()
             AndroidAppIntegration.sync(this)
 
-            // Step 4: Validate the offline Labwc Wayland desktop. Never run apk or
-            // install packages during startup; the bundled rootfs must contain
-            // the complete desktop and essential tools.
+            // Step 4: Validate the offline desktop in the separately extracted rootfs.
+            // Never run apk or install packages during startup.
             updateOverlay(0.74, "Checking offline desktop...", "")
             if (!chrootManager.isPhoshInstalled() && !chrootManager.isLabwcInstalled()) {
                 updateOverlay(
                     -1.0,
                     "Offline desktop components missing",
-                    "The bundled Linux rootfs has neither MT-Phosh/MT-Phoc nor the Labwc fallback. Rebuild the APK with a complete desktop; boot will not install packages."
+                    "The separate Linux rootfs has neither MT-Phosh/MT-Phoc nor the Labwc fallback. Repair the rootfs separately; boot will not install packages."
                 )
                 return
             }
@@ -728,7 +727,7 @@ class KioskActivity : Activity() {
                 updateOverlay(
                     -1.0,
                     "Offline desktop components missing",
-                    "Labwc runtime is incomplete in the bundled rootfs. Rebuild the APK with Labwc, Waybar, Xwayland and the basic tools included."
+                    "Labwc runtime is incomplete in the separate rootfs. Repair the rootfs separately; the app-only APK will not modify it."
                 )
                 return
             }
@@ -847,9 +846,7 @@ class KioskActivity : Activity() {
             if (!chrootManager.awaitLabwcReady()) {
                 val desktopName = if (chrootManager.isPhoshInstalled()) "MT-Phosh/MT-Phoc" else "Labwc/Waybar"
                 val diagnostics = chrootManager.getSessionDiagnostics()
-                throw IllegalStateException(
-                    "$desktopName did not become ready.\n$diagnostics"
-                )
+                throw IllegalStateException("$desktopName did not become ready.")
             }
             runOnUiThread {
                 overlayLayout?.visibility = View.GONE
