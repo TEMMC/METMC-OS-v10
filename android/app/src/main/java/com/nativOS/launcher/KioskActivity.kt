@@ -157,8 +157,7 @@ class KioskActivity : Activity() {
             tmpDir.setReadable(true, false)
             tmpDir.setWritable(true, false)
             x11Dir.setExecutable(true, false)
-            x11Dir.setReadable(true, false)
-            x11Dir.setWritable(true, false)
+            x11Dir.setReadable(true, false)            x11Dir.setWritable(true, false)
 
             val osClass = Class.forName("android.system.Os")
             val setenvMethod = osClass.getMethod("setenv", String::class.java, String::class.java, Boolean::class.java)
@@ -317,8 +316,7 @@ class KioskActivity : Activity() {
         rootLayout!!.addView(keyboardButton, FrameLayout.LayoutParams(
             (48 * density).toInt(),
             (48 * density).toInt(),
-            Gravity.TOP or Gravity.END
-        ).apply {
+            Gravity.TOP or Gravity.END        ).apply {
             topMargin = (52 * density).toInt()
             rightMargin = (12 * density).toInt()
         })
@@ -478,7 +476,6 @@ class KioskActivity : Activity() {
         var startX = 0f
         var startY = 0f
         var dragged = false
-
         view.setOnTouchListener { target, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
@@ -637,8 +634,7 @@ class KioskActivity : Activity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_NOTIFICATIONS &&
-            grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
-            startForegroundService(Intent(this, BridgeService::class.java).apply {
+            grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {            startForegroundService(Intent(this, BridgeService::class.java).apply {
                 action = BridgeService.ACTION_REFRESH_NOTIFICATION
             })
         }
@@ -738,7 +734,7 @@ class KioskActivity : Activity() {
             }
 
             updateOverlay(0.95, "Validating local desktop components...", "No downloads or updates")
-            if (!rootfsManager.ensureLabwcRuntime(chrootManager)) {
+            if (!chrootManager.isPhoshInstalled() && !rootfsManager.ensureLabwcRuntime(chrootManager)) {
                 updateOverlay(
                     -1.0,
                     "Offline desktop components missing",
@@ -798,7 +794,6 @@ class KioskActivity : Activity() {
                 throw IllegalStateException("Timed out creating the X11 display surface")
             }
             viewCreationError?.let { throw it }
-
             if (!surfaceReady.await(10, TimeUnit.SECONDS)) {
                 lorieView.holder.removeCallback(surfaceReadyCallback)
                 throw IllegalStateException("Timed out waiting for the X11 display surface")
@@ -957,8 +952,7 @@ class KioskActivity : Activity() {
             runCatching { clipboardManager?.removePrimaryClipChangedListener(clipboardListener) }
             clipboardListenerRegistered = false
         }
-        super.onPause()
-    }
+        super.onPause()    }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
@@ -1037,8 +1031,7 @@ class KioskActivity : Activity() {
     }
 
     private fun applyScreenAwakePreference() {
-        if (NativOSPreferences.keepScreenOn(this)) {
-            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (NativOSPreferences.keepScreenOn(this)) {            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
