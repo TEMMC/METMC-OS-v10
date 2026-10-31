@@ -35,24 +35,29 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      # Reuse the already successful ARM64 build artifacts. No source compilation here.
-      - name: Download successful MT-Phosh artifact
+      # App-only rebuild: reuse the exact rootfs from the last successful APK build.
+      # This deliberately does NOT download packages, unpack a distro, install MT desktop
+      # artifacts, or modify/rebuild the rootfs.
+      - name: Download last successful APK artifact
         uses: actions/download-artifact@v4
         with:
-          name: mt-phosh-linux-install
-          repository: TEMMC/MT-phosh-
-          run-id: 40153637822
-          github-token: ${{ secrets.MT_ARTIFACTS_TOKEN }}
-          path: /tmp/mt-phosh
+          name: METMC-OS-v10-App-Only-APK
+          run-id: 40691408689
+          path: /tmp/known-good-apk
 
-      - name: Download successful MT-Phoc artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: MT-phoc-0.47.0-arm64
-          repository: TEMMC/MT-phoc
-          run-id: 40344456949
-          github-token: ${{ secrets.MT_ARTIFACTS_TOKEN }}
-          path: /tmp/mt-phoc
+      - name: Restore unchanged rootfs asset from successful APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_APK="/tmp/known-good-apk/app-debug.apk"
+          test -s "$BASE_APK"
+          mkdir -p android/app/src/main/assets/rootfs
+          unzip -p "$BASE_APK" assets/rootfs/nativos-rootfs-arm64.tar > android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tar
+          test "$(stat -c %s android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tar)" -gt 104857600
+          cd android/app/src/main/assets/rootfs
+          sha256sum nativos-rootfs-arm64.tar > nativos-rootfs-arm64.tar.sha256
+          sha256sum --check nativos-rootfs-arm64.tar.sha256
+          echo "Reusing the existing successful rootfs unchanged."
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -82,92 +87,6 @@ jobs:
 
       - name: Install Android SDK packages
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
-
-      - name: Download upstream rootfs from official NativOS APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK_URL="https://github.com/orailnoor/NativOS/releases/download/v0.1.0-alpha/NativOS-v0.1.0-alpha-arm64.apk"
-          curl --fail --location --retry 3 --output /tmp/nativos-upstream.apk "$APK_URL"
-          unzip -l /tmp/nativos-upstream.apk | grep -F "assets/rootfs/nativos-rootfs-arm64.tgz"
-          mkdir -p android/app/src/main/assets/rootfs
-          unzip -p /tmp/nativos-upstream.apk assets/rootfs/nativos-rootfs-arm64.tgz > /tmp/nativos-rootfs-arm64.tgz
-          test "$(stat -c %s /tmp/nativos-rootfs-arm64.tgz)" -gt 104857600
-
-      - name: Install Linux desktop and essential tools into bundled ARM64 rootfs (build time only)
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          set -x
-          trap 'rc=$?; echo "::error::Rootfs installation failed at line ${LINENO} (exit ${rc})"; exit "$rc"' ERR
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends qemu-user-static binfmt-support
-          sudo update-binfmts --enable qemu-aarch64 || true
-          ROOTFS="$RUNNER_TEMP/metmc-rootfs"
-          mkdir -p "$ROOTFS"
-          tar -xzf /tmp/nativos-rootfs-arm64.tgz -C "$ROOTFS"
-          test -x "$ROOTFS/usr/bin/apt-get"
-          sudo rm -f "$ROOTFS/etc/resolv.conf"
-          sudo cp -L /etc/resolv.conf "$ROOTFS/etc/resolv.conf"
-          sudo cp /usr/bin/qemu-aarch64-static "$ROOTFS/usr/bin/qemu-aarch64-static"
-          sudo mount --bind /dev "$ROOTFS/dev"
-          sudo mount --bind /dev/pts "$ROOTFS/dev/pts"
-          sudo mount -t proc proc "$ROOTFS/proc"
-          sudo mount -t sysfs sysfs "$ROOTFS/sys"
-          cleanup() {
-            sudo umount "$ROOTFS/sys" 2>/dev/null || true
-            sudo umount "$ROOTFS/proc" 2>/dev/null || true
-            sudo umount "$ROOTFS/dev/pts" 2>/dev/null || true
-            sudo umount "$ROOTFS/dev" 2>/dev/null || true
-          }
-          trap cleanup EXIT
-          sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 update
-          sudo chroot "$ROOTFS" /usr/bin/env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl wget git nano less file unzip zip procps psmisc htop iproute2 iputils-ping dnsutils net-tools openssh-client python3 sudo dbus-x11 xwayland foot
-          # Do not install Ubuntu stock Phosh/Phoc packages: MT builds are overlaid below, and the stock packages can fail in this ARM64 chroot.
-          # Install the prebuilt ARM64 artifacts (do not compile MT desktop sources here).
-          test -s /tmp/mt-phosh/mt-phosh-linux-install.tar.gz
-          test -s /tmp/mt-phoc/MT-phoc-linux-install.tar.gz
-          sudo tar -xzf /tmp/mt-phosh/mt-phosh-linux-install.tar.gz -C "$ROOTFS"
-          sudo tar -xzf /tmp/mt-phoc/MT-phoc-linux-install.tar.gz -C "$ROOTFS"
-          # MT-Phoc artifact installs to /usr/local/bin; prefer it over Ubuntu's stock /usr/bin/phoc.
-          sudo test -x "$ROOTFS/usr/local/bin/phoc"
-          sudo ln -sfn ../local/bin/phoc "$ROOTFS/usr/bin/phoc"
-          # MT-Phosh installs its executable under /usr/libexec; expose the usual command path.
-          sudo test -x "$ROOTFS/usr/libexec/phosh"
-          sudo ln -sfn ../libexec/phosh "$ROOTFS/usr/bin/phosh"
-          sudo test -x "$ROOTFS/usr/bin/phosh"
-          # Keep the known-good Ubuntu/Debian rootfs and provision MT bridge at build time.
-          sudo install -d -m 0755 "$ROOTFS/usr/local/lib/mt-bridge" "$ROOTFS/usr/local/bin" "$ROOTFS/usr/share/metmc" "$ROOTFS/etc/nativOS" "$ROOTFS/etc/profile.d"
-          sudo install -m 0644 linux/bridge-client/bridge_transport.py "$ROOTFS/usr/local/lib/mt-bridge/bridge_transport.py"
-          sudo install -m 0644 linux/bridge-client/bridge_transport.py "$ROOTFS/usr/local/bin/bridge_transport.py"
-          sudo install -m 0755 linux/bridge-client/nativOS-bridge.py "$ROOTFS/usr/local/bin/nativOS-bridge"
-          sudo install -m 0755 linux/bridge-client/mt-bridge.py "$ROOTFS/usr/local/bin/mt-bridge"
-          sudo install -m 0755 linux/bridge-client/metmc-settings.py "$ROOTFS/usr/local/bin/metmc-settings"
-          sudo install -m 0755 linux/bridge-client/metmc-wifi.py "$ROOTFS/usr/local/bin/metmc-wifi"
-          sudo install -m 0644 linux/README-bridge.md "$ROOTFS/usr/share/metmc/README-bridge.md"
-          # Preserve the project's known-good nested Phoc display settings unchanged.
-          sudo install -m 0644 linux/config/phoc.ini "$ROOTFS/etc/nativOS/phoc.ini"
-          # Phoc reads the per-user config; also keep the same known-good scale/Xwayland settings there.
-          sudo install -d -m 0755 "$ROOTFS/home/metmc/.config"
-          sudo install -m 0644 linux/config/phoc.ini "$ROOTFS/home/metmc/.config/phoc.ini"
-          sudo chroot "$ROOTFS" /bin/bash -eu -c '
-            id metmc >/dev/null 2>&1 || useradd --create-home --shell /bin/bash metmc
-            mkdir -p /etc/sudoers.d /home/metmc/.config
-            printf "%s\\n" "Defaults !requiretty" "metmc ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/metmc
-            chmod 0440 /etc/sudoers.d/metmc
-            chown -R metmc:metmc /home/metmc
-          '
-          sudo install -m 0644 linux/config/mt-gpu.sh "$ROOTFS/etc/profile.d/mt-gpu.sh"
-          printf 'MT-Phosh artifact: run 40153637822 (ARM64 install tree)\nMT-Phoc artifact: run 40344456949 (ARM64 Phoc 0.47.0 install tree)\nRuntime: prebuilt MT desktop artifacts overlaid on Ubuntu rootfs\n' | sudo tee "$ROOTFS/usr/share/metmc/mt-desktop-build-info.txt" >/dev/null
-          sudo chroot "$ROOTFS" apt-get clean
-          sudo rm -rf "$ROOTFS/var/lib/apt/lists/"* "$ROOTFS/var/cache/apt/archives/"*.deb
-          sudo rm -f "$ROOTFS/usr/bin/qemu-aarch64-static"
-          cleanup
-          sudo tar --numeric-owner -cf android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tar -C "$ROOTFS" .
-          test "$(stat -c %s android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tar)" -gt 104857600
-          cd android/app/src/main/assets/rootfs
-          sha256sum nativos-rootfs-arm64.tar > nativos-rootfs-arm64.tar.sha256
-          sha256sum --check nativos-rootfs-arm64.tar.sha256
 
       - name: Build and verify APK
         working-directory: android
@@ -200,7 +119,7 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
           sha256sum "$APK" > "$APK.sha256"
 
-      - name: Upload installable APK
+      - name: Upload app-only installable APK
         uses: actions/upload-artifact@v4
         with:
           name: METMC-OS-v10-Android-APK
@@ -210,68 +129,3 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  publish-release:
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/restore-known-working-phosh')
-    needs: build
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: write
-      actions: read
-    steps:
-      - name: Download verified APK artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: METMC-OS-v10-Android-APK
-          path: release-assets
-
-      - name: Prepare release files
-        shell: bash
-        run: |
-          set -euo pipefail
-          find release-assets -type f -maxdepth 4 -print
-          APK="$(find release-assets -type f -name 'app-debug.apk' -print -quit)"
-          CHECKSUM="$(find release-assets -type f -name 'app-debug.apk.sha256' -print -quit)"
-          test -n "$APK"
-          test -n "$CHECKSUM"
-          cp "$APK" MT-OS-V10.9.0-arm64.apk
-          (cd "$(dirname "$CHECKSUM")" && sha256sum "$(basename "$CHECKSUM")" >/dev/null)
-          sha256sum MT-OS-V10.9.0-arm64.apk > MT-OS-V10.9.0-arm64.apk.sha256
-          echo "Release APK prepared and checksum generated."
-
-      - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v10.9.0
-          name: MT OS V10 10.9.0
-          prerelease: true
-          overwrite_files: true
-          generate_release_notes: true
-          body: |
-            MT OS V10 10.9.0 development release for Android ARM64, built with the verified MT-Phosh and MT-Phoc ARM64 artifacts. This alpha is signed with the METMC OS V10 release keystore.
-
-            - Package ID: `com.temmc.metmcosv10`
-            - App label: `METMC OS V10`
-            - Based on the upstream NativOS project; upstream credits are retained.
-            - METMC OS branding and updated launcher icon.
-            - Hardware bridge improvements for battery/charging status, brightness controls, volume controls, and screen sleep/wake preferences.
-            - Added opt-in system diagnostics export; the user chooses where to save the report, and private account/contact/message contents are excluded.
-            - Added a guarded Linux package manager to refresh package lists, inspect available upgrades, explicitly confirm package upgrades, and install a single validated package name.
-            - Package commands run inside the Linux root filesystem only; they do not update Android's host packages. Package upgrades are not automatically reversible.
-            - Clipboard bridge hooks and improved touch-focus handling.
-            - Live CPU/RAM/battery/storage monitor, shared-folder picker and Linux configuration backup with SHA-256.
-            - Linux rootfs validation and update-center link; Linux software center uses guarded apt/dpkg.
-            - Quick-access Tools menu, shorter METMC OS V10 app name, NativOS upstream attribution retained.
-            - Default Home mode is configured to launch METMC OS V10 at boot.
-            - Keyboard no longer opens on ordinary taps near the bottom of the desktop; use a three-finger tap to toggle it.
-            - Improved Android/Linux clipboard text synchronization, including mixed plain-text and HTML clipboard items.
-            - Removed the legacy root-shell redirect that could interfere with opening the terminal; Linux root password defaults to `metmc`.
-            - Includes compact Phoc display scaling and a Phosh animation-disable tweak.
-            - Integrates the known-good prebuilt MT-Phosh and MT-Phoc desktop artifacts without recompiling their source in this workflow. The existing known-good Phoc display configuration is preserved.
-            - This is an alpha build. Touch responsiveness and hardware acceleration may vary by device.
-            - APK is signed with the METMC OS V10 release keystore; this does not imply Play Store certification.
-            - Linux desktop and essential packages are installed during the GitHub Actions build. Normal boot uses the bundled rootfs and does not require internet. Review the operation log and close the Linux desktop before upgrades.
-          files: |
-            MT-OS-V10.9.0-arm64.apk
-            MT-OS-V10.9.0-arm64.apk.sha256
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
