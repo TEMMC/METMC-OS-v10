@@ -47,7 +47,7 @@ class RootfsManager(private val context: Context) {
     /** Accept a separately extracted, supported MT rootfs; the APK need not bundle it. */
     fun isBundledDistroReady(): Boolean = isRootfsReady() && isSupportedRootfs()
 
-    private fun isSupportedRootfs(): Boolean {
+    private fun isSupportedRootfs(expectedDistro: String? = null): Boolean {
         val release = File(rootfsDir, "etc/os-release")
         if (!release.isFile) return false
         val contents = runCatching { release.readText() }.getOrDefault("")
@@ -55,11 +55,12 @@ class RootfsManager(private val context: Context) {
             ?.groupValues?.get(1)?.trim().orEmpty().trim('"', '\'').lowercase()
         val version = Regex("(?m)^VERSION_ID=(.+)$").find(contents)
             ?.groupValues?.get(1)?.trim().orEmpty().trim('"', '\'')
-        return when (id) {
+        val supported = when (id) {
             "alpine" -> version.startsWith("3.22")
             "ubuntu" -> version.startsWith("24.04")
             else -> false
         }
+        return supported && (expectedDistro == null || id == expectedDistro)
     }
 
     fun isSetupComplete(): Boolean = setupCompleteFile.exists()
@@ -302,8 +303,8 @@ class RootfsManager(private val context: Context) {
 
             onProgress(0.7, "Configuring Linux environment...")
             configureRootfs()
-            if (distro == "alpine" && !isSupportedRootfs()) {
-                throw IllegalStateException("Bundled rootfs is not Alpine Linux 3.22")
+            if (!isSupportedRootfs(distro)) {
+                throw IllegalStateException("Extracted rootfs does not match supported distro $distro (Alpine 3.22 or Ubuntu 24.04)")
             }
             setupCompleteFile.writeText("done")
 
