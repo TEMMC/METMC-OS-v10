@@ -279,9 +279,12 @@ class KioskActivity : Activity() {
         }
         detailText = TextView(this).apply {
             text = ""
-            setTextColor(Color.parseColor("#777777"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setTextColor(Color.parseColor("#AAAAAA"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
             gravity = Gravity.CENTER
+            maxLines = 14
+            setTextIsSelectable(true)
+            typeface = Typeface.MONOSPACE
         }
         overlayLayout!!.addView(titleText)
         overlayLayout!!.addView(TextView(this).apply {
@@ -679,43 +682,27 @@ class KioskActivity : Activity() {
             }
             updateOverlay(0.05, "Root access confirmed", "")
 
-            // Step 2: Use the separately extracted Linux rootfs.
-            // Never migrate, replace, or delete an existing user rootfs during an app update.
+            // Step 2: Validate the separately extracted Linux rootfs only.
+            // This is an app-only build: boot must never stage, extract, migrate,
+            // replace, or delete the user's rootfs.
             if (!rootfsManager.isRootfsReady()) {
-                val bundled = rootfsManager.stageBundledRootfs { progress, status ->
-                    updateOverlay(0.05 + progress * 0.45, status, "Optional bundled rootfs")
-                }
-                if (!bundled) {
-                    updateOverlay(
-                        -1.0,
-                        "Separate Linux rootfs missing",
-                        "Extract the MT OS rootfs archive with Termux into ${rootfsManager.getRootfsPath()}. This APK contains the Android app only."
-                    )
-                    return
-                }
-
-                updateOverlay(0.50, "Extracting Linux filesystem...", "No network required")
-                bootFailed = false
-                rootfsManager.extractRootfs { progress, status ->
-                    if (progress < 0) {
-                        bootFailed = true
-                        updateOverlay(-1.0, "Rootfs extraction failed", status)
-                    } else {
-                        updateOverlay(0.50 + progress * 0.20, status, "")
-                    }
-                }
-                if (bootFailed) return
+                updateOverlay(
+                    -1.0,
+                    "Separate Linux rootfs missing",
+                    "Extract the MT OS rootfs with Termux into:\n${rootfsManager.getRootfsPath()}\nThis APK does not contain or install a Linux rootfs."
+                )
+                return
             }
 
             if (!rootfsManager.isBundledDistroReady()) {
                 updateOverlay(
                     -1.0,
                     "Linux rootfs is incomplete or unsupported",
-                    "Keep your existing rootfs intact. MT OS currently supports Ubuntu 24.04 and Alpine 3.22 rootfs layouts."
+                    "Your rootfs was left untouched. Supported layouts: Ubuntu 24.04 or Alpine 3.22. Check etc/os-release and required system directories."
                 )
                 return
             }
-            updateOverlay(0.70, "Separate Linux filesystem found", "Existing rootfs preserved")
+            updateOverlay(0.70, "Separate Linux filesystem found", "Rootfs preserved; no extraction or migration performed")
 
             // Step 3: Mount chroot
             updateOverlay(0.72, "Mounting Linux environment...", "")
@@ -858,7 +845,11 @@ class KioskActivity : Activity() {
             chrootManager.startLabwcSession(screenWidth, screenHeight)
             updateOverlay(0.98, if (chrootManager.isPhoshInstalled()) "Starting MT-Phosh desktop..." else "Starting Labwc desktop...", if (chrootManager.isPhoshInstalled()) "Starting MT-Phoc compositor and mobile shell" else "Starting window manager and taskbar")
             if (!chrootManager.awaitLabwcReady()) {
-                throw IllegalStateException(if (chrootManager.isPhoshInstalled()) "MT-Phosh/MT-Phoc did not become ready" else "Labwc compositor and taskbar did not become ready")
+                val desktopName = if (chrootManager.isPhoshInstalled()) "MT-Phosh/MT-Phoc" else "Labwc/Waybar"
+                val diagnostics = chrootManager.getSessionDiagnostics()
+                throw IllegalStateException(
+                    "$desktopName did not become ready.\n$diagnostics"
+                )
             }
             runOnUiThread {
                 overlayLayout?.visibility = View.GONE
@@ -870,7 +861,16 @@ class KioskActivity : Activity() {
 
         } catch (e: Exception) {
             Log.e(TAG, "Boot sequence failed", e)
-            updateOverlay(-1.0, "Boot failed: ${e.message}", "Press Vol Up x5 to escape to Android")
+            val sessionDetails = chrootManager.getSessionDiagnostics()
+            val detail = buildString {
+                append("Cause: ${e.message ?: e.javaClass.simpleName}")
+                if (sessionDetails.isNotBlank()) {
+                    append("\n\nDesktop startup log:\n")
+                    append(sessionDetails)
+                }
+                append("\n\nPress Vol Up x5 to escape to Android")
+            }.take(1800)
+            updateOverlay(-1.0, "Boot failed", detail)
         }
     }
 
@@ -880,12 +880,20 @@ class KioskActivity : Activity() {
             if (progress < 0) {
                 statusText?.text = status
                 statusText?.setTextColor(Color.parseColor("#FF5555"))
-                detailText?.text = detail
+                detailText?.apply {
+                    text = detail
+                    gravity = Gravity.START
+                    setTextColor(Color.parseColor("#D0D0D0"))
+                }
                 progressBar?.progress = 0
             } else {
                 statusText?.text = status
                 statusText?.setTextColor(Color.parseColor("#AAAAAA"))
-                detailText?.text = detail
+                detailText?.apply {
+                    text = detail
+                    gravity = Gravity.CENTER
+                    setTextColor(Color.parseColor("#777777"))
+                }
                 progressBar?.progress = (progress * 1000).toInt()
             }
         }
