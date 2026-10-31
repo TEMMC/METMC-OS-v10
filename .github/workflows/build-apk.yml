@@ -35,29 +35,26 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      # App-only rebuild: reuse the exact rootfs from the last successful APK build.
-      # This deliberately does NOT download packages, unpack a distro, install MT desktop
-      # artifacts, or modify/rebuild the rootfs.
-      - name: Download last successful APK artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: METMC-OS-v10-Android-APK
-          run-id: 40691408689
-          path: /tmp/known-good-apk
-
-      - name: Restore unchanged rootfs asset from successful APK
+      # App-only rebuild: reuse the separately published, verified rootfs snapshot.
+      # No distro bootstrap, apt install, desktop build, or rootfs modification occurs here.
+      - name: Download unchanged rootfs snapshot
         shell: bash
         run: |
           set -euo pipefail
-          BASE_APK="/tmp/known-good-apk/app-debug.apk"
-          test -s "$BASE_APK"
+          ROOTFS_GZ="/tmp/MT-OS-Rootfs-arm64.tar.gz"
+          curl --fail --location --retry 5 --retry-all-errors \
+            "https://github.com/TEMMC/METMC-OS-v10/releases/download/v10.10.0/MT-OS-Rootfs-arm64.tar.gz" \
+            --output "$ROOTFS_GZ"
+          echo "51e2b34e3a30bc91f19c547cc97d22ed96deb57b0c109e242119ae3ca58dcc97  $ROOTFS_GZ" | sha256sum --check -
           mkdir -p android/app/src/main/assets/rootfs
-          unzip -p "$BASE_APK" assets/rootfs/nativos-rootfs-arm64.tar > android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tar
+          gzip -dc "$ROOTFS_GZ" > android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tar
           test "$(stat -c %s android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tar)" -gt 104857600
+          tar -tf android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tar | grep -m1 -E '(^|/)usr/libexec/phosh$'
+          tar -tf android/app/src/main/assets/rootfs/nativos-rootfs-arm64.tar | grep -m1 -E '(^|/)usr/local/bin/phoc$'
           cd android/app/src/main/assets/rootfs
           sha256sum nativos-rootfs-arm64.tar > nativos-rootfs-arm64.tar.sha256
           sha256sum --check nativos-rootfs-arm64.tar.sha256
-          echo "Reusing the existing successful rootfs unchanged."
+          echo "Verified existing MT rootfs snapshot; rootfs was not rebuilt or changed."
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
